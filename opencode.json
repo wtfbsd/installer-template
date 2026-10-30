@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "agents": {
+    "builder": {
+      "description": "Implement installer sections, adapters and shell libraries in this repository.",
+      "mode": "subagent",
+      "system": "{file:./.opencode/agent/builder.md}"
+    },
+    "tester": {
+      "description": "Run the installer test suite and report what it says.",
+      "mode": "subagent",
+      "system": "{file:./.opencode/agent/tester.md}"
+    }
+  }
+}

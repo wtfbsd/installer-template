@@ -1,0 +1,33 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for diskinfo(1).  With the option -v it prints the lines of
+# the real tool: the name of the disk with its size, the size of a sector
+# and the size of the media in bytes and in sectors.
+#
+# Environment:
+#   STUB_DISK_INFO  the file that holds a line for every disk: the name of
+#                   the disk, its description and its size in bytes,
+#                   separated by tabs
+
+case "${1:-}" in
+	-v)
+		disk=${2:-}
+		file=${STUB_DISK_INFO:-}
+		if [ -z "${file}" ] || [ ! -f "${file}" ]; then
+			exit 1
+		fi
+		size=$(awk -F'\t' -v want="${disk}" '$1 == want { print $3; exit }' "${file}")
+		[ -n "${size}" ] || exit 1
+		sectors=$((size / 512))
+		gigabytes=$(((size + 536870912) / 1073741824))
+		printf '%s: %s bytes\n' "${disk}" "${size}"
+		printf '\t512\t# sectorsize\n'
+		printf '\t%s\t# mediasize in bytes (%sG)\n' "${size}" "${gigabytes}"
+		printf '\t%s\t# mediasize in sectors\n' "${sectors}"
+		printf '\t4194304\t# stripesize in bytes\n'
+		printf '\t8\t# stripesize in sectors\n'
+		printf '\t0\t# rotational speed\n'
+		;;
+	*) exit 1 ;;
+esac

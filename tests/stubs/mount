@@ -1,0 +1,21 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for mount(8).  With the option -p it prints the mount table
+# in the columns of the real tool: the device, the mount point, the type of
+# the file system, the options, the number of dumps and the pass number.
+#
+# Environment:
+#   STUB_MOUNTS  the file that holds the lines of the mount table
+
+case "${1:-}" in
+	-p)
+		file=${STUB_MOUNTS:-}
+		if [ -n "${file}" ] && [ -f "${file}" ]; then
+			cat "${file}"
+			exit 0
+		fi
+		printf '/dev/ada0p3 / ufs rw 0 0\n'
+		;;
+	*) exit 1 ;;
+esac

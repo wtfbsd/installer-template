@@ -1,0 +1,16 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for zfs(8).  The command "zfs list -H -o name /" answers the
+# name of the dataset that is mounted on /.
+#
+# Environment:
+#   STUB_ZFS_ROOT  the name of the dataset that is mounted on /
+
+case "${1:-}" in
+	list)
+		[ -n "${STUB_ZFS_ROOT:-}" ] || exit 1
+		printf '%s\n' "${STUB_ZFS_ROOT}"
+		;;
+	*) exit 1 ;;
+esac

@@ -1,0 +1,12 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Answers for a machine whose disk shows up after the first look: the screen
+# before the first page says that no disk was found, the user chooses to look
+# again and the run goes on.  The hardware is looked for twice.
+# 1 the screen before the first page, 2 the screen before the first page
+# again, 3 keyboard, 4 timezone, 5 disk.
+0 Rescan
+0 Rescan
+0 us
+0 UTC
+0 ada0

@@ -1,0 +1,19 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Answers for the happy path, one per dialog call.
+# 1 welcome, 2 keyboard, 3 timezone, 4 disk, 5 user name, 6 password,
+# 7 password again, 8 privilege, 9 network adapter, 10 network mode,
+# 11 summary, 12 install gauge, 13 finish.
+0
+0 us
+0 UTC
+0 ada0
+0 tester
+0 s3cret-pass
+0 s3cret-pass
+0
+0 em0
+0 dhcp
+0
+0
+0

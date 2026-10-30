@@ -1,0 +1,95 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# installer-backend <section> <verb> [arguments...] — run one section of the
+# installer.
+#
+# A section is a script under sections.d/.  The verb says what the section
+# has to do:
+#
+#   probe     look at the machine and print one JSON object
+#   validate  check the answers and change nothing
+#   apply     do the work
+#   verify    check that the work was done
+#
+# The section is run with the verb as its first argument, so a section never
+# has to know how it was called.  The exit code of the section is the exit
+# code of this script.
+#
+# The codes that this script uses itself are:
+#
+#   2  the call does not make sense: no verb at all, a verb that is not
+#      known, a name that may not be a section or a section that is not
+#      installed
+#   3  the machine is not ready for the work
+#   4  the work failed
+
+set -eu
+
+here=$(CDPATH= cd "$(dirname "$0")" && pwd)
+root=${INSTALLER_ROOT:-$(CDPATH= cd "${here}/.." && pwd)}
+libexec=${INSTALLER_LIBEXEC:-${root}/sections.d}
+
+# The verbs a section understands.  The table is the list: a verb that is
+# not in it is refused before a section is run.
+verbs='probe validate apply verify'
+
+# refuse <text...> — the call does not make sense.  Say why and stop.
+refuse() {
+	printf 'installer-backend: %s\n' "$*" >&2
+	exit 2
+}
+
+# installed_sections — the names of the sections that are installed, one
+# per line.
+installed_sections() {
+	for _script in "${libexec}"/*.sh; do
+		[ -f "${_script}" ] || continue
+		_name=${_script##*/}
+		printf '%s\n' "${_name%.sh}"
+	done
+}
+
+# section_name_ok <name> — the name may name a section when it starts with
+# a letter and holds nothing but lower case letters, digits and dashes.
+section_name_ok() {
+	case "$1" in
+		''|[!a-z]*) return 1 ;;
+		*[!a-z0-9-]*) return 1 ;;
+	esac
+	return 0
+}
+
+# verb_ok <verb> — the verb is one of the verbs of the table.
+verb_ok() {
+	for _known in ${verbs}; do
+		if [ "$1" = "${_known}" ]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+# help — the help of the backend.
+help() {
+	printf 'usage: installer-backend <section> <verb> [arguments...]\n' >&2
+	printf 'a verb is one of: %s\n' "${verbs}" >&2
+	printf 'the sections that are installed are:\n' >&2
+	installed_sections | sed 's/^/  /' >&2
+	exit 2
+}
+
+[ $# -ge 2 ] || help
+
+section=$1
+verb=$2
+shift 2
+
+section_name_ok "${section}" ||
+	refuse "'${section}' is not the name of a section"
+verb_ok "${verb}" ||
+	refuse "'${verb}' is not a verb of the installer"
+[ -f "${libexec}/${section}.sh" ] ||
+	refuse "the section '${section}' is not installed"
+
+exec "${libexec}/${section}.sh" "${verb}" "$@"

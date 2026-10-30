@@ -1,0 +1,25 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Answers for a run in which the escape key is pressed on the keyboard page
+# and the question to quit is answered with no: the same dialog comes back
+# and the run goes on.  The answer of a yes or no box is its exit code
+# alone: 0 is yes and 1 is no.
+# 1 welcome, 2 keyboard with the escape key, 3 the question to quit,
+# 4 keyboard again, 5 timezone, 6 disk, 7 user name, 8 password,
+# 9 password again, 10 privilege, 11 network adapter, 12 network mode,
+# 13 summary, 14 install gauge, 15 finish.
+0
+5
+1
+0 us
+0 UTC
+0 ada0
+0 tester
+0 s3cret-pass
+0 s3cret-pass
+0
+0 em0
+0 dhcp
+0
+0
+0

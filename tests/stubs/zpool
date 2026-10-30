@@ -1,0 +1,20 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for zpool(8).  The command "zpool status" prints the state of
+# a pool in the columns of the real tool.  With the option -P the tool
+# prints the full path of every device.
+#
+# Environment:
+#   STUB_ZPOOL  the file that holds the lines of the report
+
+case "${1:-}" in
+	status)
+		file=${STUB_ZPOOL:-}
+		if [ -z "${file}" ] || [ ! -f "${file}" ]; then
+			exit 1
+		fi
+		cat "${file}"
+		;;
+	*) exit 1 ;;
+esac

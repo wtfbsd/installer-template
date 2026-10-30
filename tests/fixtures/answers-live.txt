@@ -1,0 +1,6 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Answers for a machine that cannot be installed to: the preflight screen
+# offers to stay in the live system and the answer is that.
+# 1 preflight menu.
+0 Quit

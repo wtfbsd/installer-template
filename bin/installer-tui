@@ -1,0 +1,1067 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# installer-tui: the text front end of the installer.
+#
+# The pages are, in order: welcome, keyboard, timezone, disk, users, network,
+# summary, install and finish.  Every dialog has one primary action and the
+# other button is always Back.  Enter always accepts the default.
+#
+# The answers the pages collect are written to a KEY=value file that the
+# backend reads.  A field whose gate is off never reaches that file.
+#
+# The dialog tool draws its screen on standard output and writes the choice
+# of the user to the file descriptor it is given.  The screen has to reach
+# the terminal, so the terminal is kept on file descriptor 3 and the choice
+# of the user is read from file descriptor 4.
+
+set -eu
+
+here=$(CDPATH= cd "$(dirname "$0")" && pwd)
+root=${INSTALLER_ROOT:-$(CDPATH= cd "${here}/.." && pwd)}
+. "${root}/lib/backend.sh"
+. "${root}/lib/config.sh"
+. "${root}/lib/accounts.sh"
+
+BACKEND="${root}/bin/installer-backend"
+BSDDIALOG=${BSDDIALOG:-bsddialog}
+
+# die <exit code> <message...> — stop with a message on standard error.
+#
+# The front end has a name of its own: the message of the front end says
+# that the front end is the one that stopped.
+die() {
+	_code=$1
+	shift
+	printf 'installer-tui: %s\n' "$*" >&2
+	exit "${_code}"
+}
+
+PAGES='welcome keyboard timezone disk users network summary install finish'
+
+TAB=$(printf '\t')
+
+# The terminal, for the screens of the dialog tool.
+exec 3>&1
+
+state=''
+state_parent=${INSTALLER_STATE_PARENT:-${TMPDIR:-/tmp}}
+answers_file=''
+log=''
+log_destination=''
+
+product=''
+default_keymap=''
+default_timezone=''
+
+keymap=''
+timezone=''
+disk=''
+disk_descr=''
+disk_size=''
+user_name=''
+user_password=''
+user_auth=password
+privilege_passwordless=no
+secret_written=no
+secret_password=''
+network_mode=dhcp
+net_if=''
+ipv4_addr=''
+ipv4_mask=''
+ipv4_gw=''
+
+installed=0
+install_failed=0
+stop_reason=''
+probe_detail=''
+DLG_RC=0
+DLG_OUT=''
+DLG_TITLE=''
+
+# remove_state — remove the state directory of the run.  The path has to be
+# a directory under the parent directory of the state.
+remove_state() {
+	[ -n "${state}" ] || return 0
+	[ -n "${state_parent}" ] || return 0
+	[ "${state}" != "${state_parent}" ] || return 0
+	case "${state}" in
+		"${state_parent}"/*) : ;;
+		*) return 0 ;;
+	esac
+	[ -d "${state}" ] || return 0
+	rm -rf -- "${state}"
+}
+
+# publish_log — keep the log of the run in the place it is documented.
+#
+# The log itself lives in the state directory of the run, which is private
+# and is gone when the run ends.  The copy that is kept is made in a file of
+# its own next to the destination and is moved into place afterwards, so a
+# link that is in the way is never followed and never written through.
+publish_log() {
+	[ -n "${log}" ] || return 0
+	[ -f "${log}" ] || return 0
+	[ -n "${log_destination}" ] || return 0
+	[ "${log_destination}" != "${log}" ] || return 0
+	dir=$(dirname "${log_destination}")
+	[ -d "${dir}" ] || return 0
+	tmp=$(mktemp "${dir}/.wtfbsd-installer-log.XXXXXX") || return 0
+	if ! cat "${log}" > "${tmp}"; then
+		rm -f "${tmp}"
+		return 0
+	fi
+	chmod 600 "${tmp}" 2>/dev/null || :
+	if ! mv -f "${tmp}" "${log_destination}"; then
+		rm -f "${tmp}"
+		return 0
+	fi
+	return 0
+}
+
+# cleanup — the state of the run is gone when the run ends.
+cleanup() {
+	_code=$?
+	trap - EXIT INT TERM HUP
+	publish_log || :
+	remove_state || :
+	exit "${_code}"
+}
+
+# signal_exit — the run was interrupted.
+signal_exit() {
+	trap - EXIT INT TERM HUP
+	publish_log || :
+	remove_state || :
+	exit 1
+}
+
+# leave — the installer is left.  A run that did not finish ends with a non
+# zero code.
+leave() {
+	if [ "${install_failed}" -eq 1 ]; then
+		printf 'installer-tui: the installation did not finish\n' >&2
+		exit 1
+	fi
+	exit 0
+}
+
+# dlg <dialog arguments...> — run one dialog.  DLG_OUT holds what the user
+# chose and DLG_RC the exit code the dialog tool returned.
+#
+# The labels of the buttons are part of the arguments: the caller says what
+# the buttons of the dialog are called.
+#
+# The choice of the user is read from file descriptor 4 and the screen of the
+# tool goes to the terminal on file descriptor 3.  The escape key asks
+# whether to leave the installer; only an answer of yes leaves and every
+# other answer brings the same dialog back.
+#
+# A yes or no box writes nothing: the answer of the user is the exit code
+# of the dialog, 0 for yes and 1 for no.  Such a box is given no output
+# descriptor at all: there is nothing to read, and a descriptor that points
+# at the terminal would let the tool write to it.
+dlg() {
+	while :; do
+		DLG_RC=0
+		DLG_OUT=''
+		if has_yesno "$@"; then
+			"$BSDDIALOG" --title "${DLG_TITLE}" "$@" \
+				1>&3 2>>"${log}" || DLG_RC=$?
+		else
+			DLG_OUT=$("$BSDDIALOG" --title "${DLG_TITLE}" --output-fd 4 "$@" \
+				4>&1 1>&3 2>>"${log}") || DLG_RC=$?
+		fi
+		if [ "${DLG_RC}" -ne 5 ]; then
+			break
+		fi
+		DLG_RC=0
+		DLG_OUT=''
+		"$BSDDIALOG" --title "${DLG_TITLE}" --yes-label Quit --no-label Continue \
+			--yesno "Quit the installer?" \
+			0 0 1>&3 2>>"${log}" || DLG_RC=$?
+		if [ "${DLG_RC}" -eq 0 ]; then
+			DLG_RC=9
+			break
+		fi
+		DLG_RC=0
+	done
+	return 0
+}
+
+# has_yesno <dialog arguments...> — succeed when the dialog is a yes or no
+# box.  Such a box has no output descriptor.
+has_yesno() {
+	for _arg in "$@"; do
+		if [ "${_arg}" = '--yesno' ]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+# dlg_page <dialog arguments...> — a dialog of a page: the buttons are OK
+# and Back.
+dlg_page() {
+	dlg --ok-label OK --cancel-label Back "$@"
+}
+
+# dlg_quit <dialog arguments...> — a dialog of a screen that leaves the
+# installer: the buttons are OK and Quit.
+dlg_quit() {
+	dlg --ok-label OK --cancel-label Quit "$@"
+}
+
+# dlg_yesno <text> <rows> <cols> — a yes or no box: the buttons are Yes
+# and No.
+dlg_yesno() {
+	dlg --yes-label Yes --no-label No --yesno "$@"
+}
+
+# page_index <page> — the position of a page in the page order.
+page_index() {
+	index=1
+	for page in ${PAGES}; do
+		if [ "${page}" = "$1" ]; then
+			printf '%s\n' "${index}"
+			return 0
+		fi
+		index=$((index + 1))
+	done
+	printf '0\n'
+}
+
+# page_at <index> — the page at that position.
+page_at() {
+	index=1
+	for page in ${PAGES}; do
+		if [ "${index}" -eq "$1" ]; then
+			printf '%s\n' "${page}"
+			return 0
+		fi
+		index=$((index + 1))
+	done
+	printf 'finish\n'
+}
+
+page_next() {
+	index=$(page_index "$1")
+	page_at $((index + 1))
+}
+
+page_prev() {
+	index=$(page_index "$1")
+	if [ "${index}" -gt 1 ]; then
+		page_at $((index - 1))
+	else
+		printf 'welcome\n'
+	fi
+}
+
+# json_items <json> <key> — the items of a JSON array, one per line, as
+# "name<TAB>description<TAB>size".
+json_items() {
+	printf '%s' "$1" | python3 -c '
+import json, sys
+
+
+def human(size):
+    try:
+        size = int(size)
+    except (TypeError, ValueError):
+        size = 0
+    if size <= 0:
+        return "unknown size"
+    value = float(size)
+    for unit in ("bytes", "KB", "MB", "GB", "TB"):
+        if value < 1024 or unit == "TB":
+            if unit == "bytes":
+                return "%d bytes" % int(value)
+            return "%.1f %s" % (value, unit)
+        value = value / 1024.0
+    return "%d bytes" % size
+
+
+try:
+    data = json.load(sys.stdin)
+except ValueError:
+    data = {}
+for item in data.get(sys.argv[1]) or []:
+    if isinstance(item, dict):
+        sys.stdout.write("%s\t%s\t%s\n" % (
+            item.get("name", ""),
+            item.get("descr", ""),
+            human(item.get("size_bytes", 0)),
+        ))
+    else:
+        sys.stdout.write("%s\t\tunknown size\n" % item)
+' "$2"
+}
+
+# json_value <json> <key> — one value of a JSON object.
+json_value() {
+	printf '%s' "$1" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except ValueError:
+    data = {}
+sys.stdout.write("%s" % data.get(sys.argv[1], ""))
+' "$2"
+}
+
+# write_answers — write the answers the backend reads.  The gating module
+# decides which fields survive.
+#
+# The password of the account is written to a file of its own.  The file is
+# made in a file of its own and moved into place, and a password file that
+# this run did not write is never written over.
+#
+# The answers reach the file of the answers through the gate: the gate
+# writes a file of its own and the file of the answers is only replaced
+# when the gate was happy with the answers.
+write_answers() {
+	secrets="${state}/secrets"
+	if [ ! -d "${secrets}" ]; then
+		mkdir -p "${secrets}" || return 1
+		chmod 700 "${secrets}" || return 1
+	fi
+	if [ "${user_auth}" = password ]; then
+		# The password of the account is written to a file of its own.
+		# A password file that this run did not write is never written
+		# over.  The file of this run may be replaced when the password
+		# of the account changes.
+		if [ -e "${secrets}/user.pass" ]; then
+			held=$(cat "${secrets}/user.pass" 2>/dev/null || printf '')
+			if [ "${secret_written}" != yes ] ||
+				[ "${held}" != "${secret_password}" ]; then
+				return 1
+			fi
+			replace_secret_file "${secrets}" "${user_password}" || return 1
+		else
+			write_secret_file "${secrets}" "${user_password}" || return 1
+		fi
+		secret_written=yes
+		secret_password=${user_password}
+	fi
+	raw="${state}/answers.raw"
+	gated="${state}/answers.gated"
+	{
+		printf 'KEYMAP=%s\n' "${keymap}"
+		printf 'TIMEZONE=%s\n' "${timezone}"
+		printf 'DISK=%s\n' "${disk}"
+		printf 'USER_NAME=%s\n' "${user_name}"
+		printf 'USER_AUTH=%s\n' "${user_auth}"
+		if [ "${user_auth}" = password ]; then
+			printf 'USER_PASSFILE=%s\n' "${secrets}/user.pass"
+		fi
+		printf 'PRIVILEGE_PASSWORDLESS=%s\n' "${privilege_passwordless}"
+		printf 'NETWORK_MODE=%s\n' "${network_mode}"
+		printf 'NET_IF=%s\n' "${net_if}"
+		if [ "${network_mode}" = static ]; then
+			printf 'NET_IPV4=static\n'
+			printf 'IPV4_ADDR=%s\n' "${ipv4_addr}"
+			printf 'IPV4_MASK=%s\n' "${ipv4_mask}"
+			printf 'IPV4_GW=%s\n' "${ipv4_gw}"
+		fi
+	} > "${raw}"
+	# The gate writes a file of its own.  The file of the answers is only
+	# replaced when the gate was happy with the answers, so a gate that
+	# fails never leaves an empty file of answers behind.
+	if ! python3 "${root}/lib/gating.py" gate "${raw}" > "${gated}"; then
+		rm -f "${gated}"
+		return 1
+	fi
+	if ! mv -f "${gated}" "${answers_file}"; then
+		rm -f "${gated}"
+		return 1
+	fi
+	if ! python3 "${root}/lib/gating.py" secrets "${raw}" \
+		> "${state}/consumed-secrets.txt"; then
+		return 1
+	fi
+	return 0
+}
+
+# delete_secrets — the password of the account is gone once the backend has
+# read it.
+delete_secrets() {
+	[ -n "${state}" ] || return 0
+	rm -f "${state}/secrets/user.pass"
+}
+
+summary_text() {
+	printf 'The installation will use:\n\n'
+	printf '  Product:     %s\n' "${product}"
+	printf '  Keyboard:    %s\n' "${keymap}"
+	printf '  Time zone:   %s\n' "${timezone}"
+	printf '  Disk:        %s\n' "${disk}"
+	printf '  User:        %s\n' "${user_name}"
+	printf '  Privileges:  %s\n' "$(privilege_text)"
+	printf '  Network:     %s\n' "$(network_text)"
+	network_detail
+	printf '\nThis will erase %s (%s, %s).\n' \
+		"${disk}" "${disk_descr}" "${disk_size}"
+}
+
+privilege_text() {
+	if [ "${privilege_passwordless}" = yes ]; then
+		printf 'passwordless sudo and doas\n'
+	else
+		printf 'a password for sudo and doas\n'
+	fi
+}
+
+network_text() {
+	case "${network_mode}" in
+		static) printf 'a manual address on %s\n' "${net_if}" ;;
+		offline) printf 'no network\n' ;;
+		*) printf 'an automatic address on %s\n' "${net_if}" ;;
+	esac
+}
+
+# network_detail — the lines of the network that the one line summary does
+# not hold: the address, the netmask and the gateway of a manual address.
+network_detail() {
+	[ "${network_mode}" = static ] || return 0
+	printf '  Address:     %s\n' "${ipv4_addr}"
+	printf '  Netmask:     %s\n' "${ipv4_mask}"
+	printf '  Gateway:     %s\n' "${ipv4_gw}"
+}
+
+# probe_message <file> — the message the backend wrote on standard error.
+#
+# The message goes to the log of the run as well, so that it is kept when
+# the run ends.  It is returned as one line: the screen that shows it has
+# one line for it.
+probe_message() {
+	_file=${1:-}
+	[ -n "${_file}" ] || return 0
+	[ -f "${_file}" ] || return 0
+	cat "${_file}" >> "${log}" 2>/dev/null || :
+	tr '\n' ' ' < "${_file}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# stop_reason_for <requirement> <detected> — keep the reason why the run
+# cannot go on.  The message that the run prints when it stops names it.
+stop_reason_for() {
+	stop_reason="the requirement '$1' was not met ($2)"
+}
+
+# unfortunately <requirement> <detected> <needed> <may override> <probe>
+#
+# The screen asks what to do about a requirement the machine does not meet.
+# The override is only offered when it can help, which is when the machine
+# has a disk to install to, and choosing it asks for a confirmation first.
+# Staying in the live system leaves the installer without installing
+# anything.
+#
+# The probe is the name of a function that looks for the hardware again.  It
+# returns 0 when the requirement is met and it leaves the name of what it
+# found in probe_result.
+#
+# The screen returns 0 when the run may go on, 5 when the user wants to stay
+# in the live system, 9 when the user wants to leave the installer and 3 when
+# the run cannot go on at all.
+unfortunately() {
+	requirement=$1
+	detected=$2
+	needed=$3
+	may_override=$4
+	probe=$5
+	DLG_TITLE="${product} Installer [Unfortunately]"
+	while :; do
+		set -- --menu "Unfortunately
+
+Requirement: ${requirement}
+Detected:   ${detected}${probe_detail:+ (${probe_detail})}
+Needed:     ${needed}
+
+Choose Rescan to look for the hardware again, Override to continue without the requirement, or Quit to leave the installer and stay in the live system." 0 0 8 \
+			Rescan 'Look for the hardware again'
+		if [ "${may_override}" = yes ]; then
+			set -- "$@" Override 'Continue without the requirement'
+		fi
+		set -- "$@" Quit 'Stay in the live system and do not install anything'
+		dlg_quit "$@"
+		if [ "${DLG_RC}" -eq 9 ]; then
+			return 9
+		fi
+		case "${DLG_RC}" in
+			0)
+				case "${DLG_OUT}" in
+					Rescan)
+						if "${probe}"; then
+							return 0
+						fi
+						detected=${probe_result}
+						continue
+						;;
+					Override)
+						dlg_yesno "The requirement is not met.
+
+Continue anyway?" 0 0
+						if [ "${DLG_RC}" -eq 9 ]; then
+							return 9
+						fi
+						case "${DLG_RC}" in
+							0) return 0 ;;
+							*) continue ;;
+						esac
+						;;
+					Quit) return 5 ;;
+					*)
+						stop_reason_for "${requirement}" "${detected}"
+						return 3
+						;;
+				esac
+				;;
+			1)
+				stop_reason_for "${requirement}" "${detected}"
+				return 3
+				;;
+			*)
+				stop_reason_for "${requirement}" "${detected}"
+				return 3
+				;;
+		esac
+	done
+}
+
+# probe_disks — look for a disk to install to.
+#
+# The names of the disks that were found are left in probe_result and the
+# function returns 0 when there is at least one of them.  The message of the
+# backend is left in probe_detail, so that the screen can say why the
+# hardware could not be read.
+probe_disks() {
+	disks_exist=no
+	probe_result='none found'
+	answer=$("$BACKEND" disk probe 2>"${state}/probe-disks.err") ||
+		answer='{"disks":[]}'
+	probe_detail=$(probe_message "${state}/probe-disks.err")
+	json_items "${answer}" disks > "${state}/preflight-disks"
+	if [ -s "${state}/preflight-disks" ]; then
+		disks_exist=yes
+		probe_result=$(cut -f1 "${state}/preflight-disks" | tr '\n' ' ')
+		return 0
+	fi
+	return 1
+}
+
+# probe_network — look for a network adapter.
+#
+# The names of the adapters that were found are left in probe_result and the
+# function returns 0 when there is at least one of them.  The message of the
+# backend is left in probe_detail.
+probe_network() {
+	nets_exist=no
+	probe_result='none found'
+	answer=$("$BACKEND" network probe 2>"${state}/probe-network.err") ||
+		answer='{"interfaces":[]}'
+	probe_detail=$(probe_message "${state}/probe-network.err")
+	json_items "${answer}" interfaces > "${state}/preflight-interfaces"
+	if [ -s "${state}/preflight-interfaces" ]; then
+		nets_exist=yes
+		probe_result=$(cut -f1 "${state}/preflight-interfaces" | tr '\n' ' ')
+		return 0
+	fi
+	return 1
+}
+
+# preflight — the checks that run before the first page.
+#
+# The machine needs a disk to install to and it may have a network adapter.
+# A machine without an adapter can be installed offline, so that requirement
+# can be overridden.  A machine without a disk cannot be installed to at
+# all: the screen before the first page says so and offers to stay in the
+# live system.
+preflight() {
+	result=0
+	if ! probe_disks; then
+		unfortunately 'A disk to install to' "${probe_result}" 'one disk' \
+			no probe_disks || result=$?
+		case "${result}" in
+			0) : ;;
+			*) return "${result}" ;;
+		esac
+	fi
+	if ! probe_network; then
+		result=0
+		unfortunately 'A network adapter' "${probe_result}" 'one adapter' \
+			"${disks_exist}" probe_network || result=$?
+		case "${result}" in
+			0)
+				if [ "${nets_exist}" = no ]; then
+					network_mode=offline
+				fi
+				;;
+			*) return "${result}" ;;
+		esac
+	fi
+	return 0
+}
+
+page_welcome() {
+	DLG_TITLE="${product} Installer [Welcome]"
+	dlg --yes-label Yes --no-label Quit --yesno "Welcome to the ${product} installer.
+
+This installer will guide you through installing ${product} on this machine." 0 0
+	case "${DLG_RC}" in
+		0) return 0 ;;
+		1) return 2 ;;
+		*) return 3 ;;
+	esac
+}
+
+page_keyboard() {
+	DLG_TITLE="${product} Installer [Keyboard]"
+	probe=$("$BACKEND" keyboard probe 2>>"${log}") || probe='{"layouts":[]}'
+	items="${state}/keyboard-items"
+	json_items "${probe}" layouts > "${items}"
+	fallback=$(json_value "${probe}" default)
+	[ -n "${fallback}" ] || fallback="${default_keymap}"
+	set -- --menu 'Choose the keyboard layout.' 0 0 12
+	if [ -s "${items}" ]; then
+		set -- "$@" --default-item "${fallback}"
+	fi
+	while IFS="${TAB}" read -r name descr size; do
+		[ -n "${name}" ] || continue
+		set -- "$@" "${name}" "${descr}"
+	done < "${items}"
+	dlg_page "$@"
+	case "${DLG_RC}" in
+		0)
+			keymap=${DLG_OUT}
+			[ -n "${keymap}" ] || keymap=${fallback}
+			return 0
+			;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+}
+
+page_timezone() {
+	DLG_TITLE="${product} Installer [Timezone]"
+	probe=$("$BACKEND" timezone probe 2>>"${log}") || probe='{"zones":[]}'
+	items="${state}/timezone-items"
+	json_items "${probe}" zones > "${items}"
+	fallback=$(json_value "${probe}" default)
+	[ -n "${fallback}" ] || fallback="${default_timezone}"
+	set -- --menu 'Choose the time zone.' 0 0 12
+	if [ -s "${items}" ]; then
+		set -- "$@" --default-item "${fallback}"
+	fi
+	while IFS="${TAB}" read -r name descr size; do
+		[ -n "${name}" ] || continue
+		set -- "$@" "${name}" "${descr}"
+	done < "${items}"
+	dlg_page "$@"
+	case "${DLG_RC}" in
+		0)
+			timezone=${DLG_OUT}
+			[ -n "${timezone}" ] || timezone=${fallback}
+			return 0
+			;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+}
+
+page_disk() {
+	DLG_TITLE="${product} Installer [Disk]"
+	while :; do
+		probe=$("$BACKEND" disk probe 2>>"${log}") || probe='{"disks":[]}'
+		items="${state}/disk-items"
+		json_items "${probe}" disks > "${items}"
+		if [ -s "${items}" ]; then
+			text="Choose the disk to install ${product} to."
+		else
+			text="No disks found.
+
+The installer looked for a disk to write to and did not find one."
+		fi
+		set -- --menu "${text}" 0 0 12
+		while IFS="${TAB}" read -r name descr size; do
+			[ -n "${name}" ] || continue
+			set -- "$@" "${name}" "${descr}"
+		done < "${items}"
+		set -- "$@" Rescan 'Look for the disks again' \
+			Quit 'Stay in the live system and do not install anything'
+		dlg_page "$@"
+		case "${DLG_RC}" in
+			0)
+				case "${DLG_OUT}" in
+					Rescan) continue ;;
+					Quit) return 5 ;;
+					*) disk=${DLG_OUT} ;;
+				esac
+				disk_descr=''
+				disk_size=''
+				while IFS="${TAB}" read -r name descr size; do
+					if [ "${name}" = "${disk}" ]; then
+						disk_descr=${descr}
+						disk_size=${size}
+					fi
+				done < "${items}"
+				return 0
+				;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+	done
+}
+
+page_users() {
+	DLG_TITLE="${product} Installer [Users]"
+	while :; do
+		dlg_page --inputbox 'User name for the first account:' 0 0 ''
+		case "${DLG_RC}" in
+			0) user_name=${DLG_OUT} ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		if user_name_valid "${user_name}"; then
+			break
+		fi
+		if user_name_reserved "${user_name}"; then
+			dlg_page --msgbox "The name '${user_name}' cannot be used: it is a name the system uses.
+
+Choose another name." 0 0
+		else
+			dlg_page --msgbox "The name '${user_name}' cannot be used.
+
+A name starts with a letter or an underline and holds letters, digits, underlines and dashes." 0 0
+		fi
+	done
+	user_auth=password
+	while :; do
+		dlg_page --passwordbox "Password for ${user_name}:" 0 0 ''
+		case "${DLG_RC}" in
+			0) user_password=${DLG_OUT} ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		if [ -z "${user_password}" ]; then
+			dlg_yesno "No password was given for ${user_name}.
+
+Do you want this account to have no password?" 0 0
+			case "${DLG_RC}" in
+				0)
+					user_auth=none
+					user_password=''
+					break
+					;;
+				1) : ;;
+				*) return 3 ;;
+			esac
+			continue
+		fi
+		dlg_page --passwordbox "Repeat the password for ${user_name}:" 0 0 ''
+		case "${DLG_RC}" in
+			0) repeat=${DLG_OUT} ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		if [ "${user_password}" = "${repeat}" ]; then
+			break
+		fi
+		dlg_page --msgbox 'The passwords do not match. Type them again.' 0 0
+	done
+	privilege_passwordless=no
+	dlg_page --checklist "Privileged access for ${user_name}:" 0 0 3 \
+		priv 'Passwordless sudo and doas for this account' off
+	case "${DLG_RC}" in
+		0)
+			case "${DLG_OUT}" in
+				*priv*) privilege_passwordless=yes ;;
+			esac
+			;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+	return 0
+}
+
+page_network() {
+	DLG_TITLE="${product} Installer [Network]"
+	while :; do
+		probe=$("$BACKEND" network probe 2>>"${log}") || probe='{"interfaces":[]}'
+		items="${state}/network-items"
+		json_items "${probe}" interfaces > "${items}"
+		if [ -s "${items}" ]; then
+			text='Choose the network adapter.'
+			set -- --menu "${text}" 0 0 12
+			while IFS="${TAB}" read -r name descr size; do
+				[ -n "${name}" ] || continue
+				set -- "$@" "${name}" "${descr}"
+			done < "${items}"
+			set -- "$@" Rescan 'Look for the adapters again' \
+				Offline 'Continue offline and install the system without a network'
+		else
+			text="No network adapters found.
+
+The installation can continue without a network."
+			set -- --menu "${text}" 0 0 12 \
+				Offline 'Continue offline and install the system without a network' \
+				Rescan 'Look for the adapters again'
+		fi
+		dlg_page "$@"
+		case "${DLG_RC}" in
+			0)
+				case "${DLG_OUT}" in
+					Rescan) continue ;;
+					Offline)
+						network_mode=offline
+						net_if=''
+						return 0
+						;;
+					Stay) return 5 ;;
+					*) net_if=${DLG_OUT} ;;
+				esac
+				;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		break
+	done
+	dlg_page --radiolist "How should ${product} be connected?" 0 0 3 \
+		dhcp 'Automatic address (DHCP)' on static 'Manual address' off
+	case "${DLG_RC}" in
+		0) network_mode=${DLG_OUT} ;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+	[ -n "${network_mode}" ] || network_mode=dhcp
+	case "${network_mode}" in
+		static)
+			dlg_page --inputbox "Address for ${net_if}:" 0 0 ''
+			case "${DLG_RC}" in
+				0) ipv4_addr=${DLG_OUT} ;;
+				1) return 1 ;;
+				*) return 3 ;;
+			esac
+			dlg_page --inputbox "Netmask for ${net_if}:" 0 0 ''
+			case "${DLG_RC}" in
+				0) ipv4_mask=${DLG_OUT} ;;
+				1) return 1 ;;
+				*) return 3 ;;
+			esac
+			dlg_page --inputbox "Gateway for ${net_if}:" 0 0 ''
+			case "${DLG_RC}" in
+				0) ipv4_gw=${DLG_OUT} ;;
+				1) return 1 ;;
+				*) return 3 ;;
+			esac
+			;;
+	esac
+	return 0
+}
+
+page_summary() {
+	DLG_TITLE="${product} Installer [Summary]"
+	write_answers || die 3 'cannot write the answers'
+	dlg_yesno "$(summary_text)
+
+Choose OK to install ${product} with these settings." 0 0
+	case "${DLG_RC}" in
+		0) return 0 ;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+}
+
+# feed_gauge — the protocol bsddialog(1) reads for the gauge widget.
+feed_gauge() {
+	count=0
+	while IFS= read -r line; do
+		count=$((count + 1))
+		percent=$((count * 10))
+		if [ "${percent}" -gt 100 ]; then
+			percent=100
+		fi
+		printf 'XXX\n%s\n%s\nXXX\n' "${percent}" "${line}"
+	done
+	printf 'EOF\n'
+}
+
+# run_install — install the system while the gauge widget shows the progress.
+# The output of the backend goes to the log and to the gauge.
+run_install() {
+	rm -f "${state}/install.rc"
+	(
+		# The exit code of the backend is the exit code of the run.
+		# It is caught here, so that it is written down even when the
+		# installation fails: the file of the status is written after
+		# the backend, and not before it.
+		code=0
+		"$BACKEND" install apply 2>&1 || code=$?
+		printf '%s\n' "$code" > "${state}/install.rc"
+	) | tee -a "${log}" | feed_gauge |
+		"$BSDDIALOG" --title "${DLG_TITLE}" --gauge "Installing ${product}." \
+			0 0 --output-fd 4 4>/dev/null 1>&3 2>>"${log}" || :
+	if [ ! -f "${state}/install.rc" ]; then
+		return 4
+	fi
+	result=$(cat "${state}/install.rc")
+	case "${result}" in
+		''|*[!0-9]*) return 4 ;;
+	esac
+	return "${result}"
+}
+
+# page_install_failure — the installation did not finish.  The user may run
+# it again or go back to the summary.  The finished page is never reached
+# after a failure.
+page_install_failure() {
+	publish_log || :
+	dlg_page --menu "The installation did not finish.
+
+The details are in ${log_destination}.
+
+Choose Retry to run the installation again, or Back to return to the summary." 0 0 8 \
+		Retry 'Run the installation again' \
+		Back 'Return to the summary and change the answers'
+	case "${DLG_RC}" in
+		0)
+			case "${DLG_OUT}" in
+				Retry) return 4 ;;
+				*) return 1 ;;
+			esac
+			;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+}
+
+page_install() {
+	DLG_TITLE="${product} Installer [Install]"
+	write_answers || die 3 'cannot write the answers'
+	if [ "${installed}" -eq 0 ]; then
+		result=0
+		"$BACKEND" disk validate >> "${log}" 2>&1 || result=$?
+		if [ "${result}" -ne 0 ]; then
+			# Nothing was installed, so the run is not a failed
+			# installation: the flag of a failed installation stays
+			# where it was.
+			publish_log || :
+			dlg_page --msgbox "The chosen disk cannot be used.
+
+The details are in ${log_destination}." 0 0
+			case "${DLG_RC}" in
+				0) return 1 ;;
+				1) return 1 ;;
+				*) return 3 ;;
+			esac
+		fi
+		printf 'the disk %s was checked before the installation\n' \
+			"${disk}" >> "${log}"
+		result=0
+		run_install || result=$?
+		delete_secrets
+		if [ "${result}" -eq 0 ]; then
+			installed=1
+			# The installation worked, so the run is not a failed one
+			# any more: a retry that works ends the run well.
+			install_failed=0
+		else
+			install_failed=1
+		fi
+	fi
+	if [ "${installed}" -eq 1 ]; then
+		return 0
+	fi
+	page_install_failure
+}
+
+page_finish() {
+	DLG_TITLE="${product} Installer [Finish]"
+	dlg_page --msgbox "${product} is installed.
+
+Remove the installation media and reboot." 0 0
+	case "${DLG_RC}" in
+		0) return 2 ;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+}
+
+main() {
+	mkdir -p "${state_parent}" ||
+		die 3 "cannot create the state directory ${state_parent}"
+	state=$(mktemp -d "${state_parent}/wtfbsd-installer.XXXXXX") ||
+		die 3 'cannot create the state directory'
+	chmod 700 "${state}" || die 3 'cannot make the state directory private'
+	trap 'cleanup' EXIT
+	trap 'signal_exit' INT TERM HUP
+	export INSTALLER_STATE_DIR="${state}"
+	answers_file=${INSTALLER_ANSWERS:-${state}/answers.conf}
+	# The backend reads the answers from the environment, so the file the
+	# front end writes has to be named there.
+	export INSTALLER_ANSWERS="${answers_file}"
+	# The log of the run lives in the state directory, which is private.
+	# The copy that is kept is made when the run ends.
+	log=${state}/installer.log
+	log_destination=${INSTALLER_LOG:-${state_parent}/wtfbsd-installer.log}
+	(umask 077 && : > "${log}") || :
+	product=$(config_value PRODUCT_NAME) || exit 2
+	default_keymap=$(config_value DEFAULT_KEYMAP) || exit 2
+	default_timezone=$(config_value DEFAULT_TZ) || exit 2
+	# The rest of the configuration is checked as well: a configuration
+	# that cannot be used stops the run before the first page.
+	config_value PRODUCT_SLUG >/dev/null || exit 2
+	config_value OS >/dev/null || exit 2
+	if ! command -v "${BSDDIALOG}" >/dev/null 2>&1; then
+		printf 'installer-tui: the dialog tool %s is not installed\n' \
+			"${BSDDIALOG}" >&2
+		exit 3
+	fi
+	result=0
+	preflight || result=$?
+	case "${result}" in
+		0) : ;;
+		5|9) leave ;;
+		*)
+			[ -n "${stop_reason}" ] ||
+				stop_reason='the checks before the first page did not pass'
+			printf 'installer-tui: the installer stopped before the first page (%s); run it again\n' \
+				"${stop_reason}" >&2
+			exit 1
+			;;
+	esac
+	keymap=${default_keymap}
+	timezone=${default_timezone}
+	page=welcome
+	while :; do
+		action=0
+		case "${page}" in
+			welcome) page_welcome || action=$? ;;
+			keyboard) page_keyboard || action=$? ;;
+			timezone) page_timezone || action=$? ;;
+			disk) page_disk || action=$? ;;
+			users) page_users || action=$? ;;
+			network) page_network || action=$? ;;
+			summary) page_summary || action=$? ;;
+			install) page_install || action=$? ;;
+			finish) page_finish || action=$? ;;
+			*) die 3 "unknown page '${page}'" ;;
+		esac
+		if [ "${DLG_RC}" -eq 9 ]; then
+			action=2
+		fi
+		case "${action}" in
+			0) page=$(page_next "${page}") ;;
+			1) page=$(page_prev "${page}") ;;
+			2) leave ;;
+			3)
+				printf 'installer-tui: the installation was stopped\n' >&2
+				exit 1
+				;;
+			4) : ;;
+			5) leave ;;
+			*) die 3 "bad action '${action}'" ;;
+		esac
+	done
+}
+
+main "$@"
