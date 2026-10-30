@@ -1,0 +1,22 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for glabel(8).  The command "glabel status -s" prints the
+# labels in the columns of the real tool: the name of the label, its state
+# and its component.  The component is the device that holds the label.
+#
+# Environment:
+#   STUB_GLABEL  the file that holds the lines of the list
+
+case "${1:-}" in
+	status)
+		[ "${2:-}" = "-s" ] || exit 1
+		file=${STUB_GLABEL:-}
+		if [ -z "${file}" ] || [ ! -f "${file}" ]; then
+			exit 1
+		fi
+		printf '        Name  Status  Components\n'
+		cat "${file}"
+		;;
+	*) exit 1 ;;
+esac

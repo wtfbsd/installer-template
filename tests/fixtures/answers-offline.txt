@@ -1,0 +1,23 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Answers for a machine without a network adapter: the preflight screen asks
+# whether to continue without a network, the answer is yes, and the network
+# page offers to continue offline.  The answer of a yes or no box is its exit
+# code alone: 0 is yes and 1 is no.
+# 1 preflight menu, 2 preflight confirmation, 3 welcome, 4 keyboard,
+# 5 timezone, 6 disk, 7 user name, 8 password, 9 password again,
+# 10 privilege, 11 network adapter, 12 summary, 13 install gauge, 14 finish.
+0 Override
+0
+0
+0 us
+0 UTC
+0 ada0
+0 tester
+0 s3cret-pass
+0 s3cret-pass
+0
+0 Offline
+0
+0
+0

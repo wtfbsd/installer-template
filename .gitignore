@@ -1,0 +1,11 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Runtime state of an installer run.
+state/
+
+# Round reports are never tracked.
+ROUND-REPORT*.md
+
+# Python byte code.
+__pycache__/
+*.pyc

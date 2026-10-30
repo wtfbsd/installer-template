@@ -1,0 +1,24 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The answers for a run in which the chosen disk cannot be used: the disk
+# that the user names is not one of the disks of the machine, so the check
+# of the disk fails.  Nothing was installed, so the run is not a failed
+# installation: the user goes back and leaves the installer.
+# 1 welcome, 2 keyboard, 3 timezone, 4 disk, 5 user name, 6 password,
+# 7 password again, 8 privilege, 9 network adapter, 10 network mode,
+# 11 summary, 12 the screen of the disk that cannot be used,
+# 13 the network page again, 14 the question to quit.
+0
+0 us
+0 UTC
+0 ada9
+0 tester
+0 s3cret-pass
+0 s3cret-pass
+0
+0 em0
+0 dhcp
+0
+1
+5
+0

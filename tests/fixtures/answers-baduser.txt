@@ -1,0 +1,29 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Answers for a user name that the installer refuses: the name is asked
+# again, and it is asked again when the name is a name the system uses.
+# Every name that is refused is answered with a screen that says so.
+# 1 welcome, 2 keyboard, 3 timezone, 4 disk, 5 the first name, 6 the screen
+# that says the name cannot be used, 7 the second name, 8 the screen, 9 the
+# name of the high availability, 10 the screen, 11 the name that may be
+# used, 12 password, 13 password again, 14 privilege, 15 network adapter,
+# 16 network mode, 17 summary, 18 install gauge, 19 finish.
+0
+0 us
+0 UTC
+0 ada0
+0 root;rm -rf /
+0
+0 operator
+0
+0 hast
+0
+0 tester
+0 s3cret-pass
+0 s3cret-pass
+0
+0 em0
+0 dhcp
+0
+0
+0

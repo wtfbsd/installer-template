@@ -1,0 +1,17 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for ifconfig(8).  With the option -l it prints the names of
+# the network adapters of the machine, one per line.
+#
+# Environment:
+#   STUB_INTERFACES  the names of the adapters, separated by spaces
+
+case "${1:-}" in
+	-l)
+		names=${STUB_INTERFACES:-}
+		[ -n "${names}" ] || exit 1
+		printf '%s\n' "${names}" | tr ' ' '\n'
+		;;
+	*) exit 1 ;;
+esac

@@ -1,0 +1,47 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# installer-config <command> — read the installer configuration.
+#
+# Commands:
+#   list       print every key and its value
+#   get KEY    print the value of one key
+#   validate   check the file and print nothing
+#
+# The configuration file is parsed, never sourced.  Exit codes: 0 ok, 2 bad
+# input.
+
+set -eu
+
+here=$(CDPATH= cd "$(dirname "$0")" && pwd)
+root=${INSTALLER_ROOT:-$(CDPATH= cd "${here}/.." && pwd)}
+. "${root}/lib/backend.sh"
+. "${root}/lib/config.sh"
+
+command=${1:-}
+if [ $# -ge 1 ]; then
+	shift
+fi
+
+case "${command}" in
+	list)
+		config_validate || exit 2
+		for _key in $(config_keys); do
+			printf '%s=%s\n' "${_key}" "$(config_value "${_key}")"
+		done
+		;;
+	get)
+		if [ $# -ne 1 ]; then
+			printf 'usage: installer-config get <key>\n' >&2
+			exit 2
+		fi
+		config_value "$1"
+		;;
+	validate)
+		config_validate
+		;;
+	*)
+		printf 'usage: installer-config <list|get KEY|validate>\n' >&2
+		exit 2
+		;;
+esac

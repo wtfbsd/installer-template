@@ -1,0 +1,36 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for geom(8).  The command "geom disk list" prints the disk in
+# the columns of the real tool.  The name of the field of the description is
+# written in lower case, the way the real tool writes it.
+#
+# Environment:
+#   STUB_DISK_INFO  the file that holds a line for every disk: the name of
+#                   the disk, its description and its size in bytes,
+#                   separated by tabs
+#   STUB_GEOM_SIZE  the size that geom reports, when the machine reports
+#                   one that is not the size of the file above
+
+case "${1:-}" in
+	disk)
+		[ "${2:-}" = list ] || exit 1
+		disk=${3:-}
+		file=${STUB_DISK_INFO:-}
+		if [ -z "${file}" ] || [ ! -f "${file}" ]; then
+			exit 1
+		fi
+		line=$(awk -F'\t' -v want="${disk}" '$1 == want { print; exit }' "${file}")
+		[ -n "${line}" ] || exit 1
+		descr=$(printf '%s\n' "${line}" | cut -f2)
+		size=$(printf '%s\n' "${line}" | cut -f3)
+		if [ -n "${STUB_GEOM_SIZE:-}" ]; then
+			size=${STUB_GEOM_SIZE}
+		fi
+		printf 'Geom name: %s\n' "${disk}"
+		printf 'Mediasize: %s (465.8G)\n' "${size}"
+		printf 'Sectorsize: 512\n'
+		printf 'descr: %s\n' "${descr}"
+		;;
+	*) exit 1 ;;
+esac

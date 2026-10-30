@@ -1,0 +1,7 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Answers for a machine without a disk: the screen before the first page
+# says that no disk was found and offers to stay in the live system.  The
+# run ends there and the first page is never reached.
+# 1 the screen before the first page.
+0 Quit

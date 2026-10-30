@@ -1,0 +1,24 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Answers for an empty password: the installer asks whether the account
+# should have no password, the answer is no and the password is asked again.
+# The answer of a yes or no box is its exit code alone: 0 is yes and 1 is no.
+# 1 welcome, 2 keyboard, 3 timezone, 4 disk, 5 user name, 6 password,
+# 7 the question about the empty password, 8 password, 9 password again,
+# 10 privilege, 11 network adapter, 12 network mode, 13 summary,
+# 14 install gauge, 15 finish.
+0
+0 us
+0 UTC
+0 ada0
+0 tester
+0
+1
+0 s3cret-pass
+0 s3cret-pass
+0
+0 em0
+0 dhcp
+0
+0
+0

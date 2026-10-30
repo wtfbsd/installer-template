@@ -1,0 +1,274 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# fake-bsddialog: a stand-in for bsddialog(1) used by the test suite.
+#
+# bsddialog(1) draws its screen with curses on standard output and writes
+# the user's choice to the file descriptor named by --output-fd.  Without
+# that option the choice goes to standard error.  This stand-in does the
+# same: it writes screen bytes to standard output, writes the answer to the
+# output descriptor and exits with the code the manual documents.
+#
+# The manual (bsddialog(1), EXIT STATUS) documents:
+#   0    the user pressed OK
+#   1    the user pressed Cancel
+#   2    the user pressed Help
+#   3    the user pressed Extra
+#   4    the user pressed the timeout
+#   5    the user pressed the escape key
+#   255  the dialog could not be run
+#
+# A yes or no box writes nothing to the output descriptor: the answer of the
+# user is the exit code alone, 0 for yes and 1 for no.  This stand-in keeps
+# that rule, so a program that reads the answer of a yes or no box out of the
+# text of the dialog fails here the way it fails on the real tool.
+#
+# Environment:
+#   BSDDIALOG_LOG     file that receives one log line per call
+#   BSDDIALOG_SCRIPT  file with one answer per call: "<exit code> [text]"
+#   BSDDIALOG_STATE   file that holds the number of calls already answered
+#
+# The log holds one CALL line for every call, with the arguments of the call
+# in the columns of the line, and one LABEL line for every label of a button
+# that the call carries.
+#
+# When the installer exports INSTALLER_STATE_DIR the stand-in writes the
+# mode of that directory to the log as well, so a case can see how the
+# directory was made while it still exists.
+
+set -eu
+
+log=${BSDDIALOG_LOG:-}
+script=${BSDDIALOG_SCRIPT:-}
+state=${BSDDIALOG_STATE:-}
+
+args_log=''
+for arg in "$@"; do
+	args_log="${args_log}${arg}
+"
+done
+
+widget=''
+outfd=2
+default_item=''
+positionals=''
+ok_label=''
+cancel_label=''
+yes_label=''
+no_label=''
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--output-fd)
+			outfd=${2:-2}
+			shift 2 || :
+			;;
+		--default-item)
+			default_item=${2:-}
+			shift 2 || :
+			;;
+		--ok-label)
+			ok_label=${2:-}
+			shift 2 || :
+			;;
+		--cancel-label)
+			cancel_label=${2:-}
+			shift 2 || :
+			;;
+		--yes-label)
+			yes_label=${2:-}
+			shift 2 || :
+			;;
+		--no-label)
+			no_label=${2:-}
+			shift 2 || :
+			;;
+		--title|--exit-label|--input-fd|--tab|\
+		--help|--colors|--autowrap|--separate-output|--sleep|--timeout)
+			shift 2 || :
+			;;
+		--menu|--radiolist|--checklist|--inputbox|--passwordbox|--yesno|\
+		--nocheck|--msgbox|--gauge)
+			widget=$1
+			shift
+			;;
+		--*)
+			shift
+			;;
+		*)
+			positionals="${positionals}${1}
+"
+			shift
+			;;
+	esac
+done
+
+if [ -n "${log}" ]; then
+	{
+		printf 'CALL'
+		printf '%s' "${args_log}" | while IFS= read -r arg; do
+			printf '\t%s' "${arg}"
+		done
+		printf '\n'
+		# The labels of the buttons, one line for each of them.
+		if [ -n "${ok_label}" ]; then
+			printf 'LABEL\t--ok-label\t%s\n' "${ok_label}"
+		fi
+		if [ -n "${cancel_label}" ]; then
+			printf 'LABEL\t--cancel-label\t%s\n' "${cancel_label}"
+		fi
+		if [ -n "${yes_label}" ]; then
+			printf 'LABEL\t--yes-label\t%s\n' "${yes_label}"
+		fi
+		if [ -n "${no_label}" ]; then
+			printf 'LABEL\t--no-label\t%s\n' "${no_label}"
+		fi
+		if [ -n "${INSTALLER_STATE_DIR:-}" ] && [ -d "${INSTALLER_STATE_DIR}" ]; then
+			mode=$(stat -c %a "${INSTALLER_STATE_DIR}" 2>/dev/null || :)
+			if [ -z "${mode}" ]; then
+				mode=$(stat -f %Lp "${INSTALLER_STATE_DIR}" 2>/dev/null || :)
+			fi
+			if [ -n "${mode}" ]; then
+				printf 'STATE\t%s\n' "${mode}"
+			fi
+			for file in "${INSTALLER_STATE_DIR}"/* \
+				"${INSTALLER_STATE_DIR}"/secrets/*; do
+				[ -f "${file}" ] || continue
+				filemode=$(stat -c %a "${file}" 2>/dev/null || :)
+				if [ -z "${filemode}" ]; then
+					filemode=$(stat -f %Lp "${file}" 2>/dev/null || :)
+				fi
+				[ -n "${filemode}" ] || continue
+				printf 'FILE\t%s\t%s\n' "${file#"${INSTALLER_STATE_DIR}"/}" \
+					"${filemode}"
+			done
+			# The file that holds the status of the installation is
+			# worth its content: it says what the backend returned.
+			if [ -f "${INSTALLER_STATE_DIR}/install.rc" ]; then
+				printf 'RC\t%s\n' \
+					"$(cat "${INSTALLER_STATE_DIR}/install.rc" 2>/dev/null || printf '')"
+			fi
+		fi
+	} >> "${log}"
+fi
+
+# positional <n> — the n-th argument that is not an option.
+positional() {
+	printf '%s\n' "${positionals}" | sed -n "${1}p"
+}
+
+# default_answer — the answer the widget gives when the user presses OK
+# without touching anything: the focused item of a menu, the item that is on
+# in a radio list or a check list and the initial text of a text box.
+#
+# A yes or no box has no answer: the real tool writes nothing for it and the
+# answer of the user is the exit code alone.
+default_answer() {
+	case "${widget}" in
+		--menu)
+			if [ -n "${default_item}" ]; then
+				printf '%s\n' "${default_item}"
+				return 0
+			fi
+			positional 5
+			;;
+		--radiolist)
+			index=5
+			while :; do
+				tag=$(positional "${index}") || break
+				[ -n "${tag}" ] || break
+				if [ "$(positional $((index + 2)))" = on ]; then
+					printf '%s\n' "${tag}"
+					return 0
+				fi
+				index=$((index + 3))
+			done
+			positional 5
+			;;
+		--checklist)
+			out=''
+			index=5
+			while :; do
+				tag=$(positional "${index}") || break
+				[ -n "${tag}" ] || break
+				if [ "$(positional $((index + 2)))" = on ]; then
+					if [ -n "${out}" ]; then
+						out="${out} ${tag}"
+					else
+						out=${tag}
+					fi
+				fi
+				index=$((index + 3))
+			done
+			printf '%s\n' "${out}"
+			;;
+		--inputbox|--passwordbox)
+			positional 4
+			;;
+		*)
+			printf '\n'
+			;;
+	esac
+}
+
+code=255
+text=''
+has_text=0
+if [ -n "${script}" ] && [ -n "${state}" ]; then
+	calls=0
+	if [ -f "${state}" ]; then
+		calls=$(cat "${state}")
+	fi
+	case "${calls}" in
+		''|*[!0-9]*) calls=0 ;;
+	esac
+	line=$(awk -v want="$((calls + 1))" '
+		!/^[[:space:]]*#/ && NF { if (++seen == want) { print; exit } }
+	' "${script}")
+	printf '%s\n' "$((calls + 1))" > "${state}"
+	case "${line}" in
+		'') code=255 ;;
+		*)
+			code=${line%% *}
+			case "${line}" in
+				*' '*) text=${line#* }; has_text=1 ;;
+				*) text='' ;;
+			esac
+			;;
+	esac
+fi
+
+case "${code}" in
+	0|1|2|3|4|5|255) : ;;
+	*) code=255 ;;
+esac
+
+# The gauge widget takes its protocol from standard input.  Drain it so the
+# writer is not killed by a broken pipe, the way the real tool does.
+case "${widget}" in
+	--gauge)
+		if [ ! -t 0 ]; then
+			cat >/dev/null 2>&1 || :
+		fi
+		;;
+esac
+
+if [ "${code}" -eq 0 ]; then
+	case "${widget}" in
+		--yesno)
+			# A yes or no box writes nothing: the answer of the user
+			# is the exit code alone.
+			;;
+		*)
+			if [ "${has_text}" -eq 0 ]; then
+				text=$(default_answer)
+			fi
+			printf '%s\n' "${text}" >&"${outfd}" 2>/dev/null || :
+			;;
+	esac
+fi
+
+# The screen is drawn on standard output, never on the output descriptor.
+printf '\033[2J\033[Hfake screen %s\n' "${widget}"
+
+exit "${code}"

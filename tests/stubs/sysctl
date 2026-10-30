@@ -1,0 +1,50 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for sysctl(8).  It answers the variable kern.disks with the
+# names of the disks of the machine, separated by spaces.
+#
+# When STUB_DISKS_LATER names disks too, the calls before
+# STUB_DISKS_AFTER answer with STUB_DISKS and every call after that with
+# STUB_DISKS_LATER.  That is the way a machine whose hardware shows up late
+# looks.
+#
+# Environment:
+#   STUB_DISKS        the names of the disks, separated by spaces
+#   STUB_DISKS_LATER  the names of the disks after STUB_DISKS_AFTER calls
+#   STUB_DISKS_AFTER  the number of calls that answer with STUB_DISKS
+#   STUB_STATE        the file that holds the number of calls
+
+case "${1:-}" in
+	-n)
+		case "${2:-}" in
+			kern.disks)
+				names=${STUB_DISKS:-}
+				if [ -n "${STUB_DISKS_LATER:-}" ]; then
+					calls=0
+					if [ -n "${STUB_STATE:-}" ] && [ -f "${STUB_STATE}" ]; then
+						calls=$(cat "${STUB_STATE}")
+					fi
+					case "${calls}" in
+						''|*[!0-9]*) calls=0 ;;
+					esac
+					calls=$((calls + 1))
+					if [ -n "${STUB_STATE:-}" ]; then
+						printf '%s\n' "${calls}" > "${STUB_STATE}"
+					fi
+					after=${STUB_DISKS_AFTER:-1}
+					case "${after}" in
+						''|*[!0-9]*) after=1 ;;
+					esac
+					if [ "${calls}" -gt "${after}" ]; then
+						names=${STUB_DISKS_LATER}
+					fi
+				fi
+				[ -n "${names}" ] || exit 1
+				printf '%s\n' "${names}"
+				;;
+			*) exit 1 ;;
+		esac
+		;;
+	*) exit 1 ;;
+esac

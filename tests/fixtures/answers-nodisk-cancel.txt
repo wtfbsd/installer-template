@@ -1,0 +1,6 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The answers for a machine without a disk whose screen before the first
+# page is left with the cancel button: the run cannot go on.
+
+1
