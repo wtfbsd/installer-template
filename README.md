@@ -257,6 +257,25 @@ stops the installation with an `ERROR` line and the command never runs.
   when the command fails without an `ERROR` line the adapter adds one.  Its
   exit code is the exit code of the installation.
 - An account without a password is refused before the command runs.
+- Optional: `<slug>-install --capabilities` prints what the command can do
+  with disks, one JSON object in the shape of the adapter hook `os_layouts`
+  (`layouts`, `filesystems`, `modes`, `data_pools`, `boot` — a list of
+  `uefi` and `bios` —, `encryption`, `not_offered`).  The installed
+  command is looked for in the directories of the system's programs
+  (`/usr/local/sbin`, `/usr/local/bin`, `/usr/pkg/sbin`, `/usr/pkg/bin`,
+  `/opt/local/sbin`, `/opt/local/bin`, `/usr/sbin`, `/usr/bin`, `/sbin`,
+  `/bin`, the slug matching `^[a-z][a-z0-9-]{1,31}$`), never on the
+  caller's `PATH`.  Right before it runs it must be a regular file, not a
+  symbolic link, executable, owned by root (or, for a caller that is not
+  root, by the caller) and writable by its owner only, in a directory that
+  is the same.  It is run without a shell, in a
+  minimal environment, for 10 seconds at most (its process group is
+  killed after that) and 64 KiB of answer at most.  When it answers with an object that has at least one layout, the verb
+  `layouts` reports it instead of the adapter's `os_layouts`; other keys
+  are left out.  A command without the option, an error or an answer that
+  is not usable falls back to `os_layouts` (or the built-in table) without
+  a word.  The Disk page offers only the boot modes listed; a single one is
+  shown as a text.
 
 ### The disk plan
 

@@ -169,6 +169,9 @@ def is_int(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+BOOT_MODES = ("uefi", "bios")
+
+
 def system(os_name: str, detail: Optional[dict] = None) -> dict:
     """What the system can do: the "capabilities" the adapter reports in
     the disk report when there are any (the install command of the system
@@ -192,6 +195,12 @@ def system(os_name: str, detail: Optional[dict] = None) -> dict:
         out["modes"] = tuple(modes)
     if isinstance(caps.get("data_pools"), bool):
         out["data_pools"] = caps["data_pools"]
+    # How the system starts: only the modes the install command takes;
+    # an unknown value is left out, none at all keeps the table.
+    boots = caps.get("boot") if isinstance(caps.get("boot"), list) else []
+    boots = [b for b in BOOT_MODES if b in boots]
+    if boots:
+        out["boot"] = tuple(boots)
     for key in ("encryption", "not_offered"):
         if isinstance(caps.get(key), str):
             out[key] = caps[key]
@@ -1097,3 +1106,144 @@ def parse(data: bytes) -> dict:
         raise PlanError("the plan is not a JSON object")
     _depth(plan)
     return plan
+
+
+CAPS_KEYS = ("modes", "data_pools", "boot", "encryption", "not_offered", "filesystems", "layouts")
+MAX_CAPS = 64 * 1024
+
+
+def check_capabilities(text: str) -> Optional[dict]:
+    """What an install command printed for --capabilities, kept when it is
+    a JSON object in the shape of os_layouts with at least one layout;
+    keys of another shape are left out.  None when it cannot be used."""
+    if len(text) > MAX_CAPS:
+        return None
+    try:
+        caps = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(caps, dict):
+        return None
+    try:
+        _depth(caps)
+    except PlanError:
+        return None
+    if not _caps_layouts(caps):
+        return None
+    return {k: caps[k] for k in CAPS_KEYS if k in caps}
+
+
+CAPS_SECONDS = 10
+CAPS_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
+
+
+def _trusted(st, uid: int, kind) -> bool:
+    """A file or directory no one but its owner may change, owned by root,
+    or (for a caller that is not root) by the caller."""
+    if not kind(st.st_mode) or st.st_mode & 0o022:
+        return False
+    return st.st_uid == 0 or (uid != 0 and st.st_uid == uid)
+
+
+def trusted_command(command: str) -> bool:
+    """The install command may run: an absolute path to a regular file, not
+    a symbolic link, executable, in a directory that is not one either;
+    both owned by root and writable by their owner only.  A caller that is
+    not root (the live user runs the probe) may also run its own file."""
+    import os
+    import stat
+    if not command.startswith("/") or "\0" in command:
+        return False
+    uid = os.geteuid()
+    try:
+        st = os.lstat(command)
+        dst = os.lstat(os.path.dirname(command) or "/")
+    except OSError:
+        return False
+    return (_trusted(st, uid, stat.S_ISREG) and _trusted(dst, uid, stat.S_ISDIR)
+            and os.access(command, os.X_OK))
+
+
+def _read_bounded(proc, deadline: float):
+    """Read proc's stdout until EOF, the deadline or MAX_CAPS + 1 bytes;
+    (bytes read, True when it ended on its own with status 0)."""
+    import os
+    import selectors
+    import subprocess
+    import time
+    out = b""
+    sel = selectors.DefaultSelector()
+    sel.register(proc.stdout, selectors.EVENT_READ)
+    try:
+        while len(out) <= MAX_CAPS:
+            left = deadline - time.monotonic()
+            if left <= 0 or not sel.select(left):
+                return out, False
+            chunk = os.read(proc.stdout.fileno(), 65536)
+            if not chunk:
+                break
+            out += chunk
+        else:
+            return out, False
+    finally:
+        sel.close()
+    try:
+        return out, proc.wait(max(0.0, deadline - time.monotonic())) == 0
+    except subprocess.TimeoutExpired:
+        return out, False
+
+
+def run_capabilities(command: str, seconds: float = CAPS_SECONDS) -> str:
+    """What "<command> --capabilities" prints: run without a shell, in a
+    minimal environment and a process group of its own, at most `seconds`
+    long and MAX_CAPS + 1 bytes read.  "" when it fails, is too slow (its
+    group is killed) or prints too much."""
+    import os
+    import signal
+    import subprocess
+    import time
+    # Checked right before it runs (the shell's check is a pre-filter).
+    if not trusted_command(command):
+        return ""
+    try:
+        proc = subprocess.Popen([command, "--capabilities"], stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                env=dict(CAPS_ENV), close_fds=True, start_new_session=True)
+    except OSError:
+        return ""
+    try:
+        out, done = _read_bounded(proc, time.monotonic() + seconds)
+    finally:
+        if proc.poll() is None:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            proc.wait()
+        proc.stdout.close()
+    if not done or len(out) > MAX_CAPS:
+        return ""
+    return out.decode("utf-8", "replace")
+
+
+def main(argv: List[str]) -> int:
+    """--check-capabilities [COMMAND]: what COMMAND --capabilities prints
+    (run here, bounded), else stdin, checked; the usable object on stdout."""
+    import sys
+    if not argv or argv[0] != "--check-capabilities" or len(argv) > 2:
+        sys.stderr.write("usage: diskplan.py --check-capabilities [COMMAND] (< JSON)\n")
+        return 2
+    if len(argv) == 2:
+        text = run_capabilities(argv[1])
+    else:
+        text = sys.stdin.read(MAX_CAPS + 1)
+    caps = check_capabilities(text)
+    if caps is None:
+        return 1
+    print(json.dumps(caps, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys as _sys
+    _sys.exit(main(_sys.argv[1:]))

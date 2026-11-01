@@ -35,6 +35,13 @@
 #
 # It prints "PROGRESS <0-100> <message>" lines and "ERROR <message>" before
 # a non-zero exit.  The adapter passes those lines on unchanged.
+#
+# Optional: "<slug>-install --capabilities" prints what the command can do
+# with disks, as JSON in the shape of os_layouts (layouts, filesystems,
+# modes, data_pools, boot, encryption, not_offered).  When the installed
+# command answers with a valid object, the verb layouts reports that
+# instead of the adapter's built-in os_layouts; when it does not (an older
+# command, an error, not JSON), the adapter falls back without a word.
 
 . "${root}/lib/ipv4.sh"
 
@@ -446,6 +453,9 @@ cmd_image_size() {
 # nothing else.  A system without the hook os_layouts uses the built-in
 # table of lib/diskplan.py ({} here).
 cmd_layouts() {
+	if install_capabilities; then
+		return 0
+	fi
 	if command -v os_layouts >/dev/null 2>&1; then
 		os_layouts
 		return 0
@@ -612,6 +622,41 @@ rehearse_install() {
 	fi
 	printf 'PROGRESS 100 the system is installed\n'
 	return 0
+}
+
+# install_capabilities — what the installed install command says it can do
+# ("--capabilities"), checked and printed as one JSON object; false (and
+# nothing printed) when there is no such command, it does not know the
+# option, or its answer is not a usable object.  A rehearsal asks only an
+# install command named by INSTALLER_INSTALL_COMMAND.
+install_capabilities() {
+	if [ -n "${rehearsal}" ] && [ -z "${INSTALLER_INSTALL_COMMAND:-}" ]; then
+		return 1
+	fi
+	# Never a command found on the caller's PATH: the one a test names, or
+	# the installed one in the directories of the system's own programs.
+	_cap_cmd=${INSTALLER_INSTALL_COMMAND:-}
+	if [ -z "${_cap_cmd}" ]; then
+		_slug=$(config_value PRODUCT_SLUG) || return 1
+		# The slug rule of the questions (DISTRO_SLUG): nothing else goes
+		# into a path.
+		printf '%s\n' "${_slug}" | grep -Eq '^[a-z][a-z0-9-]{1,31}$' || return 1
+		for _d in /usr/local/sbin /usr/local/bin /usr/pkg/sbin /usr/pkg/bin \
+			/opt/local/sbin /opt/local/bin /usr/sbin /usr/bin /sbin /bin; do
+			if [ -f "${_d}/${_slug}-install" ] && [ -x "${_d}/${_slug}-install" ]; then
+				_cap_cmd="${_d}/${_slug}-install"
+				break
+			fi
+		done
+	fi
+	case "${_cap_cmd}" in
+		/*) : ;;
+		*) return 1 ;;
+	esac
+	[ -f "${_cap_cmd}" ] && [ -x "${_cap_cmd}" ] && [ ! -L "${_cap_cmd}" ] || return 1
+	# Run by Python: no shell, a minimal environment, 10 seconds at most
+	# (its process group killed after that), 64 KiB of answer at most.
+	python3 -I "${root}/lib/diskplan.py" --check-capabilities "${_cap_cmd}" </dev/null 2>/dev/null
 }
 
 # install_command — the path of the install command of the template.

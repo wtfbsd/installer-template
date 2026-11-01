@@ -2004,6 +2004,15 @@ def render_reports(win, shot, page, state, outdir):
             "layout_note": dp.layout_more.get_visible(),
             "identity": win.identity_text,
             "problems": list(dp.errors)})
+    if report == "boot":
+        dp = win.disk_page
+        model = dp.boot_combo.get_model()
+        write_report(outdir, shot, "boot", {
+            "offered": [row[1] for row in model] if model is not None else [],
+            "active": dp.boot_combo.get_active_id(),
+            "dropdown": dp.boot_combo.get_visible(),
+            "fixed": dp.boot_fixed.get_text() if dp.boot_fixed.get_visible() else "",
+            "plan": dp.plan().get("boot")})
     if report == "busy":
         # How the window lived through the slow probes of this shot.
         write_report(outdir, shot, "busy", win.busy_stats)
