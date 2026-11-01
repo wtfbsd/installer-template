@@ -1,0 +1,21 @@
+# /dev/rsd4c:
+type: SCSI
+disk: SCSI disk
+label: Block Device    
+duid: 0000000000000000
+flags:
+bytes/sector: 512
+sectors/track: 63
+tracks/cylinder: 255
+sectors/cylinder: 16065
+cylinders: 261
+total sectors: 4194304 # total bytes: 2048.0M
+boundstart: 34
+boundend: 4194271
+
+16 partitions:
+#                size           offset  fstype [fsize bsize   cpg]
+  c:          2048.0M                0  unused                    
+  i:           256.0M             2048   MSDOS                    
+  j:           512.0M           526336  ext2fs                    
+  k:          1279.0M          1574912  ext2fs                    

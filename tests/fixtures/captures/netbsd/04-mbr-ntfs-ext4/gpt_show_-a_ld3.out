@@ -1,0 +1,21 @@
+GPT not found, displaying data from MBR.
+
+    start     size  index  contents
+        0        1         MBR
+                                 GUID: 5eed0004-0000-0000-0000-000000000000
+        1     2047         Unused
+     2048  3072000      1  MBR part 7 (active)
+                                 Type: unknown
+                                 TypeID: 00000000-0000-0000-0000-000000000000
+                                 GUID: 00000000-0000-0000-0000-000000000000
+                                 Size: 1500 M
+                                 Label: 
+                                 Attributes: required
+  3074048  2867200      2  MBR part 131
+                                 Type: unknown
+                                 TypeID: 00000000-0000-0000-0000-000000000000
+                                 GUID: 00000000-0000-0000-0000-000000000000
+                                 Size: 1400 M
+                                 Label: 
+                                 Attributes: required
+  5941248   350208         Unused

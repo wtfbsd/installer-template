@@ -1,0 +1,52 @@
+    start     size  index  contents
+        0        1         PMBR
+        1        1         Pri GPT header
+                                 GUID: 5eed0002-0000-4000-8000-000000000000
+        2       32         Pri GPT table
+       34     2014         Unused
+     2048   204800      1  GPT part - EFI System
+                                 Type: efi
+                                 TypeID: c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+                                 GUID: 5eed0002-0000-4000-8000-000000000001
+                                 Size: 100 M
+                                 Label: EFI system partition
+                                 Attributes: None
+   206848    32768      2  GPT part - Windows reserved
+                                 Type: windows-reserved
+                                 TypeID: e3c9e316-0b5c-4db8-817d-f92df00215ae
+                                 GUID: 5eed0002-0000-4000-8000-000000000002
+                                 Size: 16384 K
+                                 Label: Microsoft reserved partition
+                                 Attributes: None
+   239616  3686400      3  GPT part - Windows basic data
+                                 Type: windows
+                                 TypeID: ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+                                 GUID: 5eed0002-0000-4000-8000-000000000003
+                                 Size: 1800 M
+                                 Label: Basic data partition
+                                 Attributes: None
+  3926016  1228800      4  GPT part - Windows recovery
+                                 Type: windows-recovery
+                                 TypeID: de94bba4-06d1-4d40-a16a-bfd50179d6ac
+                                 GUID: 5eed0002-0000-4000-8000-000000000004
+                                 Size: 600 M
+                                 Label: Basic data partition
+                                 Attributes: required, [0x8000000000000000]
+  5154816  2048000      5  GPT part - Linux data
+                                 Type: linux-data
+                                 TypeID: 0fc63daf-8483-4772-8e79-3d69d8477de4
+                                 GUID: 5eed0002-0000-4000-8000-000000000005
+                                 Size: 1000 M
+                                 Label: 
+                                 Attributes: None
+  7202816   524288      6  GPT part - Linux swap
+                                 Type: linux-swap
+                                 TypeID: 0657fd6d-a4ab-43c4-84e5-0933c84b4f4f
+                                 GUID: 5eed0002-0000-4000-8000-000000000006
+                                 Size: 256 M
+                                 Label: 
+                                 Attributes: None
+  7727104   661471         Unused
+  8388575       32         Sec GPT table
+  8388607        1         Sec GPT header
+                                 GUID: 5eed0002-0000-4000-8000-000000000000

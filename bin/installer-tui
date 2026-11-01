@@ -58,7 +58,7 @@ die() {
 	exit "${_code}"
 }
 
-PAGES='welcome keyboard timezone disk users network summary install finish'
+PAGES='welcome keyboard timezone disk users network software summary install finish'
 
 TAB=$(printf '\t')
 
@@ -73,6 +73,7 @@ log_destination=''
 
 product=''
 default_keymap=''
+os_name=''
 default_timezone=''
 
 keymap=''
@@ -89,10 +90,25 @@ secret_password=''
 secret_hash=''
 hash_scheme=sha512
 network_mode=dhcp
+accept_licenses=''
 net_if=''
 ipv4_addr=''
 ipv4_mask=''
 ipv4_gw=''
+locale=''
+clock=utc
+root_mode=locked
+root_password=''
+root_written=''
+autologin=no
+ipv6_mode=slaac
+ipv6_addr=''
+ipv6_gw=''
+dns_servers=''
+update_after=no
+wifi_ssid=''
+wifi_security=''
+wifi_psk=''
 
 installed=0
 install_failed=0
@@ -397,11 +413,48 @@ write_answers() {
 			secret_password=${user_password}
 		fi
 	fi
+	# The password of root: only its hash, like the account's, and only
+	# when root gets a password of its own (locked by default).
+	if [ "${root_mode}" = password ]; then
+		roothash="${secrets}/root.hash"
+		if [ ! -e "${roothash}" ] || [ "${root_written}" != "${root_password}" ]; then
+			rm -f "${roothash}"
+			if ! printf '%s\n' "${root_password}" |
+				python3 -I "${root}/lib/passhash.py" write "${hash_scheme}" \
+					"${roothash}" 2>>"${log}"; then
+				return 1
+			fi
+			root_written=${root_password}
+		fi
+	else
+		rm -f "${secrets}/root.hash"
+	fi
+	# The Wi-Fi network and its passphrase: a 0600 file, the passphrase on
+	# standard input, never on a command line.
+	rm -f "${secrets}/wifi.json"
+	if [ -n "${wifi_ssid}" ]; then
+		if ! printf '%s\n' "${wifi_psk}" | WIFI_IF="${net_if}" WIFI_SSID="${wifi_ssid}" \
+			WIFI_SECURITY="${wifi_security}" python3 -I -c '
+import json, os, sys
+psk = sys.stdin.readline().rstrip("\n")
+data = json.dumps({"if": os.environ["WIFI_IF"], "ssid": os.environ["WIFI_SSID"],
+                   "security": os.environ["WIFI_SECURITY"], "psk": psk}).encode("utf-8")
+fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+with os.fdopen(fd, "wb") as stream:
+    stream.write(data)
+' "${secrets}/wifi.json" 2>>"${log}"; then
+			return 1
+		fi
+	fi
 	raw="${state}/answers.raw"
 	gated="${state}/answers.gated"
 	{
 		printf 'KEYMAP=%s\n' "${keymap}"
+		if [ -n "${locale}" ]; then
+			printf 'LOCALE=%s\n' "${locale}"
+		fi
 		printf 'TIMEZONE=%s\n' "${timezone}"
+		printf 'CLOCK=%s\n' "${clock}"
 		printf 'DISK=%s\n' "${disk}"
 		printf 'USER_NAME=%s\n' "${user_name}"
 		printf 'USER_AUTH=%s\n' "${user_auth}"
@@ -410,12 +463,43 @@ write_answers() {
 		fi
 		printf 'PRIVILEGE_PASSWORDLESS=%s\n' "${privilege_passwordless}"
 		printf 'NETWORK_MODE=%s\n' "${network_mode}"
+		if [ -n "${accept_licenses}" ]; then
+			printf 'ACCEPT_LICENSES=%s\n' "${accept_licenses}"
+		fi
 		printf 'NET_IF=%s\n' "${net_if}"
 		if [ "${network_mode}" = static ]; then
 			printf 'NET_IPV4=static\n'
 			printf 'IPV4_ADDR=%s\n' "${ipv4_addr}"
 			printf 'IPV4_MASK=%s\n' "${ipv4_mask}"
 			printf 'IPV4_GW=%s\n' "${ipv4_gw}"
+		fi
+		printf 'ROOT_MODE=%s\n' "${root_mode}"
+		if [ "${root_mode}" = password ]; then
+			printf 'ROOT_HASHFILE=%s\n' "${secrets}/root.hash"
+		fi
+		printf 'AUTOLOGIN=%s\n' "${autologin}"
+		# The lists of the network (lib/netplan.py), as the graphical
+		# front end writes them.
+		if [ "${network_mode}" != offline ] && [ -n "${net_if}" ]; then
+			case "${network_mode}" in
+				static) printf 'NET_IPV4_LIST=%s:%s/%s:%s\n' "${net_if}" \
+					"${ipv4_addr}" "${ipv4_mask}" "${ipv4_gw}" ;;
+				*) printf 'NET_IPV4_LIST=%s:dhcp\n' "${net_if}" ;;
+			esac
+			case "${ipv6_mode}" in
+				slaac) printf 'NET_IPV6_LIST=%s:slaac\n' "${net_if}" ;;
+				static) printf 'NET_IPV6_LIST=%s:%s:%s\n' "${net_if}" \
+					"${ipv6_addr}" "${ipv6_gw}" ;;
+			esac
+			if [ -n "${dns_servers}" ]; then
+				printf 'DNS_SERVERS=%s\n' "${dns_servers}"
+			fi
+			if [ "${update_after}" = yes ]; then
+				printf 'UPDATE_AFTER=yes\n'
+			fi
+			if [ -n "${wifi_ssid}" ]; then
+				printf 'WIFI_FILE=%s\n' "${secrets}/wifi.json"
+			fi
 		fi
 	} > "${raw}"
 	# The gate writes a file of its own.  The file of the answers is only
@@ -440,18 +524,39 @@ write_answers() {
 # read it.
 delete_secrets() {
 	[ -n "${state}" ] || return 0
-	rm -f "${state}/secrets/user.hash" "${state}/secrets/answers.conf"
+	rm -f "${state}/secrets/user.hash" "${state}/secrets/answers.conf" \
+		"${state}/secrets/plan.json" \
+		"${state}/secrets/root.hash" "${state}/secrets/wifi.json"
 }
 
 summary_text() {
 	printf 'The installation will use:\n\n'
 	printf '  Product:     %s\n' "${product}"
+	if [ -n "${locale}" ]; then
+		printf '  Language:    %s\n' "${locale}"
+	fi
 	printf '  Keyboard:    %s\n' "${keymap}"
-	printf '  Time zone:   %s\n' "${timezone}"
+	if [ "${clock}" = local ]; then
+		printf '  Time zone:   %s (the hardware clock keeps local time)\n' "${timezone}"
+	else
+		printf '  Time zone:   %s\n' "${timezone}"
+	fi
 	printf '  Disk:        %s\n' "${disk}"
 	printf '  User:        %s\n' "${user_name}"
 	printf '  Privileges:  %s\n' "$(privilege_text)"
+	if [ "${root_mode}" = password ]; then
+		printf '  Root:        a password of its own\n'
+	else
+		printf '  Root:        locked (use sudo or doas)\n'
+	fi
+	if [ "${autologin}" = yes ]; then
+		printf '  Log in:      automatically as %s\n' "${user_name}"
+	fi
 	printf '  Network:     %s\n' "$(network_text)"
+	if [ -n "${accept_licenses}" ]; then
+		printf '  Additional software (licences accepted): %s\n' \
+			"$(printf '%s' "${accept_licenses}" | sed 's/,/, /g')"
+	fi
 	network_detail
 	printf '\nThis will erase %s (%s, %s).\n' \
 		"${disk}" "${disk_descr}" "${disk_size}"
@@ -476,10 +581,26 @@ network_text() {
 # network_detail — the lines of the network that the one line summary does
 # not hold: the address, the netmask and the gateway of a manual address.
 network_detail() {
-	[ "${network_mode}" = static ] || return 0
-	printf '  Address:     %s\n' "${ipv4_addr}"
-	printf '  Netmask:     %s\n' "${ipv4_mask}"
-	printf '  Gateway:     %s\n' "${ipv4_gw}"
+	[ "${network_mode}" != offline ] || return 0
+	if [ "${network_mode}" = static ]; then
+		printf '  Address:     %s\n' "${ipv4_addr}"
+		printf '  Netmask:     %s\n' "${ipv4_mask}"
+		printf '  Gateway:     %s\n' "${ipv4_gw}"
+	fi
+	case "${ipv6_mode}" in
+		slaac) printf '  IPv6:        automatic (SLAAC)\n' ;;
+		static) printf '  IPv6:        %s, gateway %s\n' "${ipv6_addr}" "${ipv6_gw:-none}" ;;
+		*) printf '  IPv6:        off\n' ;;
+	esac
+	if [ -n "${dns_servers}" ]; then
+		printf '  DNS:         %s\n' "$(printf '%s' "${dns_servers}" | sed 's/,/, /g')"
+	fi
+	if [ -n "${wifi_ssid}" ]; then
+		printf '  Wi-Fi:       %s (%s)\n' "${wifi_ssid}" "${wifi_security}"
+	fi
+	if [ "${update_after}" = yes ]; then
+		printf '  Updates:     installed after the installation\n'
+	fi
 }
 
 # probe_message <file> — the message the backend wrote on standard error.
@@ -674,6 +795,37 @@ page_keyboard() {
 	json_items "${probe}" layouts > "${items}"
 	fallback=$(json_value "${probe}" default)
 	[ -n "${fallback}" ] || fallback="${default_keymap}"
+	# The language and region of the system first, when the system has a
+	# list of them; the layout of its country is then the one offered.
+	locales="${state}/locale-items"
+	json_items "${probe}" locales > "${locales}"
+	if [ -s "${locales}" ]; then
+		set -- --default-item "${locale:-en_US.UTF-8}" \
+			--menu 'Choose the language and region of the system.' 0 0 12
+		while IFS="${TAB}" read -r name descr size; do
+			[ -n "${name}" ] || continue
+			set -- "$@" "${name}" "$(LIB="${root}/lib" python3 -I -c '
+import os, sys
+sys.path.insert(0, os.environ["LIB"])
+import i18n
+lang = i18n.language_of(sys.argv[1])
+print(lang[2] if lang else sys.argv[1])
+' "${name}" 2>/dev/null || printf '%s' "${name}")"
+		done < "${locales}"
+		dlg_page "$@"
+		case "${DLG_RC}" in
+			0) locale=${DLG_OUT:-en_US.UTF-8} ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		suggested=$(cut -f1 "${items}" | LIB="${root}/lib" python3 -I -c '
+import os, sys
+sys.path.insert(0, os.environ["LIB"])
+import i18n
+print(i18n.keymap_for(sys.argv[1], sys.stdin.read().split()) or "")
+' "${locale}" 2>/dev/null) || suggested=''
+		[ -z "${suggested}" ] || fallback=${suggested}
+	fi
 	# The options of the dialog tool come before the box: dialog(1) reads
 	# nothing after it but the items.
 	set --
@@ -720,6 +872,24 @@ page_timezone() {
 		0)
 			timezone=${DLG_OUT}
 			[ -n "${timezone}" ] || timezone=${fallback}
+			;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+	# The hardware clock: UTC, or local time for a machine that also
+	# starts Windows.
+	if [ "${clock}" = local ]; then
+		set -- utc 'UTC (the usual choice)' off local 'Local time (a machine that also starts Windows)' on
+	else
+		set -- utc 'UTC (the usual choice)' on local 'Local time (a machine that also starts Windows)' off
+	fi
+	dlg_page --radiolist 'What time does the hardware clock keep?' 0 0 2 "$@"
+	case "${DLG_RC}" in
+		0)
+			case "${DLG_OUT}" in
+				local) clock=local ;;
+				*) clock=utc ;;
+			esac
 			return 0
 			;;
 		1) return 1 ;;
@@ -763,12 +933,47 @@ The installer looked for a disk to write to and did not find one."
 						disk_size=${size}
 					fi
 				done < "${items}"
+				# The report of the disks, for the plan and the
+				# confirmation of the summary.
+				printf '%s' "${probe}" > "${state}/disk-probe.json"
 				return 0
 				;;
 			1) return 1 ;;
 			*) return 3 ;;
 		esac
 	done
+}
+
+# disk_plan <command> — "foreign": what the chosen disk holds that the
+# installation deletes (one line, empty when nothing); "write": the plan
+# file of the disk page (lib/diskplan.py, version 1) in the secrets: the
+# whole disk, one disk, the first filesystem of the system, and the disk
+# confirmed when the summary had the word typed (CONFIRMED=yes).
+disk_plan() {
+	DISK="${disk}" OS_NAME="${os_name}" CONFIRMED="${erase_confirmed:-no}" LIB="${root}/lib" \
+		python3 -I -c '
+import json, os, sys
+sys.path.insert(0, os.environ["LIB"])
+import diskplan
+try:
+    with open(sys.argv[2], encoding="utf-8") as stream:
+        detail = json.load(stream).get("detail") or {}
+except (OSError, ValueError):
+    detail = {}
+disk = os.environ["DISK"]
+found = diskplan.foreign(diskplan.disk_index(detail).get(disk, {}))
+if sys.argv[1] == "foreign":
+    print(", ".join(found))
+    sys.exit(0)
+os_name = os.environ["OS_NAME"]
+plan = {"version": 1, "mode": "erase", "disks": [disk], "layout": "single",
+        "filesystem": diskplan.system(os_name, detail)["filesystems"][0][0]}
+if found and os.environ["CONFIRMED"] == "yes":
+    plan["confirm_foreign"] = [disk]
+fd = os.open(sys.argv[3], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as stream:
+    json.dump(plan, stream)
+' "$1" "${state}/disk-probe.json" "${state}/secrets/plan.json"
 }
 
 page_users() {
@@ -825,17 +1030,55 @@ Type a password for the account." 0 0
 		dlg_page --msgbox 'The passwords do not match. Type them again.' 0 0
 	done
 	privilege_passwordless=no
+	autologin=no
 	dlg_page --checklist "Privileged access for ${user_name}:" 0 0 3 \
-		priv 'Passwordless sudo and doas for this account' off
+		priv 'Passwordless sudo and doas for this account' off \
+		autologin "Log in as ${user_name} without the password" off
 	case "${DLG_RC}" in
 		0)
-			case "${DLG_OUT}" in
-				*priv*) privilege_passwordless=yes ;;
+			case " ${DLG_OUT} " in
+				*' priv '*) privilege_passwordless=yes ;;
+			esac
+			case " ${DLG_OUT} " in
+				*' autologin '*) autologin=yes ;;
 			esac
 			;;
 		1) return 1 ;;
 		*) return 3 ;;
 	esac
+	# Root: locked (the account uses sudo or doas), or a password of its own.
+	dlg_page --radiolist 'The root account:' 0 0 2 \
+		locked 'Locked: use sudo or doas from your account' on \
+		password 'A password of its own' off
+	case "${DLG_RC}" in
+		0) root_mode=${DLG_OUT:-locked} ;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+	[ "${root_mode}" = password ] || { root_mode=locked; root_password=''; return 0; }
+	while :; do
+		dlg_page --passwordbox 'Password for root:' 0 0 ''
+		case "${DLG_RC}" in
+			0) root_password=${DLG_OUT} ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		if [ -z "${root_password}" ]; then
+			dlg_page --msgbox 'A password is needed for root, or choose Locked.' 0 0
+			case "${DLG_RC}" in
+				0|1) continue ;;
+				*) return 3 ;;
+			esac
+		fi
+		dlg_page --passwordbox 'Repeat the password for root:' 0 0 ''
+		case "${DLG_RC}" in
+			0) repeat=${DLG_OUT} ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		[ "${root_password}" = "${repeat}" ] && break
+		dlg_page --msgbox 'The passwords do not match. Type them again.' 0 0
+	done
 	return 0
 }
 
@@ -911,20 +1154,270 @@ The installation can continue without a network."
 			esac
 			;;
 	esac
+	page_network_more
+}
+
+# page_network_more — Wi-Fi (for a Wi-Fi adapter), IPv6, the resolvers and
+# the update after the installation, as on the graphical Network page.
+page_network_more() {
+	wifi_ssid=''
+	wifi_security=''
+	wifi_psk=''
+	nets="${state}/wifi-items"
+	printf '%s' "${probe}" | NET_IF="${net_if}" python3 -I -c '
+import json, os, sys
+try:
+    data = json.load(sys.stdin)
+except ValueError:
+    data = {}
+for net in (data.get("wifi") or {}).get(os.environ["NET_IF"], []):
+    if isinstance(net, dict):
+        print("%s\t%s\t%s" % (net.get("ssid", ""), net.get("security", ""), net.get("signal", 0)))
+' > "${nets}" 2>/dev/null || : > "${nets}"
+	if [ -s "${nets}" ]; then
+		set -- --menu "The Wi-Fi network for ${net_if}:" 0 0 12
+		n=0
+		while IFS="${TAB}" read -r ssid sec signal; do
+			n=$((n + 1))
+			set -- "$@" "${n}" "${ssid} (${sec}, ${signal}%)"
+		done < "${nets}"
+		dlg_page "$@"
+		case "${DLG_RC}" in
+			0) : ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		pick=${DLG_OUT:-1}
+		case "${pick}" in
+			''|*[!0-9]*) pick=1 ;;
+		esac
+		line=$(sed -n "${pick}p" "${nets}")
+		wifi_ssid=$(printf '%s' "${line}" | cut -f1)
+		wifi_security=$(printf '%s' "${line}" | cut -f2)
+		if [ "${wifi_security}" != open ]; then
+			while :; do
+				dlg_page --passwordbox "Passphrase of ${wifi_ssid}:" 0 0 ''
+				case "${DLG_RC}" in
+					0) wifi_psk=${DLG_OUT} ;;
+					1) return 1 ;;
+					*) return 3 ;;
+				esac
+				case "${#wifi_psk}" in
+					[89]|[1-5][0-9]|6[0-4]) break ;;
+				esac
+				dlg_page --msgbox 'A passphrase has 8 to 63 characters.' 0 0
+			done
+		fi
+	fi
+	dlg_page --radiolist "IPv6 on ${net_if}:" 0 0 3 \
+		slaac 'Automatic (SLAAC)' on static 'Manual address' off off 'Off' off
+	case "${DLG_RC}" in
+		0) ipv6_mode=${DLG_OUT:-slaac} ;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+	if [ "${ipv6_mode}" = static ]; then
+		dlg_page --inputbox "IPv6 address with its prefix length for ${net_if} (ADDRESS/PREFIX):" 0 0 ''
+		case "${DLG_RC}" in
+			0) ipv6_addr=${DLG_OUT} ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		dlg_page --inputbox "IPv6 gateway for ${net_if} (empty: none):" 0 0 ''
+		case "${DLG_RC}" in
+			0) ipv6_gw=${DLG_OUT} ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+	fi
+	dlg_page --inputbox 'DNS servers, separated by commas (empty: from the network):' 0 0 "${dns_servers}"
+	case "${DLG_RC}" in
+		0) dns_servers=$(printf '%s' "${DLG_OUT}" | tr -d ' ') ;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
+	dlg_page --checklist 'After the installation:' 0 0 2 \
+		update 'Install the updates of the packages (needs the network)' off
+	case "${DLG_RC}" in
+		0)
+			case " ${DLG_OUT} " in
+				*' update '*) update_after=yes ;;
+				*) update_after=no ;;
+			esac
+			;;
+		1) return 1 ;;
+		*) return 3 ;;
+	esac
 	return 0
+}
+
+# software_items — the catalogue of the optional licensed software, one
+# item per line: id, name, flags (comma separated), path of the licence
+# text, separated by tabs.  The open-source notices come last with the id
+# "-notices-".
+software_items() {
+	"$BACKEND" software probe 2>>"${log}" | LIB="${root}/lib" python3 -I -c '
+import json, sys
+try:
+    cat = json.load(sys.stdin)["catalogue"]
+except (ValueError, KeyError):
+    sys.exit(0)
+for item in cat.get("items", []):
+    print("\t".join([item["id"], item["name"], ",".join(item["flags"]),
+                     item["licence"]["text"]]))
+if cat.get("notices"):
+    print("\t".join(["-notices-", "Open-source licences", "", cat["notices"]]))
+' || :
+}
+
+# software_select_all — the ids Select all ticks: every item but those for
+# non-commercial use or that need a key from the vendor.
+software_select_all() {
+	awk -F '\t' '$1 != "-notices-" && $3 !~ /non-commercial|vendor-key/ { print $1 }' "$1"
+}
+
+# page_software — the optional software whose licence the user has to
+# accept: choose the items (a checklist), Select all, read a licence (a
+# pager).  Nothing is chosen for the user.  Without a catalogue there is no
+# page.
+page_software() {
+	DLG_TITLE="${product} Installer [Additional software]"
+	items="${state}/software-items"
+	software_items > "${items}"
+	if ! grep -qv '^-notices-' "${items}"; then
+		return 0
+	fi
+	while :; do
+		chosen=$(printf '%s' "${accept_licenses}" | tr ',' ' ')
+		[ -n "${chosen}" ] || chosen='nothing'
+		dlg_page --menu "This software comes under a licence you have to accept. Choosing an item accepts its licence. Nothing is chosen for you.
+
+Chosen: ${chosen}" 0 0 6 \
+			Next 'Go on with the choice above' \
+			Choose 'Choose the items (each one accepts its licence)' \
+			All 'Select all (not the items for non-commercial use or that need a vendor key)' \
+			Read 'Read the licence of an item' \
+			Notices 'Read the open-source licences'
+		case "${DLG_RC}" in
+			0) : ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		case "${DLG_OUT}" in
+			Next) return 0 ;;
+			Choose)
+				set -- --checklist 'Tick the items whose licence you accept.' 0 0 8
+				while IFS="${TAB}" read -r id name flags text; do
+					[ "${id}" != -notices- ] || continue
+					note=${name}
+					[ -z "${flags}" ] || note="${name} [${flags}]"
+					on=off
+					case ",${accept_licenses}," in
+						*",${id},"*) on=on ;;
+					esac
+					set -- "$@" "${id}" "${note}" "${on}"
+				done < "${items}"
+				dlg_page "$@"
+				case "${DLG_RC}" in
+					0)
+						# The answer of a check list: the tags, maybe quoted.
+						picked=$(printf '%s' "${DLG_OUT}" | tr -d '"' | tr ' ' '\n' | grep -v '^$' || :)
+						accept_licenses=$(cut -f1 "${items}" | while IFS= read -r id; do
+							printf '%s\n' "${picked}" | grep -Fxq -- "${id}" && printf '%s,' "${id}"
+						done)
+						accept_licenses=${accept_licenses%,}
+						;;
+					1) : ;;
+					*) return 3 ;;
+				esac
+				;;
+			All)
+				group=$(software_select_all "${items}")
+				all=yes
+				for id in ${group}; do
+					case ",${accept_licenses}," in
+						*",${id},"*) : ;;
+						*) all=no ;;
+					esac
+				done
+				keep=$(cut -f1 "${items}" | while IFS= read -r id; do
+					case ",${accept_licenses}," in
+						*",${id},"*) : ;;
+						*) continue ;;
+					esac
+					printf '%s\n' "${group}" | grep -Fxq -- "${id}" && continue
+					printf '%s,' "${id}"
+				done)
+				if [ "${all}" = yes ]; then
+					accept_licenses=${keep%,}
+				else
+					accept_licenses=$(cut -f1 "${items}" | while IFS= read -r id; do
+						case ",${keep}," in
+							*",${id},"*) printf '%s,' "${id}"; continue ;;
+						esac
+						printf '%s\n' "${group}" | grep -Fxq -- "${id}" && printf '%s,' "${id}"
+					done)
+					accept_licenses=${accept_licenses%,}
+				fi
+				;;
+			Read|Notices)
+				if [ "${DLG_OUT}" = Notices ]; then
+					pick=-notices-
+				else
+					set -- --menu 'Which licence?' 0 0 8
+					while IFS="${TAB}" read -r id name flags text; do
+						[ "${id}" != -notices- ] || continue
+						set -- "$@" "${id}" "${name}"
+					done < "${items}"
+					dlg_page "$@"
+					[ "${DLG_RC}" -eq 0 ] || continue
+					pick=${DLG_OUT}
+				fi
+				file=$(awk -F '\t' -v id="${pick}" '$1 == id { print $4; exit }' "${items}")
+				[ -n "${file}" ] || continue
+				dlg --ok-label Close --textbox "${file}" 0 0
+				;;
+		esac
+	done
 }
 
 page_summary() {
 	DLG_TITLE="${product} Installer [Summary]"
 	write_answers || die 3 'cannot write the answers'
-	dlg_yesno "$(summary_text)
+	foreign=$(disk_plan foreign 2>>"${log}") || foreign=''
+	note=''
+	if [ -n "${foreign}" ]; then
+		note="
+${disk} holds ${foreign}: everything on it is deleted."
+	fi
+	dlg_yesno "$(summary_text)${note}
 
 Choose OK to install ${product} with these settings." 0 0
 	case "${DLG_RC}" in
-		0) return 0 ;;
+		0) : ;;
 		1) return 1 ;;
 		*) return 3 ;;
 	esac
+	# Another system on the disk: the word, typed, as on the graphical
+	# summary.  Anything else goes back to the summary.
+	erase_confirmed=no
+	if [ -n "${foreign}" ]; then
+		dlg_page --inputbox "${disk} holds ${foreign}, and everything on it is deleted.
+
+Type erase to confirm." 0 0 ''
+		case "${DLG_RC}" in
+			0) : ;;
+			1) return 1 ;;
+			*) return 3 ;;
+		esac
+		case "$(printf '%s' "${DLG_OUT}" | tr '[:upper:]' '[:lower:]' | tr -d ' ')" in
+			erase) erase_confirmed=yes ;;
+			*) return 1 ;;
+		esac
+	fi
+	rm -f "${state}/secrets/plan.json"
+	disk_plan write 2>>"${log}" || die 3 'cannot write the plan of the disk'
+	return 0
 }
 
 # feed_gauge — the protocol bsddialog(1) reads for the gauge widget.
@@ -1128,6 +1621,7 @@ main() {
 	(umask 077 && : > "${log}") || :
 	product=$(config_value PRODUCT_NAME) || exit 2
 	default_keymap=$(config_value DEFAULT_KEYMAP) || exit 2
+	os_name=$(config_value OS) || os_name=freebsd
 	default_timezone=$(config_value DEFAULT_TZ) || exit 2
 	# The rest of the configuration is checked as well: a configuration
 	# that cannot be used stops the run before the first page.
@@ -1165,6 +1659,7 @@ main() {
 			disk) page_disk || action=$? ;;
 			users) page_users || action=$? ;;
 			network) page_network || action=$? ;;
+			software) page_software || action=$? ;;
 			summary) page_summary || action=$? ;;
 			install) page_install || action=$? ;;
 			finish) page_finish || action=$? ;;

@@ -326,4 +326,33 @@ check "after Try the live desktop it does not open again in this boot" 1 \
 session STUB_BOOTTIME='{ sec = 1800000000, usec = 0 }'
 check "after the next boot it opens again" 2 "$(wc -l < "${tmp}/launches" | tr -d ' ')"
 
+
+# --artwork: the look of the product goes next to the installer, and only
+# artwork the installer can use.
+art_stage="${tmp}/art-stage"
+mkdir -p "${art_stage}"
+rm -f "${tmp}/METALOG"
+iis "${art_stage}" --conf "${tmp}/acme.conf" --artwork "${root}/tests/fixtures/artwork" && rc=0 || rc=$?
+check_rc "the artwork is staged" 0 "${rc}"
+for f in palette.env src/logo.svg src/wallpaper-2.svg variants/cyberpunk/palette.env; do
+	[ -f "${art_stage}/usr/local/libexec/wtfbsd-installer/artwork/${f}" ] && got=yes || got=no
+	check "the artwork has ${f}" yes "${got}"
+done
+check_contains "the MANIFEST lists the artwork" "/usr/local/libexec/wtfbsd-installer/artwork/" \
+	"$(cat "${art_stage}/usr/local/share/wtfbsd-installer/MANIFEST")"
+mkdir -p "${tmp}/bad-art"
+printf 'PRIMARY=red\n' > "${tmp}/bad-art/palette.env"
+bad_stage="${tmp}/bad-stage"
+mkdir -p "${bad_stage}"
+iis "${bad_stage}" --conf "${tmp}/acme.conf" --artwork "${tmp}/bad-art" 2>/dev/null && rc=0 || rc=$?
+check_rc "artwork the installer cannot use is refused" 2 "${rc}"
+check "nothing was staged" "" "$(find "${bad_stage}" -type f | head -1)"
+
+
+# The flags of the language picker and their notice are staged and listed.
+manifest=$(cat "${art_stage}/usr/local/share/wtfbsd-installer/MANIFEST")
+check_contains "the MANIFEST lists a flag" "/usr/local/libexec/wtfbsd-installer/gui/flags/de.png" "${manifest}"
+check_contains "the MANIFEST lists a 2x flag" "/usr/local/libexec/wtfbsd-installer/gui/flags/de-2x.png" "${manifest}"
+check_contains "the MANIFEST lists the third-party notice" "/usr/local/libexec/wtfbsd-installer/THIRD-PARTY" "${manifest}"
+
 finish

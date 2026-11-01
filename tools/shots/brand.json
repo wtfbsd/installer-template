@@ -1,0 +1,9 @@
+[
+ {"name": "brand-welcome", "page": "welcome", "full": false, "state": {"locale": "en_US.UTF-8"}},
+ {"name": "hardware-drivers", "page": "hardware", "full": false, "state": {}},
+ {"name": "installing-slide-1", "page": "install", "full": false, "state": {"slide": 0, "progress": 0.12, "step": "Writing the image"}},
+ {"name": "installing-slide-3", "page": "install", "full": false, "state": {"slide": 2, "progress": 0.55, "step": "Growing the file system"}},
+ {"name": "installing-slide-german", "page": "install", "full": false, "state": {"locale": "de_DE.UTF-8", "slide": 4, "progress": 0.8, "step": "Writing the first boot configuration"}},
+ {"name": "focus-try-live", "page": "welcome", "full": false, "state": {"locale": "en_US.UTF-8", "focus": "try-live"}},
+ {"name": "focus-install", "page": "welcome", "full": false, "state": {"locale": "en_US.UTF-8", "focus": "next"}}
+]

@@ -1,0 +1,60 @@
+[
+ {
+  "name": "type-windows-linux-free-space",
+  "page": "type",
+  "full": true,
+  "state": {
+   "mode": "alongside"
+  }
+ },
+ {
+  "name": "disk-erase-windows-linux",
+  "page": "disk",
+  "full": true,
+  "state": {
+   "mode": "erase",
+   "selected": [
+    "nda0"
+   ],
+   "wipe": {
+    "nda0": "secure"
+   }
+  }
+ },
+ {
+  "name": "disk-alongside-windows-linux",
+  "page": "disk",
+  "full": true,
+  "state": {
+   "mode": "alongside",
+   "region_gb": 200
+  }
+ },
+ {
+  "name": "disk-manual-windows-linux",
+  "page": "disk",
+  "full": true,
+  "state": {
+   "mode": "manual",
+   "partitions": [
+    {
+     "disk": "nda0",
+     "type": "efi",
+     "size_mb": 260,
+     "mount": "/boot/efi"
+    },
+    {
+     "disk": "nda0",
+     "type": "swap",
+     "size_mb": 8192
+    },
+    {
+     "disk": "nda0",
+     "type": "root",
+     "size_mb": 0,
+     "mount": "/"
+    }
+   ]
+  }
+ }
+]

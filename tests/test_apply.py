@@ -268,3 +268,49 @@ class RootEnvTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SecretGatesTest(unittest.TestCase):
+    """A secret reaches the install command only when its gate is on: the
+    passphrase only with a plan that encrypts, root's hash only for root
+    with a password, the Wi-Fi file only with a network."""
+
+    def setUp(self):
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "lib"))
+        import apply as A
+        self.A = A
+
+    def test_a_passphrase_without_a_plan_is_dropped(self):
+        kept = self.A.gate_secrets({}, None, "x", None, None)
+        self.assertIsNone(kept["passphrase"])
+
+    def test_a_passphrase_with_a_plan_that_does_not_encrypt_is_dropped(self):
+        plan = {"encryption": {"enabled": False, "swap": False}}
+        self.assertIsNone(self.A.gate_secrets({}, plan, "a-long-passphrase", None, None)["passphrase"])
+
+    def test_a_passphrase_of_an_encrypting_plan_is_checked(self):
+        plan = {"encryption": {"enabled": True, "swap": False}}
+        self.assertEqual(self.A.gate_secrets({}, plan, "a-long-passphrase\n", None, None)["passphrase"],
+                         "a-long-passphrase")
+        for bad in (None, "short", "two\nlines here", "x" * 1025):
+            with self.subTest(bad=bad):
+                with self.assertRaises(self.A.Refused):
+                    self.A.gate_secrets({}, plan, bad, None, None)
+
+    def test_root_and_wifi_follow_their_gates(self):
+        kept = self.A.gate_secrets({"ROOT_MODE": "locked", "NETWORK_MODE": "offline"}, None, None,
+                                   "$6$x$y\n", '{"if": "iwm0"}')
+        self.assertIsNone(kept["root_hash"])
+        self.assertIsNone(kept["wifi"])
+        kept = self.A.gate_secrets({"ROOT_MODE": "password", "NETWORK_MODE": "dhcp"}, None, None,
+                                   "$6$x$y\n", '{"if": "iwm0"}')
+        self.assertEqual(kept["root_hash"], "$6$x$y\n")
+        self.assertEqual(kept["wifi"], '{"if": "iwm0"}')
+
+    def test_the_helper_checks_roots_hash_itself(self):
+        good = "$6$saltsalt$" + "a" * 86
+        self.assertEqual(self.A.check_root_hash(good + "\n", "sha512"), good)
+        for bad in ("", "$1$md5$hash", good + "\n" + good, "$2b$10$" + "a" * 53, "not a hash"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(self.A.Refused):
+                    self.A.check_root_hash(bad, "sha512")

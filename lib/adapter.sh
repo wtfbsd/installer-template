@@ -15,6 +15,9 @@
 #                                one per line
 #   os_keymaps                   print "name<TAB>description" for every
 #                                keyboard layout the system knows
+#   os_assembled_volumes <names> print the disks of the list that are
+#                                arrays the system assembled by itself
+#                                (optional)
 #   os_hash_scheme               print the crypt scheme the system accepts
 #                                (sha512, bcrypt or bcrypt-2a)
 #
@@ -192,10 +195,20 @@ dmesg_text() {
 # "sd0 at scsibus1 ...: <ATA, Model, 1.0>" or "wd0: <Model>".
 dmesg_disk_descr() {
 	dmesg_text | awk -v d="$1" '
+		# NetBSD stamps every line with the time: "[     1.010953] ".
+		{ sub(/^\[ *[0-9.]+\] /, "") }
 		index($0, d ":") == 1 || index($0, d " at ") == 1 {
+			# "ld0 at virtio0: features: 0x...<INDIRECT_DESC,...>" names the
+			# flags of a virtio device, not a model.
+			if ($0 ~ /features: 0x/) {
+				if (index($0, d " at virtio") == 1) virtio = 1
+				next
+			}
+			if (index($0, d " at virtio") == 1) virtio = 1
 			s = index($0, "<"); e = index($0, ">")
-			if (s > 0 && e > s) { print substr($0, s + 1, e - s - 1); exit }
+			if (s > 0 && e > s) { print substr($0, s + 1, e - s - 1); found = 1; exit }
 		}
+		END { if (!found && virtio) print "VirtIO disk" }
 	'
 }
 
@@ -206,6 +219,7 @@ dmesg_disk_descr() {
 #   sd0: 20480MB, 512 bytes/sector, 41943040 sectors          OpenBSD
 dmesg_disk_size() {
 	dmesg_text | awk -v d="$1" '
+		{ sub(/^\[ *[0-9.]+\] /, "") }
 		index($0, d ":") != 1 { next }
 		match($0, /\([0-9]+ [0-9]+ byte sectors/) {
 			split(substr($0, RSTART + 1, RLENGTH - 1), f, " ")
@@ -311,10 +325,11 @@ zone_rows() {
 	' "${_tab}" | sort -u -t "${TAB}" -k1,1
 }
 
-cmd_disks() {
+# target_rows <file> — the rows of the disks that may be written to, into
+# a file.
+target_rows() {
+	kept=$1
 	work=$(mktemp "${tmp_root}/wtfbsd-disks.XXXXXX") ||
-		die 3 'cannot create a temporary file'
-	kept=$(mktemp "${tmp_root}/wtfbsd-disks.XXXXXX") ||
 		die 3 'cannot create a temporary file'
 	if [ -n "${rehearsal}" ]; then
 		fixture_items DISKS > "${work}"
@@ -325,6 +340,21 @@ cmd_disks() {
 	# too: a rehearsal is carried out on the machine that is the target.
 	_names=$(cut -f1 "${work}" | tr '\n' ' ')
 	_excluded=$(os_excluded_disks "${_names}") || _excluded=''
+	# An array the system assembled by itself from members found on the
+	# disks (NetBSD RAIDframe raidN, OpenBSD softraid sdN) is not offered:
+	# its members are, as members of it.  A rehearsal names them in
+	# ASSEMBLED.
+	if [ -n "${rehearsal}" ]; then
+		_excluded="${_excluded} $(kv_get "${rehearsal}" ASSEMBLED | tr ',' ' ')" || :
+		# A rehearsal on captured outputs reads the arrays from them.
+		if _cap=$(kv_get "${rehearsal}" DISKS_CAPTURE) && [ -n "${_cap}" ]; then
+			_excluded="${_excluded} $(python3 -I "${root}/lib/diskprobe.py" \
+				--base "${rehearsal%/*}" --replay "${_cap}" --assembled "$(config_value OS)" |
+				tr '\n' ' ')" || :
+		fi
+	elif command -v os_assembled_volumes >/dev/null 2>&1; then
+		_excluded="${_excluded} $(os_assembled_volumes "${_names}" | tr '\n' ' ')" || :
+	fi
 	while IFS="${TAB}" read -r _n _d _s; do
 		[ -n "${_n}" ] || continue
 		disk_name_valid "${_n}" || continue
@@ -333,7 +363,184 @@ cmd_disks() {
 		esac
 		printf '%s\t%s\t%s\n' "${_n}" "${_d}" "${_s}" >> "${kept}"
 	done < "${work}"
-	emit_items "${kept}"
+	rm -f "${work}"
+}
+
+cmd_disks() {
+	_rows=$(mktemp "${tmp_root}/wtfbsd-disks.XXXXXX") ||
+		die 3 'cannot create a temporary file'
+	# A rehearsal of a slow system: PROBE_DELAY seconds (at most 30)
+	# before the list, as reading the disks of some systems takes.
+	if [ -n "${rehearsal}" ] && _delay=$(kv_get "${rehearsal}" PROBE_DELAY); then
+		case "${_delay}" in
+			[0-9]|[12][0-9]|30) sleep "${_delay}" ;;
+		esac
+	fi
+	target_rows "${_rows}"
+	emit_items "${_rows}"
+	rm -f "${_rows}"
+}
+
+# cmd_disks_detail — the report of the disks the disk page shows: model,
+# size, serial, bus, SSD, health, partitions, the operating systems found
+# on them and their free space, with the boot mode and the memory of the
+# machine.  A rehearsal reads it from the file DISKS_DETAIL names (next to
+# the fixture); a system reports what its hook os_disks_detail finds, and
+# the section fills in the rest from the list of the disks.  The section
+# names the disks of the list (cmd_disks_detail DISK...), so the disks are
+# not looked for twice.
+cmd_disks_detail() {
+	if [ -n "${rehearsal}" ]; then
+		# Captured outputs of the real tools, replayed through the probe.
+		# DISKS_CAPTURE: directories (':' between them) relative to the
+		# fixture; DISKS_SNIFFS: what the signature read finds there.
+		_cap=$(kv_get "${rehearsal}" DISKS_CAPTURE) || _cap=''
+		if [ -n "${_cap}" ]; then
+			_sniffs=$(kv_get "${rehearsal}" DISKS_SNIFFS) || _sniffs=''
+			python3 -I "${root}/lib/diskprobe.py" --base "${rehearsal%/*}" --replay "${_cap}" \
+				${_sniffs:+--sniffs "${_sniffs}"} "$(config_value OS)" "$@"
+			return 0
+		fi
+		_file=$(kv_get "${rehearsal}" DISKS_DETAIL) || _file=''
+		[ -n "${_file}" ] || { printf '{}\n'; return 0; }
+		case "${_file}" in
+			/*) : ;;
+			*) _file="${rehearsal%/*}/${_file}" ;;
+		esac
+		cat "${_file}"
+		return 0
+	fi
+	if command -v os_disks_detail >/dev/null 2>&1; then
+		os_disks_detail
+		return 0
+	fi
+	# What is on the disks named (the disks that may be written to, from
+	# the verb disks), read by lib/diskprobe.py with the tools of the
+	# system, only reading.  No disk named, nothing is read.
+	[ $# -gt 0 ] || { printf '{}\n'; return 0; }
+	for _n in "$@"; do
+		disk_name_valid "${_n}" || die 2 "not the name of a disk: ${_n}"
+	done
+	python3 -I "${root}/lib/diskprobe.py" "$(config_value OS)" "$@" || printf '{}\n'
+}
+
+# cmd_image_size — the bytes the installed system takes: what the hook
+# os_image_size says (the image the install command writes), else the space
+# the live root uses (the install command copies it).  A rehearsal reads
+# IMAGE_SIZE.  Nothing when it cannot be told.
+cmd_image_size() {
+	if [ -n "${rehearsal}" ]; then
+		kv_get "${rehearsal}" IMAGE_SIZE || :
+		return 0
+	fi
+	if command -v os_image_size >/dev/null 2>&1; then
+		os_image_size
+		return 0
+	fi
+	/bin/df -k / 2>/dev/null | awk 'NR == 2 && $3 ~ /^[0-9]+$/ { printf "%.0f\n", $3 * 1024 }' || :
+}
+
+# cmd_layouts — what the install command of the system can do with disks:
+# the layouts, the filesystems, the modes and whether data pools are
+# offered, as JSON.  The disk page and the root helper offer and accept
+# nothing else.  A system without the hook os_layouts uses the built-in
+# table of lib/diskplan.py ({} here).
+cmd_layouts() {
+	if command -v os_layouts >/dev/null 2>&1; then
+		os_layouts
+		return 0
+	fi
+	printf '{}\n'
+}
+
+# cmd_licensed_items — the path of the catalogue of the optional licensed
+# software: licensed-software.json in the licences directory of the
+# installer (install-into-stage.sh --licences puts it there), or the file
+# LICENSED_CATALOGUE of a rehearsal.  Nothing when there is none.
+cmd_licensed_items() {
+	if [ -n "${rehearsal}" ]; then
+		_file=$(kv_get "${rehearsal}" LICENSED_CATALOGUE) || return 0
+		case "${_file}" in
+			/*) printf '%s\n' "${_file}" ;;
+			*) printf '%s\n' "${rehearsal%/*}/${_file}" ;;
+		esac
+		return 0
+	fi
+	if [ -f "${root}/licences/licensed-software.json" ]; then
+		printf '%s\n' "${root}/licences/licensed-software.json"
+	fi
+}
+
+# cmd_wifi_scan <adapter> — the Wi-Fi networks in reach, "ssid|security|
+# signal" a line; a rehearsal reads WIFI_SCAN (comma separated).  A system
+# scans with its hook os_wifi_scan.
+cmd_wifi_scan() {
+	[ $# -eq 1 ] || die 3 'wifi-scan needs the name of an adapter'
+	printf '%s\n' "$1" | grep -Eq '^[a-z][a-z0-9]{0,14}$' || die 3 'not the name of an adapter'
+	if [ -n "${rehearsal}" ]; then
+		_v=$(kv_get "${rehearsal}" WIFI_SCAN) || return 0
+		printf '%s\n' "${_v}" | tr ',' '\n'
+		return 0
+	fi
+	if command -v os_wifi_scan >/dev/null 2>&1; then
+		os_wifi_scan "$1"
+	fi
+}
+
+# cmd_online_check — "yes" when the machine reaches the network now (a
+# default route), "no" otherwise; a rehearsal reads ONLINE.
+cmd_online_check() {
+	if [ -n "${rehearsal}" ]; then
+		kv_get "${rehearsal}" ONLINE || printf 'no\n'
+		return 0
+	fi
+	if netstat -rn 2>/dev/null | awk '$1 == "default" || $1 == "0.0.0.0" { f = 1 } END { exit !f }'; then
+		printf 'yes\n'
+	else
+		printf 'no\n'
+	fi
+}
+
+# cmd_hardware — the parts of the machine as JSON {"devices": [{"class",
+# "name", "driver", "firmware", "status"}]}; a rehearsal reads the file
+# HARDWARE names, a system its hook os_hardware.
+cmd_hardware() {
+	if [ -n "${rehearsal}" ]; then
+		# Captured outputs of the real tools, replayed (HARDWARE_CAPTURE, a
+		# directory next to the fixture), or a finished report (HARDWARE).
+		if _cap=$(kv_get "${rehearsal}" HARDWARE_CAPTURE) && [ -n "${_cap}" ]; then
+			case "${_cap}" in
+				/*) : ;;
+				*) _cap="${rehearsal%/*}/${_cap}" ;;
+			esac
+			python3 -I "${root}/lib/hwprobe.py" --replay "${_cap}" "$(config_value OS)"
+			return 0
+		fi
+		_file=$(kv_get "${rehearsal}" HARDWARE) || { printf '{}\n'; return 0; }
+		case "${_file}" in
+			/*) : ;;
+			*) _file="${rehearsal%/*}/${_file}" ;;
+		esac
+		cat "${_file}"
+		return 0
+	fi
+	if command -v os_hardware >/dev/null 2>&1; then
+		os_hardware
+		return 0
+	fi
+	# The tools of the system, read only (lib/hwprobe.py).
+	python3 -I "${root}/lib/hwprobe.py" "$(config_value OS)" || printf '{}\n'
+}
+
+# cmd_locales — the UTF-8 locales of the system, one per line ("locale -a");
+# a rehearsal reads LOCALES (comma separated) from the fixture.
+cmd_locales() {
+	if [ -n "${rehearsal}" ]; then
+		_v=$(kv_get "${rehearsal}" LOCALES) || return 0
+		printf '%s\n' "${_v}" | tr ',' '\n'
+		return 0
+	fi
+	locale -a 2>/dev/null | grep -E '^[a-z]{2,3}_[A-Z]{2}\.UTF-8$' | sort -u || :
 }
 
 cmd_network() {
@@ -494,7 +701,23 @@ run_install_command() {
 		exit 2
 	}
 	[ -s "${_hash}" ] || { printf 'ERROR the password hash file is empty\n'; exit 2; }
-	set -- "${_cmd}" -d "${_disk}" -u "${_user}"
+	# The disk plan replaces the disk when there is one (-p PLANFILE).
+	if _plan=$(answers_get PLAN_FILE) && [ -n "${_plan}" ]; then
+		[ -f "${_plan}" ] || { printf 'ERROR the plan file is not there\n'; exit 2; }
+		set -- "${_cmd}" -p "${_plan}" -u "${_user}"
+	else
+		set -- "${_cmd}" -d "${_disk}" -u "${_user}"
+	fi
+	# The licences the user accepted (-l ACCEPTFILE); the command installs
+	# those optional items and no other.
+	if _acc=$(answers_get ACCEPT_FILE) && [ -n "${_acc}" ]; then
+		[ -s "${_acc}" ] || { printf 'ERROR the file of the accepted licences is empty\n'; exit 2; }
+		set -- "$@" -l "${_acc}"
+	fi
+	if _pass=$(answers_get PASSPHRASE_FILE) && [ -n "${_pass}" ]; then
+		[ -s "${_pass}" ] || { printf 'ERROR the passphrase file is empty\n'; exit 2; }
+		set -- "$@" -E "${_pass}"
+	fi
 	if _key=$(answers_get SSH_KEYFILE) && [ -n "${_key}" ]; then
 		set -- "$@" -k "${_key}"
 	fi
@@ -508,6 +731,17 @@ run_install_command() {
 	if _v=$(answers_get KEYMAP) && [ -n "${_v}" ]; then
 		set -- "$@" -K "${_v}"
 	fi
+	if _v=$(answers_get LOCALE) && [ -n "${_v}" ]; then
+		printf '%s\n' "${_v}" | grep -Eq '^[a-z]{2,3}_[A-Z]{2}\.UTF-8$' ||
+			{ printf 'ERROR the locale is not valid\n'; exit 2; }
+		set -- "$@" -L "${_v}"
+	fi
+	if _v=$(answers_get CLOCK) && [ -n "${_v}" ]; then
+		case "${_v}" in
+			utc|local) set -- "$@" -Z "${_v}" ;;
+			*) printf 'ERROR the clock is not utc or local\n'; exit 2 ;;
+		esac
+	fi
 	if _v=$(answers_get USER_FULLNAME) && [ -n "${_v}" ]; then
 		arg_full_name_ok "${_v}" || {
 			printf 'ERROR the full name may not hold a colon or a control character\n'
@@ -518,9 +752,33 @@ run_install_command() {
 	if [ "$(answers_get PRIVILEGE_PASSWORDLESS || :)" = yes ]; then
 		set -- "$@" -P
 	fi
-	_v=$(network_arg) || { printf 'ERROR %s\n' "${_v}"; exit 2; }
-	if [ -n "${_v}" ]; then
-		set -- "$@" -N "${_v}"
+	if [ -n "$(answers_get NET_IPV4_LIST || :)$(answers_get NET_IPV6_LIST || :)$(answers_get DNS_SERVERS || :)$(answers_get WIFI_FILE || :)$(answers_get UPDATE_AFTER || :)" ]; then
+		# Every adapter, the resolvers, Wi-Fi and the update, checked and
+		# built by lib/netplan.py, one option a line.
+		_net=$(python3 -I "${root}/lib/netplan.py" argv "${INSTALLER_ANSWERS}" 2>&1) ||
+			{ printf 'ERROR %s\n' "$(printf '%s' "${_net}" | tr '\n' ';')"; exit 2; }
+		_nl='
+'
+		_old_ifs=${IFS}
+		IFS=${_nl}
+		# shellcheck disable=SC2086
+		set -- "$@" ${_net}
+		IFS=${_old_ifs}
+	else
+		_v=$(network_arg) || { printf 'ERROR %s\n' "${_v}"; exit 2; }
+		if [ -n "${_v}" ]; then
+			set -- "$@" -N "${_v}"
+		fi
+	fi
+	case "$(answers_get ROOT_MODE || printf 'locked')" in
+		password)
+			_rh=$(answers_get ROOT_HASHFILE) || { printf 'ERROR no root hash file\n'; exit 2; }
+			set -- "$@" -r "${_rh}"
+			;;
+		*) set -- "$@" -r locked ;;
+	esac
+	if [ "$(answers_get AUTOLOGIN || :)" = yes ]; then
+		set -- "$@" -A
 	fi
 	set -- "$@" -y --progress
 	printf 'install: running %s\n' "$*" >&2
@@ -622,6 +880,14 @@ adapter_main() {
 	esac
 	case "${_op}" in
 		disks) cmd_disks "$@" ;;
+		disks-detail) cmd_disks_detail "$@" ;;
+		layouts) cmd_layouts "$@" ;;
+		image-size) cmd_image_size "$@" ;;
+		locales) cmd_locales "$@" ;;
+		hardware) cmd_hardware "$@" ;;
+		wifi-scan) cmd_wifi_scan "$@" ;;
+		online-check) cmd_online_check "$@" ;;
+		licensed-items) cmd_licensed_items "$@" ;;
 		network) cmd_network "$@" ;;
 		apply-disk) cmd_apply_disk "$@" ;;
 		verify-disk) cmd_verify_disk "$@" ;;

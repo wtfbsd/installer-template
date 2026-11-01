@@ -90,6 +90,36 @@ for pair in freebsd:sha512 dragonfly:sha512 netbsd:bcrypt-2a openbsd:bcrypt illu
 		"\"hash_scheme\":\"${pair#*:}\"" "${out}"
 done
 
+# What the install command can do is what the adapter says: OpenBSD offers
+# no RAID 5 (it cannot start from one) and Erase and install only.
+conf openbsd
+out=$(INSTALLER_CONF="${tmp}/openbsd.conf" \
+	INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/three-disks.conf" \
+	"${backend}" disk probe)
+caps=$(printf '%s' "${out}" | python3 -I -c '
+import json, sys
+c = json.load(sys.stdin)["detail"]["capabilities"]
+print(" ".join(l["ident"] for l in c["layouts"]), "|", " ".join(c["modes"]), "|", c["data_pools"])')
+check "openbsd: the layouts, modes and data pools of its install command" \
+	"single raid1 crypto raid1c | erase | False" "${caps}"
+
+# The root helper refuses an OpenBSD plan with RAID 5.
+sub="${tmp}/submit"
+mkdir -m 700 "${sub}"
+printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write bcrypt "${sub}/user.hash" 2>/dev/null ||
+	printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${sub}/user.hash"
+printf 'KEYMAP=us\nTIMEZONE=UTC\nDISK=ada0\nUSER_NAME=tester\nUSER_AUTH=password\nNETWORK_MODE=offline\n' \
+	> "${sub}/answers.conf"
+printf '{"version":1,"mode":"erase","disks":["ada0","ada1","ada2"],"layout":"raid5","filesystem":"ffs"}\n' \
+	> "${sub}/plan.json"
+chmod 600 "${sub}/answers.conf" "${sub}/plan.json"
+rc=0
+out=$(INSTALLER_CONF="${tmp}/openbsd.conf" \
+	INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/three-disks.conf" \
+	"${root}/bin/installer-apply" --install "${sub}" < /dev/null 2>&1) || rc=$?
+check_rc "the root helper refuses RAID 5 on OpenBSD" 2 "${rc}"
+check_contains "it says why" "the layout 'raid5' is not one this system offers" "${out}"
+
 # A rehearsal keeps the short lists of the sections, so that a rehearsal
 # looks the same on every machine.
 out=$(INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/adapter-fixture.conf" \

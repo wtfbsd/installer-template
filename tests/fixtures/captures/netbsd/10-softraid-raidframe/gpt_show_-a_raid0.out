@@ -1,0 +1,15 @@
+    start     size  index  contents
+        0        1         PMBR
+        1        1         Pri GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-00000000000b
+        2       32         Pri GPT table
+       34  2092861      1  GPT part - NetBSD FFSv1/FFSv2
+                                 Type: ffs
+                                 TypeID: 49f48d5a-b10e-11dc-b99b-0019d1879648
+                                 GUID: a0a0a0a0-0000-4000-8000-00000000000c
+                                 Size: 1022 M
+                                 Label: raidroot
+                                 Attributes: None
+  2092895       32         Sec GPT table
+  2092927        1         Sec GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-00000000000b

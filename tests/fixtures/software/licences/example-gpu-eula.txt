@@ -1,0 +1,7 @@
+EXAMPLE GPU END USER LICENCE
+
+This is a made-up licence for the tests of the installer.
+
+1. You may install and use the software on computers you own.
+2. You may not take the software apart or pass it on.
+3. The software comes without any warranty.

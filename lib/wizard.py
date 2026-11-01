@@ -30,17 +30,25 @@ import tempfile
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
+import diskplan
 import gating
 import passhash
+
+# The titles of the time zone and the software, on their pages and in the
+# summary.
+TIME_ZONE = "Time zone"
+ADDITIONAL_SOFTWARE = "Additional software"
 
 # The pages, in the order of the text front end.
 PAGES: List[Tuple[str, str]] = [
     ("welcome", "Welcome"),
     ("keyboard", "Keyboard"),
-    ("timezone", "Time zone"),
+    ("timezone", TIME_ZONE),
+    ("type", "Installation type"),
     ("disk", "Disk"),
     ("users", "Users"),
     ("network", "Network"),
+    ("software", ADDITIONAL_SOFTWARE),
     ("summary", "Summary"),
     ("install", "Installing"),
     ("finish", "Finished"),
@@ -59,6 +67,7 @@ EXIT_TRY_LIVE = 10
 ANSWERS_NAME = "answers.conf"
 HASH_NAME = "user.hash"
 KEY_NAME = "ssh_key.pub"
+PLAN_NAME = "plan.json"
 
 
 def private_dir(path: str, make_parents: bool = False) -> str:
@@ -144,7 +153,8 @@ def human_size(size: int) -> str:
 
 # ------------------------------------------------------------ progress
 
-PROGRESS_RE = re.compile(r"^PROGRESS ([0-9]{1,3})(?: (.*))?$")
+# re.ASCII: \d is 0 to 9 only, as [0-9] was.
+PROGRESS_RE = re.compile(r"^PROGRESS (\d{1,3})(?: (.*))?$", re.ASCII)
 ERROR_RE = re.compile(r"^ERROR (.*)$")
 
 
@@ -222,7 +232,7 @@ def ipv4_valid(text: str) -> bool:
     parts = text.split(".")
     if len(parts) != 4:
         return False
-    return all(re.fullmatch(r"[0-9]{1,3}", p) and int(p) <= 255 for p in parts)
+    return all(re.fullmatch(r"\d{1,3}", p, re.ASCII) and int(p) <= 255 for p in parts)
 
 
 HOSTNAME_RE = re.compile(
@@ -259,8 +269,14 @@ class Backend:
     def __init__(self, root: str, env: Optional[Dict[str, str]] = None):
         self.root = root
         self.env = dict(os.environ if env is None else env)
+        # How a command is run: directly here; the graphical front end runs
+        # it in a thread of its own and keeps its window alive meanwhile.
+        self.runner = lambda func, *args: func(*args)
 
     def _run(self, argv: List[str], stdin: Optional[str] = None) -> Tuple[int, str, str]:
+        return self.runner(self._run_now, argv, stdin)
+
+    def _run_now(self, argv: List[str], stdin: Optional[str] = None) -> Tuple[int, str, str]:
         try:
             proc = subprocess.run(argv, input=stdin, capture_output=True,
                                   text=True, env=self.env, check=False,
@@ -293,7 +309,7 @@ class Backend:
         return [path]
 
     # The lists of the root helper, by the section that makes them.
-    HELPER_LISTS = {"disk": "disks", "network": "network", "keyboard": "keymaps",
+    HELPER_LISTS = {"software": "software", "hardware": "hardware","disk": "disks", "network": "network", "keyboard": "keymaps",
                     "timezone": "timezones", "users": "users", "welcome": "welcome"}
 
     def probe(self, section: str) -> Tuple[dict, str]:
@@ -346,6 +362,8 @@ class Answers:
 
     keymap: str = ""
     timezone: str = ""
+    locale: str = "en_US.UTF-8"
+    clock: str = "utc"
     disk: str = ""
     disk_descr: str = ""
     disk_size: int = 0
@@ -359,6 +377,14 @@ class Answers:
     ipv4_addr: str = ""
     ipv4_mask: str = ""
     ipv4_gw: str = ""
+    accept_licenses: List[str] = field(default_factory=list)
+    root_mode: str = "locked"
+    autologin: bool = False
+    net_ipv4: Dict[str, str] = field(default_factory=dict)
+    net_ipv6: Dict[str, str] = field(default_factory=dict)
+    dns: List[str] = field(default_factory=list)
+    update_after: bool = False
+    wifi: Optional[dict] = None
 
 
 class Wizard:
@@ -386,11 +412,20 @@ class Wizard:
         self.backend = Backend(root, base_env)
         self.answers = Answers()
         self.hash_file = ""
+        self.root_hash_file = ""
         self._hashed_for: Optional[int] = None
         self.installed = False
         self.install_failed = False
         self.applied_keymap = ""
         self.product = self.backend.config("PRODUCT_NAME") or "the system"
+        self.os_name = self.backend.config("OS") or "freebsd"
+        self.disk_plan: Optional[dict] = None
+        self.disk_detail: dict = {"disks": []}
+        self.passphrase = ""
+        self.confirm_foreign: List[str] = []
+        # One installable disk that is blank: "Installation type" is a notice.
+        self.single_blank = False
+        self.software_catalogue: dict = {"items": [], "notices": ""}
         self.slug = self.backend.config("PRODUCT_SLUG") or "system"
         logo = self.backend.config("PRODUCT_LOGO")
         self.logo = logo if logo and os.path.isfile(logo) else ""
@@ -448,6 +483,122 @@ class Wizard:
             self.log(err)
         return items_of(data, "disks"), err
 
+    def forget_disks(self) -> None:
+        """A new visit of a page reads the disks again; within one visit the
+        report is read once (on a slow system it takes minutes)."""
+        self._disk_report = None
+
+    def disk_report(self) -> Tuple[dict, str]:
+        """The report of the disks the disk page shows (the root helper's
+        disk list with its detail), read once per visit of a page."""
+        cached = getattr(self, "_disk_report", None)
+        if cached is not None:
+            return cached
+        self._disk_report = self._read_disk_report()
+        return self._disk_report
+
+    def _read_disk_report(self) -> Tuple[dict, str]:
+        data, err = self.backend.probe("disk")
+        if err:
+            self.log(err)
+        detail = data.get("detail") if isinstance(data.get("detail"), dict) else {}
+        if not detail.get("disks"):
+            detail = dict(detail, disks=[
+                {"name": i.name, "model": i.descr, "size_bytes": i.size_bytes,
+                 "health": {"status": "unknown", "summary": "no health data"},
+                 "partitions": [], "os": [], "free": []}
+                for i in items_of(data, "disks")])
+        self.disk_detail = detail
+        self.single_blank = diskplan.single_blank(detail)
+        return detail, err
+
+    def set_disk_plan(self, plan: dict, detail: dict, passphrase: str = "") -> List[str]:
+        """Keep the plan of the disk page; the problems it still has."""
+        self.disk_plan = plan
+        self.disk_detail = detail
+        self.passphrase = passphrase
+        first = ""
+        if plan.get("mode") == "erase" and plan.get("disks"):
+            first = plan["disks"][0]
+        elif plan.get("mode") == "alongside":
+            first = (plan.get("alongside") or {}).get("disk", "")
+        elif plan.get("partitions"):
+            first = plan["partitions"][0].get("disk", "")
+        disk = diskplan.disk_index(detail).get(first, {})
+        self.answers.disk = first
+        self.answers.disk_descr = disk.get("model", "")
+        self.answers.disk_size = int(disk.get("size_bytes", 0))
+        return diskplan.validate(plan, detail, self.os_name)
+
+    def foreign_to_confirm(self) -> List[str]:
+        """The disks the plan erases that hold another system."""
+        plan = self.disk_plan or {}
+        index = diskplan.disk_index(self.disk_detail)
+        erased = list(plan.get("disks", [])) if plan.get("mode") == "erase" else []
+        erased += [n for pool in plan.get("data", []) for n in pool.get("disks", [])]
+        if plan.get("mode") == "manual":
+            erased += sorted({p.get("disk") for p in plan.get("partitions", [])})
+        return [n for n in erased if diskplan.foreign(index.get(n, {}))]
+
+    def install_problems(self) -> List[str]:
+        """What keeps the plan of the Disk page from being installed: no
+        plan, or a rule of lib/diskplan.py it breaks.  The typed
+        confirmation is asked on the Summary page and is not one of them."""
+        if not self.disk_plan:
+            return ["no disk plan was made on the Disk page"]
+        plan = dict(self.disk_plan, confirm_foreign=self.foreign_to_confirm())
+        return diskplan.validate(plan, self.disk_detail, self.os_name)
+
+    def install_allowed(self) -> bool:
+        """Install may be chosen: the plan passes and every disk with
+        another system on it is confirmed by the typed word."""
+        if self.install_problems():
+            return False
+        return not self.foreign_to_confirm() or bool(self.confirm_foreign)
+
+    # The word to type before a disk holding another system is erased.
+    CONFIRM_WORD = "erase"
+
+    def confirm_erase(self, typed: str) -> bool:
+        """The typed confirmation of the summary: with the word, every disk
+        the plan erases that holds another system is confirmed; without it,
+        none is."""
+        if typed.strip().lower() == self.CONFIRM_WORD:
+            self.confirm_foreign = self.foreign_to_confirm()
+            return True
+        self.confirm_foreign = []
+        return False
+
+    def disk_actions(self) -> List[Tuple[str, str, bool]]:
+        if not self.disk_plan:
+            return []
+        return diskplan.actions(self.disk_plan, self.disk_detail, self.os_name, self.product)
+
+    def software(self) -> Tuple[dict, str]:
+        """The catalogue of the optional licensed software."""
+        data, err = self.backend.probe("software")
+        if err:
+            self.log(err)
+        cat = data.get("catalogue") if isinstance(data.get("catalogue"), dict) else {}
+        return {"items": cat.get("items", []), "notices": cat.get("notices", "")}, err
+
+    def hardware(self) -> List[dict]:
+        """The parts of the machine, their drivers and their firmware."""
+        data, err = self.backend.probe("hardware")
+        if err:
+            self.log(err)
+        self.hardware_unavailable = [u for u in data.get("unavailable", []) if isinstance(u, str)]
+        return [d for d in data.get("devices", []) if isinstance(d, dict)]
+
+    def network_report(self):
+        """The adapters, the Wi-Fi networks each sees and whether the
+        machine is online."""
+        data, err = self.backend.probe("network")
+        if err:
+            self.log(err)
+        wifi = data.get("wifi") if isinstance(data.get("wifi"), dict) else {}
+        return items_of(data, "interfaces"), wifi, bool(data.get("online")), err
+
     def interfaces(self) -> Tuple[List[Item], str]:
         data, err = self.backend.probe("network")
         if err:
@@ -476,7 +627,14 @@ class Wizard:
 
     def keymaps(self) -> List[Item]:
         data, _err = self.backend.probe("keyboard")
+        self.locales = [l for l in data.get("locales", []) if isinstance(l, str)]
         return items_of(data, "layouts")
+
+    def system_locales(self) -> List[str]:
+        """The UTF-8 locales of the system (empty when it has no list)."""
+        if not hasattr(self, "locales"):
+            self.keymaps()
+        return list(self.locales)
 
     def zones(self) -> List[Item]:
         data, _err = self.backend.probe("timezone")
@@ -528,18 +686,18 @@ class Wizard:
                 return [Action("back", "Back to the summary"),
                         Action("retry", "Retry", primary=True)]
             return []
+        if page == "hardware":
+            return [Action("close", "Close", primary=True)]
         if page == "finish":
             return [Action("stay", "Stay in the live system"),
                     Action("reboot", "Reboot", primary=True)]
         return [Action("back", "Back"), Action("next", "Next", primary=True)]
 
-    @staticmethod
-    def next_page(page: str) -> str:
+    def next_page(self, page: str) -> str:
         index = PAGE_IDS.index(page)
         return PAGE_IDS[min(index + 1, len(PAGE_IDS) - 1)]
 
-    @staticmethod
-    def prev_page(page: str) -> str:
+    def prev_page(self, page: str) -> str:
         index = PAGE_IDS.index(page)
         return PAGE_IDS[max(index - 1, 0)]
 
@@ -591,11 +749,19 @@ class Wizard:
         self.hash_file = path
         self._hashed_for = marker
 
+    def set_root_password(self, password: str) -> None:
+        """Root gets a password of its own: only its hash is kept."""
+        path = os.path.join(self.secrets, "root.hash")
+        passhash.write_hash_file(path, passhash.make_hash(password, self.hash_scheme))
+        self.root_hash_file = path
+        self.answers.root_mode = "password"
+
     def delete_secrets(self) -> None:
-        try:
-            os.unlink(os.path.join(self.secrets, ANSWERS_NAME))
-        except OSError:
-            pass
+        for name in (ANSWERS_NAME, PLAN_NAME, "passphrase", "root.hash", "wifi.json"):
+            try:
+                os.unlink(os.path.join(self.secrets, name))
+            except OSError:
+                pass
         if self.hash_file:
             try:
                 os.unlink(self.hash_file)
@@ -628,7 +794,9 @@ class Wizard:
         a = self.answers
         out = [
             ("KEYMAP", a.keymap),
+            ("LOCALE", a.locale),
             ("TIMEZONE", a.timezone),
+            ("CLOCK", a.clock),
             ("DISK", a.disk),
             ("USER_NAME", a.user_name),
             ("USER_FULLNAME", a.full_name),
@@ -648,6 +816,29 @@ class Wizard:
         if a.network_mode == "static":
             out += [("NET_IPV4", "static"), ("IPV4_ADDR", a.ipv4_addr),
                     ("IPV4_MASK", a.ipv4_mask), ("IPV4_GW", a.ipv4_gw)]
+        if a.accept_licenses:
+            out.append(("ACCEPT_LICENSES", ",".join(a.accept_licenses)))
+        out.append(("ROOT_MODE", a.root_mode))
+        if a.root_mode == "password" and self.root_hash_file:
+            out.append(("ROOT_HASHFILE", self.root_hash_file))
+        out.append(("AUTOLOGIN", "yes" if a.autologin else "no"))
+        if a.net_ipv4:
+            out.append(("NET_IPV4_LIST", ";".join(f"{k}:{v}" for k, v in a.net_ipv4.items())))
+        if a.net_ipv6:
+            out.append(("NET_IPV6_LIST", ";".join(f"{k}:{v}" for k, v in a.net_ipv6.items())))
+        if a.dns:
+            out.append(("DNS_SERVERS", ",".join(a.dns)))
+        if a.update_after:
+            out.append(("UPDATE_AFTER", "yes"))
+        if a.wifi:
+            path = os.path.join(self.secrets, "wifi.json")
+            os.makedirs(self.secrets, mode=0o700, exist_ok=True)
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            write_new_file(path, json.dumps(a.wifi).encode("utf-8"), 0o600)
+            out.append(("WIFI_FILE", path))
         return out
 
     def write_answers(self) -> None:
@@ -692,8 +883,12 @@ class Wizard:
     }
 
     def leave(self, page: str) -> Optional[str]:
-        """The check of a page that is left with Next."""
+        """The check of a page that is left with Next.  A disk plan was
+        checked against the disks of this visit by lib/diskplan.py, and the
+        root helper checks it again: the disk list is not read once more."""
         for section in self.PAGE_SECTIONS.get(page, ()):
+            if section == "disk" and self.disk_plan:
+                continue
             problem = self.validate(section)
             if problem:
                 return problem
@@ -709,9 +904,11 @@ class Wizard:
             net = f"an automatic address on {a.net_if}"
         rows = [
             ("Product", self.product),
+            ("Language", a.locale),
             ("Keyboard", a.keymap),
-            ("Time zone", a.timezone),
-            ("Disk", f"{a.disk} ({a.disk_descr}, {human_size(a.disk_size)})"),
+            (TIME_ZONE, a.timezone + (" (the hardware clock keeps local time)"
+                                      if a.clock == "local" else "")),
+            self.disk_row(),
             ("User", a.user_name + (f" ({a.full_name})" if a.full_name else "")),
             ("Host name", a.hostname or "(the default)"),
             ("SSH key", "yes" if a.ssh_key.strip() else "none"),
@@ -722,9 +919,53 @@ class Wizard:
         if a.network_mode == "static":
             rows += [("Address", a.ipv4_addr), ("Netmask", a.ipv4_mask),
                      ("Gateway", a.ipv4_gw)]
+        names = {i["id"]: i["name"] for i in self.software_catalogue.get("items", [])}
+        rows.append((ADDITIONAL_SOFTWARE,
+                     ", ".join(names.get(i, i) for i in a.accept_licenses) or
+                     "none (no licence accepted)"))
         return rows
 
+    # The groups of the summary page, by the names of summary_rows().
+    SUMMARY_GROUPS = (
+        ("System", ("Product", "Language", "Keyboard", TIME_ZONE)),
+        ("Account", ("User", "Host name", "SSH key", "Privileges")),
+        ("Network", ("Network", "Address", "Netmask", "Gateway")),
+        ("Software", (ADDITIONAL_SOFTWARE,)),
+    )
+
+    def summary_sections(self) -> List[Tuple[str, List[Tuple[str, str]]]]:
+        """The rows of the summary in groups (the disks have a list of their
+        own); every row of summary_rows() but the disks is in one group."""
+        rows = [r for r in self.summary_rows() if r[0] not in ("Disk", "Disks")]
+        out = []
+        placed = set()
+        for title, names in self.SUMMARY_GROUPS:
+            items = [r for r in rows if r[0] in names]
+            placed.update(r[0] for r in items)
+            if items:
+                out.append((title, items))
+        rest = [r for r in rows if r[0] not in placed]
+        if rest:
+            out.append(("Other", rest))
+        return out
+
+    def disk_row(self) -> Tuple[str, str]:
+        """The disks of the plan in one line; the actions follow it."""
+        a = self.answers
+        plan = self.disk_plan
+        if not plan:
+            return ("Disk", f"{a.disk} ({a.disk_descr}, {human_size(a.disk_size)})")
+        titles = {"erase": "Erase and install", "alongside": "Install alongside", "manual": "Manual"}
+        names = list(plan.get("disks") or [])
+        if plan.get("mode") == "alongside":
+            names = [(plan.get("alongside") or {}).get("disk", "")]
+        elif plan.get("mode") == "manual":
+            names = sorted({p.get("disk") for p in plan.get("partitions", [])})
+        return ("Disks", f"{titles.get(plan.get('mode'), '')}: {', '.join(names)}")
+
     def erase_warning(self) -> str:
+        if self.disk_plan:
+            return ""
         a = self.answers
         return (f"Everything on {a.disk} ({a.disk_descr}, {human_size(a.disk_size)}) "
                 "will be erased.")
@@ -738,6 +979,18 @@ class Wizard:
         target = os.path.join(self.secrets, ANSWERS_NAME)
         shutil.copyfile(self.answers_file, target)
         os.chmod(target, 0o600)
+        for name in (PLAN_NAME, "passphrase"):
+            try:
+                os.unlink(os.path.join(self.secrets, name))
+            except OSError:
+                pass
+        if self.disk_plan is not None:
+            plan = dict(self.disk_plan, confirm_foreign=list(self.confirm_foreign))
+            write_new_file(os.path.join(self.secrets, PLAN_NAME),
+                           (json.dumps(plan, indent=1) + "\n").encode("utf-8"), 0o600)
+            if (plan.get("encryption") or {}).get("enabled") and self.passphrase:
+                write_new_file(os.path.join(self.secrets, "passphrase"),
+                               (self.passphrase + "\n").encode("utf-8"), 0o600)
         return self.secrets
 
     def install_command(self) -> List[str]:
@@ -852,10 +1105,10 @@ class InstallRun:
         return self.finish()
 
 
-def write_new_file(path: str, data: bytes) -> None:
+def write_new_file(path: str, data: bytes, mode: int = 0o644) -> None:
     """Write a file that is not there yet, never through a link: the files
     the smoke run writes are opened with O_EXCL and O_NOFOLLOW."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
     with os.fdopen(fd, "wb") as stream:
         stream.write(data)
 

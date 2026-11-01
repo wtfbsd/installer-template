@@ -1,0 +1,39 @@
+    start     size  index  contents
+        0        1         PMBR
+        1        1         Pri GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000006
+        2       32         Pri GPT table
+       34     2014         Unused
+     2048   532480      1  GPT part - EFI System
+                                 Type: efi
+                                 TypeID: c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000014
+                                 Size: 260 M
+                                 Label: efiboot0
+                                 Attributes: None
+   534528     1024      2  GPT part - 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+                                 Type: unknown
+                                 TypeID: 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+                                 GUID: a0a0a0a0-0000-4000-8000-00000000000a
+                                 Size: 512 K
+                                 Label: gptboot0
+                                 Attributes: None
+   535552     1024         Unused
+   536576  1048576      3  GPT part - FreeBSD swap
+                                 Type: fbsd-swap
+                                 TypeID: 516e7cb5-6ecf-11d6-8ff8-00022d09712b
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000015
+                                 Size: 512 M
+                                 Label: swap0
+                                 Attributes: None
+  1585152  5752832      4  GPT part - ZFS
+                                 Type: zfs
+                                 TypeID: 516e7cba-6ecf-11d6-8ff8-00022d09712b
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000016
+                                 Size: 2809 M
+                                 Label: zfs0
+                                 Attributes: None
+  7337984     2015         Unused
+  7339999       32         Sec GPT table
+  7340031        1         Sec GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000006

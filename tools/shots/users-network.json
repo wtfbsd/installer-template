@@ -1,0 +1,6 @@
+[
+ {"name": "users-root-autologin", "page": "users", "full": true,
+  "state": {"users": {"full_name": "Test User", "user": "tester", "password": "Correct-Horse-9", "root": "own", "autologin": true}}},
+ {"name": "network-wired", "page": "network", "full": true, "state": {"network": {"tab": 0, "v4": "static", "v6": "slaac", "dns": "192.0.2.53, 2001:db8::53"}}},
+ {"name": "network-wifi", "page": "network", "full": true, "state": {"network": {"tab": 1, "ssid_row": 0}}}
+]

@@ -1,0 +1,97 @@
+{
+ "version": 1,
+ "items": [
+  {
+   "id": "example-gpu-driver",
+   "name": "Example GPU driver (proprietary)",
+   "description": "The vendor's own driver for Example graphics cards: faster 3D and video decoding than the open driver.",
+   "size_bytes": 412000000,
+   "licence": {
+    "id": "example-gpu-eula",
+    "title": "Example GPU End User Licence",
+    "text": "licences/example-gpu-eula.txt"
+   },
+   "flags": [],
+   "install": {
+    "packages": [
+     "example-gpu-driver"
+    ]
+   }
+  },
+  {
+   "id": "example-wifi-firmware",
+   "name": "Example wireless firmware (restricted)",
+   "description": "Firmware for Example wireless cards whose licence forbids passing it on; fetched from the vendor.",
+   "size_bytes": 3100000,
+   "licence": {
+    "id": "example-wifi-fw",
+    "title": "Example Wireless Firmware Licence",
+    "text": "licences/example-wifi-fw.txt"
+   },
+   "flags": [
+    "download-after-install",
+    "needs-network"
+   ],
+   "install": {
+    "fetch": "example-wifi-firmware"
+   }
+  },
+  {
+   "id": "example-browser-drm",
+   "name": "Browser DRM module",
+   "description": "Plays protected video in the web browser; downloaded from its maker after the installation.",
+   "size_bytes": 18000000,
+   "licence": {
+    "id": "example-drm",
+    "title": "Example Content Decryption Module Terms",
+    "text": "licences/example-drm.txt"
+   },
+   "flags": [
+    "download-after-install",
+    "needs-network"
+   ],
+   "install": {
+    "fetch": "example-browser-drm"
+   }
+  },
+  {
+   "id": "example-display-font",
+   "name": "Example Display font family",
+   "description": "A typeface for headlines and posters; free for personal, non-commercial use only.",
+   "size_bytes": 9400000,
+   "licence": {
+    "id": "example-font-nc",
+    "title": "Example Font Personal Use Licence",
+    "text": "licences/example-font-nc.txt"
+   },
+   "flags": [
+    "non-commercial"
+   ],
+   "install": {
+    "packages": [
+     "example-display-font"
+    ]
+   }
+  },
+  {
+   "id": "example-vendor-tool",
+   "name": "Example storage manager",
+   "description": "Manages Example RAID controllers; works only with a key from the vendor.",
+   "size_bytes": 56000000,
+   "licence": {
+    "id": "example-tool-eula",
+    "title": "Example Storage Manager Licence",
+    "text": "licences/example-tool-eula.txt"
+   },
+   "flags": [
+    "vendor-key"
+   ],
+   "install": {
+    "packages": [
+     "example-storage-manager"
+    ]
+   }
+  }
+ ],
+ "notices": "licences/open-source-notices.txt"
+}

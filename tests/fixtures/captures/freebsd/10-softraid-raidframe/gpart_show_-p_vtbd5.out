@@ -1,0 +1,5 @@
+=>     34  2097085    vtbd5  GPT  (1.0G)
+       34       30           - free -  (15K)
+       64   532480  vtbd5p1  efi  (260M)
+   532544  1564575  vtbd5p2  openbsd-data  (764M)
+

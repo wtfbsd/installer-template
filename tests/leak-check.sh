@@ -44,6 +44,13 @@ report() { # report <file> <what> <found>
 # address_ok <address> — the addresses a public template may carry: the
 # loopback address, the addresses of the documentation ranges and the
 # documentation address of the IPv6 range.
+# The documentation range of IPv6 after a colon, put together so this file
+# does not carry the shape itself.
+colon_doc6=$(printf ':%s:%s:' 2001 db8)
+# The MAC addresses of the documentation range (RFC 7042), put together the
+# same way.
+mac_doc=$(printf '%s:%s:%s:%s:%s:' 00 00 5e 00 53)
+
 address_ok() {
 	case "$1" in
 		127.0.0.1) return 0 ;;
@@ -51,14 +58,55 @@ address_ok() {
 		# A netmask names no machine.
 		255.255.255.*|255.255.0.0|255.0.0.0|0.0.0.0) return 0 ;;
 		::1|::) return 0 ;;
+		# One hex digit after "::" (GEOM::ELI, Class::E) names no machine.
+		::[0-9A-Fa-f]) return 0 ;;
+		# The MAC addresses of the documentation range (RFC 7042).
+		"${mac_doc}"[0-9A-Fa-f][0-9A-Fa-f]) return 0 ;;
 		2001:db8:*) return 0 ;;
+		# A documentation address after "em0:" or a prefix length ("64:"):
+		# the digits before it belong to the adapter name or the prefix.
+		?"${colon_doc6}"*|??"${colon_doc6}"*|???"${colon_doc6}"*) return 0 ;;
+		# No "::" and no address: a time (23:24:34) or a PCI selector
+		# (000:06:0:): short groups of decimal digits, fewer than eight.
+		*::*) : ;;
+		*)
+			_groups=$(printf '%s' "$1" | tr ':' '\n' | grep -c . || :)
+			if printf '%s' "$1" | grep -Eq '^([0-9]{1,3}:)*[0-9]{1,3}:?$' &&
+				[ "${_groups}" -lt 8 ]; then
+				return 0
+			fi
+			;;
 	esac
 	return 1
+}
+
+# png_text <file> — the names of the text chunks of a PNG (tEXt, zTXt,
+# iTXt), one a line.  The pixels of a picture are not text: a PNG is checked
+# for text chunks only, and the pictures of the repository have none.
+png_text() {
+	python3 -I -c '
+import struct, sys
+with open(sys.argv[1], "rb") as stream:
+    data = stream.read()
+pos = 8
+while pos + 8 <= len(data):
+    length, kind = struct.unpack(">I4s", data[pos:pos + 8])
+    if kind in (b"tEXt", b"zTXt", b"iTXt"):
+        print(kind.decode())
+    pos += 12 + length
+' "$1"
 }
 
 check_file() { # check_file <file>
 	file=$1
 	[ -f "${file}" ] || return 0
+	case "${file}" in
+		*.png)
+			for found in $(png_text "${file}"); do
+				report "${file}" "a text chunk in a picture" "${found}"
+			done
+			return 0 ;;
+	esac
 	for found in $(grep -aoE "${pat_ipv4}" "${file}" 2>/dev/null || true); do
 		address_ok "${found}" || report "${file}" "an address" "${found}"
 	done
@@ -67,7 +115,7 @@ check_file() { # check_file <file>
 	done
 	for found in $(grep -aoE "${pat_mail}" "${file}" 2>/dev/null || true); do
 		case "${found}" in
-			*@example.org|*@example.com) : ;;
+			*@example.org|*@example.com|*.example.test|*@example.test) : ;;
 			*) report "${file}" "an email address" "${found}" ;;
 		esac
 	done

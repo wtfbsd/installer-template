@@ -18,15 +18,18 @@ config_keys() {
 #
 # PRODUCT_LOGO  the absolute path of an image the graphical front end shows
 #               next to the name of the product
+# MIN_DISK_GB   the smallest disk the system is installed to, in GB (16 when
+#               it is not set); never below what the media needs: its image,
+#               2 GB to spare and the swap (lib/diskplan.py)
 config_optional_keys() {
-	printf '%s\n' PRODUCT_LOGO
+	printf '%s\n' PRODUCT_LOGO MIN_DISK_GB
 }
 
 # config_known_key <key> — succeed when the key is one the installer knows.
 config_known_key() {
 	case "$1" in
 		PRODUCT_NAME|PRODUCT_SLUG|OS|DEFAULT_KEYMAP|DEFAULT_TZ) return 0 ;;
-		PRODUCT_LOGO) return 0 ;;
+		PRODUCT_LOGO|MIN_DISK_GB) return 0 ;;
 		*) return 1 ;;
 	esac
 }
@@ -45,6 +48,7 @@ config_valid_value() {
 			esac
 			_pattern='^/[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$'
 			;;
+		MIN_DISK_GB) _pattern='^[1-9][0-9]{0,3}$' ;;
 		*) return 2 ;;
 	esac
 	printf '%s\n' "$2" | grep -Eq -- "${_pattern}"

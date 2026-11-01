@@ -1,0 +1,18 @@
+# /dev/rsd6c:
+type: SCSI
+disk: SCSI disk
+label: Block Device    
+duid: 0000000000000000
+flags:
+bytes/sector: 512
+sectors/track: 63
+tracks/cylinder: 255
+sectors/cylinder: 16065
+cylinders: 130
+total sectors: 2097152 # total bytes: 1.0G
+boundstart: 34
+boundend: 2097119
+
+16 partitions:
+#                size           offset  fstype [fsize bsize   cpg]
+  c:             1.0G                0  unused                    

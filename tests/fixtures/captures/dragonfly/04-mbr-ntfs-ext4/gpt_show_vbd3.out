@@ -1,0 +1,6 @@
+    start     size  index  contents
+        0        1      -  MBR
+        1     2047      -  Unused
+     2048  3072000      0  MBR part 7 (active)
+  3074048  2867200      1  MBR part 131
+  5941248   350208      -  Unused

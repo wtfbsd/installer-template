@@ -64,6 +64,10 @@ cmd_probe() {
 }
 
 cmd_validate() {
+	case "$(answers_get CLOCK || printf 'utc')" in
+		utc|local) : ;;
+		*) die 2 'the hardware clock keeps utc or local time' ;;
+	esac
 	zone=$(answers_get TIMEZONE) || die 2 'no time zone was chosen'
 	default=$(config_value DEFAULT_TZ) || exit 2
 	[ "${zone}" = "${default}" ] && return 0

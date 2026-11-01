@@ -1,0 +1,4 @@
+/dev/rld3: 3 wedges:
+dk2: gptboot0, 1024 blocks at 40, type: 
+dk3: rootfs0, 4194304 blocks at 1064, type: ffs
+dk4: swapfs0, 1047472 blocks at 4195368, type: swap

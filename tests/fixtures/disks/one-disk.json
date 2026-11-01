@@ -1,0 +1,32 @@
+{
+ "boot_mode": "uefi",
+ "ram_mb": 16384,
+ "disks": [
+  {
+   "name": "nda0",
+   "model": "Example NVMe 990 1TB",
+   "size_bytes": 1000000000000,
+   "serial": "EXN0001A",
+   "bus": "NVMe",
+   "ssd": true,
+   "health": {
+    "status": "ok",
+    "summary": "healthy",
+    "temperature_c": 38,
+    "power_on_hours": 1210,
+    "reallocated": 0,
+    "pending": 0,
+    "wear_percent": 3
+   },
+   "scheme": "none",
+   "partitions": [],
+   "os": [],
+   "free": [
+    {
+     "start_mb": 1,
+     "size_mb": 953672
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+[
+ {"name": "blank-type-notice", "page": "type", "full": false, "state": {}},
+ {"name": "blank-disk-erase", "page": "disk", "full": true, "state": {"mode": "erase", "selected": ["nda0"]}}
+]

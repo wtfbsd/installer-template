@@ -1,0 +1,82 @@
+Geom name: vtbd2
+modified: false
+state: OK
+fwheads: 128
+fwsectors: 63
+last: 7339991
+first: 40
+entries: 128
+scheme: GPT
+Providers:
+1. Name: vtbd2p1
+   Mediasize: 272629760 (260M)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(1,GPT,a0a0a0a0-0000-4000-8000-000000000014,0x800,0x82000)
+   rawuuid: a0a0a0a0-0000-4000-8000-000000000014
+   rawtype: c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+   label: efiboot0
+   length: 272629760
+   offset: 1048576
+   type: efi
+   index: 1
+   end: 534527
+   start: 2048
+2. Name: vtbd2p2
+   Mediasize: 524288 (512K)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(2,GPT,a0a0a0a0-0000-4000-8000-00000000000a,0x82800,0x400)
+   rawuuid: a0a0a0a0-0000-4000-8000-00000000000a
+   rawtype: 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+   label: gptboot0
+   length: 524288
+   offset: 273678336
+   type: freebsd-boot
+   index: 2
+   end: 535551
+   start: 534528
+3. Name: vtbd2p3
+   Mediasize: 536870912 (512M)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(3,GPT,a0a0a0a0-0000-4000-8000-000000000015,0x83000,0x100000)
+   rawuuid: a0a0a0a0-0000-4000-8000-000000000015
+   rawtype: 516e7cb5-6ecf-11d6-8ff8-00022d09712b
+   label: swap0
+   length: 536870912
+   offset: 274726912
+   type: freebsd-swap
+   index: 3
+   end: 1585151
+   start: 536576
+4. Name: vtbd2p4
+   Mediasize: 2945449984 (2.7G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(4,GPT,a0a0a0a0-0000-4000-8000-000000000016,0x183000,0x57c800)
+   rawuuid: a0a0a0a0-0000-4000-8000-000000000016
+   rawtype: 516e7cba-6ecf-11d6-8ff8-00022d09712b
+   label: zfs0
+   length: 2945449984
+   offset: 811597824
+   type: freebsd-zfs
+   index: 4
+   end: 7337983
+   start: 1585152
+Consumers:
+1. Name: vtbd2
+   Mediasize: 3758096384 (3.5G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+

@@ -1,0 +1,11 @@
+    start     size  index  contents
+        0        1      -  PMBR
+        1        1      -  Pri GPT header
+        2       32      -  Pri GPT table
+       34        6      -  Unused
+       40     1024      0  GPT part - 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+     1064  4194304      1  GPT part - FreeBSD UFS/UFS2
+  4195368  1047472      2  GPT part - FreeBSD Swap
+  5242840        7      -  Unused
+  5242847       32      -  Sec GPT table
+  5242879        1      -  Sec GPT header

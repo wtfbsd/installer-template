@@ -89,7 +89,7 @@ check "the hash is made once for one password" 1 \
 cat > "${tmp}/wrap-bsddialog" <<'WRAP'
 #!/bin/sh
 calls=$(cat "${BSDDIALOG_STATE}" 2>/dev/null || printf '0')
-if [ "${calls}" -eq 9 ] && [ -n "${INSTALLER_STATE_DIR:-}" ] &&
+if [ "${calls}" -eq 14 ] && [ -n "${INSTALLER_STATE_DIR:-}" ] &&
 	[ -d "${INSTALLER_STATE_DIR}" ]; then
 	mkdir -p "${INSTALLER_STATE_DIR}/secrets"
 	printf '$6$planted$hash\n' > "${INSTALLER_STATE_DIR}/secrets/user.hash"

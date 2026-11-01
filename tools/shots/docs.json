@@ -1,0 +1,15 @@
+[
+ {"name": "01-welcome", "page": "welcome", "full": false, "state": {"locale": "en_US.UTF-8"}},
+ {"name": "02-keyboard", "page": "keyboard", "full": false, "state": {}},
+ {"name": "03-timezone", "page": "timezone", "full": false, "state": {}},
+ {"name": "04-installation-type", "page": "type", "full": false, "state": {"mode": "alongside"}},
+ {"name": "05-disk", "page": "disk", "full": false, "state": {"mode": "erase", "selected": ["nda0"]}},
+ {"name": "06-users", "page": "users", "full": false,
+  "state": {"users": {"full_name": "Test User", "user": "tester", "password": "Correct-Horse-9", "root": "locked", "autologin": false}}},
+ {"name": "07-network", "page": "network", "full": false, "state": {"network": {"tab": 0, "v4": "dhcp", "v6": "slaac"}}},
+ {"name": "08-additional-software", "page": "software", "full": false, "state": {"select_all": true}},
+ {"name": "09-summary", "page": "summary", "full": false,
+  "disk_state": {"mode": "erase", "selected": ["nda0"], "usage": "together"}, "state": {"typed": "erase"}},
+ {"name": "10-installing", "page": "install", "full": false, "state": {"slide": 1, "progress": 0.42, "step": "Writing the system files"}},
+ {"name": "11-hardware-and-drivers", "page": "hardware", "full": false, "state": {}}
+]

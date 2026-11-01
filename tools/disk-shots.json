@@ -1,0 +1,4 @@
+[
+ {"name": "disk-erase-1disk", "page": "disk", "full": true,
+  "state": {"mode": "erase", "selected": ["nda0"], "encrypt": true, "passphrase": "correct horse battery 9"}}
+]

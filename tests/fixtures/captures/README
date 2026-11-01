@@ -1,0 +1,40 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+The outputs of the disk tools of FreeBSD 16.0-CURRENT, NetBSD 11.0,
+OpenBSD 8.0 and DragonFly 6.4.2, run as root on virtual disks that hold
+each layout below, captured on 2026-11-01 for lib/diskprobe.py and its
+tests (tests/test_diskprobe.py, tests/cases/81-disk-detection.sh).
+
+<os>/<layout>/<command>.out is what the command printed, .rc its exit
+status.  The name is the command with its arguments and the device it ran
+on: gpart_list_vtbd2 is `gpart list vtbd2`, dkctl_listwedges_ld2 is
+`dkctl ld2 listwedges`, fstyp_dk7_ld2 is `fstyp /dev/rdk7` (a wedge of ld2),
+fstyp_whole_vtbd2 is `fstyp /dev/vtbd2`, ls_-R_esp_<partition> is `ls -R`
+of that EFI system partition mounted read-only.
+
+  01-blank                     1 GiB of zeros
+  02-windows-linux-gpt         GPT: EFI, Microsoft reserved, NTFS, Windows
+                               recovery, ext4 (Debian), Linux swap, free
+  04-mbr-ntfs-ext4             MBR: NTFS (active), ext4, free
+  05-zfs-whole-disk            a ZFS pool "tank" on the raw disk
+  06-geli-zfs-freebsd-install  the encrypted "Auto (ZFS)" layout of the
+                               FreeBSD installer: EFI, boot, swap, GELI
+  07-freebsd-ufs-old-install   an older FreeBSD UFS layout, no EFI
+  08-linux-luks2               EFI, /boot ext4, LUKS2 (a Debian layout)
+  09-random-first-mib          the first MiB random, no table
+  10-softraid-raidframe        two OpenBSD softraid RAID 1 chunks and two
+                               NetBSD RAIDframe RAID 1 components
+
+A BitLocker volume could not be made on any of these systems; there is no
+capture of one.
+
+On FreeBSD, layouts 05, 06, 08 and 09 also have the outputs of a second
+boot, in which the disks had other names (08 was vtbd3, 09 was vtbd4):
+`geli dump`, `zdb -l` and the first 4 KiB of the device as `od -A d -t x1`
+(dd_first4k_od_*), and the disk list of that boot (followup_sysctl_*).
+
+Changed from what the tools printed: serial numbers, GUIDs, pool and
+volume ids are replaced by made-up values (the same value everywhere), the
+build host names are gone, and the salt, the encrypted master key and the
+hash lines of the `geli dump` of the test passphrase are left out.  The
+kernel messages (dmesg) and uname are not kept.

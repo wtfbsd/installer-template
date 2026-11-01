@@ -1,0 +1,14 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# A stand-in for readlink(1): the targets of the links are lines
+# "<path><TAB><target>" in the file STUB_LINKS.  A path that is not there is
+# not a link (exit 1).
+
+set -eu
+
+path=${1:-}
+[ -n "${STUB_LINKS:-}" ] && [ -f "${STUB_LINKS}" ] || exit 1
+target=$(awk -F '\t' -v p="${path}" '$1 == p { print $2; exit }' "${STUB_LINKS}")
+[ -n "${target}" ] || exit 1
+printf '%s\n' "${target}"

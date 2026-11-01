@@ -1,0 +1,19 @@
+Disk: /dev/rld1
+NetBSD disklabel disk geometry:
+cylinders: 780, heads: 64, sectors/track: 63 (4032 sectors/cylinder)
+total sectors: 3145728, bytes/sector: 512
+
+BIOS disk geometry:
+cylinders: 780, heads: 64, sectors/track: 63 (4032 sectors/cylinder)
+total sectors: 3145728
+
+Partitions aligned to 4032 sector boundaries, offset 63
+
+Partition table:
+0: <UNUSED>
+1: <UNUSED>
+2: <UNUSED>
+3: <UNUSED>
+Bootselector disabled.
+No active partition.
+Drive serial number: 0 (0x00000000)

@@ -1,0 +1,20 @@
+# /dev/rsd5c:
+type: SCSI
+disk: SCSI disk
+label: Block Device    
+duid: d0d0000000000003
+flags:
+bytes/sector: 512
+sectors/track: 63
+tracks/cylinder: 255
+sectors/cylinder: 16065
+cylinders: 130
+total sectors: 2097152 # total bytes: 1024.0M
+boundstart: 532544
+boundend: 2097119
+
+16 partitions:
+#                size           offset  fstype [fsize bsize   cpg]
+  a:           764.0M           532544    RAID                    
+  c:          1024.0M                0  unused                    
+  i:           260.0M               64   MSDOS                    

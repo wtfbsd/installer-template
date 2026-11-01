@@ -1,0 +1,4 @@
+[
+ {"name": "12-welcome-cyberpunk", "page": "welcome", "full": false, "state": {"locale": "en_US.UTF-8"}},
+ {"name": "13-installing-cyberpunk", "page": "install", "full": false, "state": {"slide": 3, "progress": 0.66, "step": "Installing the packages"}}
+]

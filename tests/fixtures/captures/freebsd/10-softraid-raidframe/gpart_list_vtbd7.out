@@ -1,0 +1,34 @@
+Geom name: vtbd7
+modified: false
+state: OK
+fwheads: 64
+fwsectors: 63
+last: 2097118
+first: 34
+entries: 128
+scheme: GPT
+Providers:
+1. Name: vtbd7p1
+   Mediasize: 1071644672 (1.0G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(1,GPT,a0a0a0a0-0000-4000-8000-00000000000d,0x800,0x1ff000)
+   rawuuid: a0a0a0a0-0000-4000-8000-00000000000d
+   rawtype: 49f48daa-b10e-11dc-b99b-0019d1879648
+   label: raidcomp-ld2
+   length: 1071644672
+   offset: 1048576
+   type: netbsd-raid
+   index: 1
+   end: 2095103
+   start: 2048
+Consumers:
+1. Name: vtbd7
+   Mediasize: 1073741824 (1.0G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+

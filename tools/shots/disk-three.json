@@ -1,0 +1,6 @@
+[
+ {"name": "disk-erase-3disks-mirror", "page": "disk", "full": true,
+  "state": {"mode": "erase", "selected": ["ada0", "ada1"], "layout": "mirror", "data_disks": ["ada2"]}},
+ {"name": "disk-erase-3disks-raidz1", "page": "disk", "full": true,
+  "state": {"mode": "erase", "selected": ["ada0", "ada1", "ada2"], "layout": "raidz1", "swap_gb": 16, "swap_encrypted": true}}
+]

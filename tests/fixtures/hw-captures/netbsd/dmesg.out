@@ -1,0 +1,123 @@
+[     1.000000] Copyright (c) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
+[     1.000000]     2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013,
+[     1.000000]     2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023,
+[     1.000000]     2024, 2025, 2026
+[     1.000000]     The NetBSD Foundation, Inc.  All rights reserved.
+[     1.000000] Copyright (c) 1982, 1986, 1989, 1991, 1993
+[     1.000000]     The Regents of the University of California.  All rights reserved.
+
+[     1.000000] NetBSD 11.0 (GENERIC) #1: Sat Oct 31 08:24:49 UTC 2026
+[     1.000000] 	root@buildhost-nbsd-001:/build/nbout11/obj/sys/arch/amd64/compile/GENERIC
+[     1.000000] total memory = 4092 MB
+[     1.000000] avail memory = 3930 MB
+[     1.000000] timecounter: Timecounters tick every 10.000 msec
+[     1.000000] Kernelized RAIDframe activated
+[     1.000000] timecounter: Timecounter "i8254" frequency 1193182 Hz quality 100
+[     1.000004] efi: systbl at pa bfbee018
+[     1.000004] mainbus0 (root)
+[     1.000004] ACPI: RSDP 0x00000000BFBFA014 000024 (v02 BHYVE )
+[     1.000004] ACPI: XSDT 0x00000000BFBF90E8 00005C (v01 BHYVE  BVFACP   00000001      01000013)
+[     1.000004] ACPI: FACP 0x00000000BFBF8000 000114 (v05 BHYVE  BVFACP   00000001 BASL 20220504)
+[     1.000004] ACPI: DSDT 0x00000000BE68E000 000A38 (v02 BHYVE  BVDSDT   00000001 INTL 20260408)
+[     1.000004] ACPI: FACS 0x00000000BFBFE000 000040
+[     1.000004] ACPI: APIC 0x00000000BFBF7000 000062 (v01 BHYVE  BVAPIC   00000001 BASL 20220504)
+[     1.000004] ACPI: HPET 0x00000000BFBF6000 000038 (v01 BHYVE  BVHPET   00000001 BASL 20220504)
+[     1.000004] ACPI: MCFG 0x00000000BFBF5000 00003C (v01 BHYVE  BVMCFG   00000001 BASL 20220504)
+[     1.000004] ACPI: SPCR 0x00000000BFBF4000 000058 (v01 BHYVE  BVSPCR   00000001 BASL 20220504)
+[     1.000004] ACPI: SRAT 0x00000000BFBF3000 0000F0 (v01 BHYVE  BVSRAT   00000001 BASL 20220504)
+[     1.000004] ACPI: BGRT 0x00000000BE20C000 000038 (v01 INTEL  EDK2     00000002      01000013)
+[     1.000004] ACPI: 1 ACPI AML tables successfully acquired and loaded
+[     1.000004] ioapic0 at mainbus0 apid 0: pa 0xfec00000, version 0x11, 32 pins
+[     1.000004] cpu0 at mainbus0 apid 0
+[     1.000004] cpu0: Use mfence to serialize rdtsc
+[     1.000004] cpu0: AMD Ryzen 7 5700G with Radeon Graphics         , id 0xa50f00
+[     1.000004] cpu0: node 0, package 0, core 0, smt 0
+[     1.000004] cpu1 at mainbus0 apid 1
+[     1.000004] cpu1: AMD Ryzen 7 5700G with Radeon Graphics         , id 0xa50f00
+[     1.000004] cpu1: node 0, package 0, core 1, smt 0
+[     1.000004] acpi0 at mainbus0: Intel ACPICA 20241212
+[     1.000004] acpi0: X/RSDT: OemId <BHYVE , BVFACP ,00000001>, AslId <    ,01000013>
+[     1.000004] acpi0: MCFG: segment 0, bus 0-255, address 0x00000000e0000000
+[     1.000004] acpi0: SCI interrupting at int 9
+[     1.000004] acpi0: fixed power button present
+[     1.000004] timecounter: Timecounter "ACPI-Safe" frequency 3579545 Hz quality 900
+[     1.009779] hpet0 at acpi0: high precision event timer (mem 0xfed00000-0xfed00400)
+[     1.009779] timecounter: Timecounter "hpet0" frequency 16777216 Hz quality 2000
+[     1.010953] pckbc1 at acpi0 (KBD, PNP0303) (kbd port): io 0x60,0x64 irq 1
+[     1.010953] pckbc2 at acpi0 (MOU, PNP0F13) (aux port): io 0x60,0x64 irq 12
+[     1.010953] com0 at acpi0 (COM1, PNP0501-1): io 0x3f8-0x3ff irq 4
+[     1.010953] com0: ns16550a, 16-byte FIFO
+[     1.010953] com0: console
+[     1.010953] com1 at acpi0 (COM2, PNP0501-2): io 0x2f8-0x2ff irq 3
+[     1.010953] com1: ns16550a, 16-byte FIFO
+[     1.010953] com2 at acpi0 (COM3, PNP0501-3): io 0x3e8-0x3ef irq 4
+[     1.010953] com2: ns16550a, 16-byte FIFO
+[     1.010953] com3 at acpi0 (COM4, PNP0501-4): io 0x2e8-0x2ef irq 3
+[     1.010953] com3: ns16550a, 16-byte FIFO
+[     1.010953] attimer1 at acpi0 (TIMR, PNP0100): io 0x40-0x43 irq 0
+[     1.010953] acpivmgenid0 at acpi0 (GENC, BHYVE_V_GEN_COUNTER_V1-0): ACPI VM Generation ID
+[     1.010953] acpivmgenid0: paddr=0xff000000
+[     1.010953] acpivmgenid0: initial: 137c0548edda1e1405f703fdb9576d42
+[     1.010953] ACPI: Enabled 1 GPEs in block 00 to 07
+[     1.010953] pckbd0 at pckbc1 (kbd slot)
+[     1.010953] pckbc1: using irq 1 for kbd slot
+[     1.010953] wskbd0 at pckbd0 mux 1
+[     1.010953] pms0 at pckbc1 (aux slot)
+[     1.010953] pckbc1: using irq 12 for aux slot
+[     1.010953] wsmouse0 at pms0 mux 0
+[     1.010953] pci0 at mainbus0 bus 0: configuration mode 1
+[     1.010953] pci0: i/o space, memory space enabled, rd/line, rd/mult, wr/inv ok
+[     1.010953] pchb0 at pci0 dev 0 function 0: Network Appliance product 1275 (rev. 0x00)
+[     1.010953] pcib0 at pci0 dev 1 function 0: Intel 82371SB (PIIX3) PCI-ISA Bridge (rev. 0x00)
+[     1.010953] virtio0 at pci0 dev 2 function 0
+[     1.010953] virtio0: block device (id 2, rev. 0x00)
+[     1.010953] ld0 at virtio0: features: 0x10002644<INDIRECT_DESC,DISCARD,TOPOLOGY,FLUSH,BLK_SIZE,SEG_MAX>
+[     1.010953] ld0: Unknown SIZE_MAX, assuming 65536
+[     1.010953] ld0: max 126 segs of max 65536 bytes
+[     1.010953] virtio0: allocated 270336 byte for virtqueue 0 for I/O request, size 128
+[     1.010953] virtio0: using 262144 byte (16384 entries) indirect descriptors
+[     1.010953] virtio0: config interrupting at msix0 vec 0
+[     1.010953] virtio0: queues interrupting at msix0 vec 1
+[     1.010953] ld0: 5120 MB, 2600 cyl, 64 head, 63 sec, 512 bytes/sect x 10485760 sectors (131072 bytes/physsect)
+[     1.010953] virtio1 at pci0 dev 3 function 0
+[     1.010953] virtio1: network device (id 1, rev. 0x00)
+[     1.010953] vioif0 at virtio1: features: 0x11010020<INDIRECT_DESC,NOTIFY_ON_EMPTY,STATUS,MAC>
+[     1.010953] vioif0: Ethernet address 00:00:5e:00:53:03
+[     1.010953] virtio1: allocated 65536 byte for virtqueue 0 for rx0, size 1024
+[     1.010953] virtio1: using 32768 byte (2048 entries) indirect descriptors
+[     1.010953] virtio1: allocated 65536 byte for virtqueue 1 for tx0, size 1024
+[     1.010953] virtio1: using 32768 byte (2048 entries) indirect descriptors
+[     1.010953] virtio1: config interrupting at msix1 vec 0
+[     1.010953] virtio1: queues interrupting at msix1 vec 1
+[     1.010953] virtio2 at pci0 dev 4 function 0
+[     1.010953] virtio2: entropy device (id 4, rev. 0x00)
+[     1.010953] viornd0 at virtio2: features: 0
+[     1.010953] virtio2: allocated 8192 byte for virtqueue 0 for Entropy request, size 64
+[     1.010953] virtio2: interrupting at ioapic0 pin 17
+[     1.010953] vga0 at pci0 dev 5 function 0: vendor fb5d product 40fb (rev. 0x00)
+[     1.010953] wsdisplay0 at vga0 kbdmux 1
+[     1.010953] wsmux1: connecting to wsdisplay0
+[     1.010953] pckbd_enable: command error
+[     1.010953] drm at vga0 not configured
+[     1.010953] xhci0 at pci0 dev 6 function 0: Intel 7 Series USB xHCI (rev. 0x00)
+[     1.010953] xhci0: 64-bit DMA
+[     1.010953] xhci0: interrupting at msi2 vec 0
+[     1.010953] xhci0: xHCI version 0.0 not known to be supported
+[     1.010953] usb0 at xhci0: USB revision 3.0
+[     1.010953] usb1 at xhci0: USB revision 2.0
+[     1.010953] isa0 at pcib0
+[     1.010953] timecounter: Timecounter "clockinterrupt" frequency 100 Hz quality 0
+[     1.010953] timecounter: Timecounter "TSC" frequency 3792902000 Hz quality 3000
+[     1.017855] uhub0 at usb0: NetBSD (0x0000) xHCI root hub (0x0000), class 9/0, rev 3.00/1.00, addr 0
+[     1.017855] uhub0: 4 ports with 4 removable, self powered
+[     1.017855] uhub1 at usb1: NetBSD (0x0000) xHCI root hub (0x0000), class 9/0, rev 2.00/1.00, addr 0
+[     1.017855] uhub1: 4 ports with 4 removable, self powered
+[     1.017855] ld0: GPT GUID: a0a0a0a0-0000-4000-8000-000000000009
+[     1.017855] dk0 at ld0: "examplebsdesp", 131072 blocks at 34, type: msdos
+[     1.017855] dk1 at ld0: "examplebsdroot", 8388608 blocks at 131106, type: ffs
+[     1.017855] IPsec: Initialized Security Association Processing.
+[     1.017855] swwdog0: software watchdog initialized
+[     1.017855] boot device: ld0
+[     1.017855] root on dk1
+[     1.017855] root file system type: ffs
+[     1.017855] kern.module.path=/stand/amd64/11.0/modules

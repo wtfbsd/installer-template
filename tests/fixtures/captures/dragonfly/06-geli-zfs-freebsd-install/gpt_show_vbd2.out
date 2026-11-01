@@ -1,0 +1,13 @@
+    start     size  index  contents
+        0        1      -  PMBR
+        1        1      -  Pri GPT header
+        2       32      -  Pri GPT table
+       34     2014      -  Unused
+     2048   532480      0  GPT part - EFI System
+   534528     1024      1  GPT part - 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+   535552     1024      -  Unused
+   536576  1048576      2  GPT part - FreeBSD Swap
+  1585152  5752832      3  GPT part - 516e7cba-6ecf-11d6-8ff8-00022d09712b
+  7337984     2015      -  Unused
+  7339999       32      -  Sec GPT table
+  7340031        1      -  Sec GPT header

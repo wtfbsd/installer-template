@@ -1,0 +1,6 @@
+=>     34  4194237    vtbd4  GPT  (2.0G)
+       34     2014           - free -  (1007K)
+     2048   524288  vtbd4p1  efi  (256M)
+   526336  1048576  vtbd4p2  linux-data  (512M)
+  1574912  2619359  vtbd4p3  linux-data  (1.2G)
+

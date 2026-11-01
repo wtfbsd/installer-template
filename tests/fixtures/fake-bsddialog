@@ -88,7 +88,7 @@ while [ $# -gt 0 ]; do
 			shift 2 || :
 			;;
 		--menu|--radiolist|--checklist|--inputbox|--passwordbox|--yesno|\
-		--nocheck|--msgbox|--gauge)
+		--nocheck|--msgbox|--gauge|--textbox)
 			widget=$1
 			shift
 			;;

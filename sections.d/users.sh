@@ -96,10 +96,10 @@ cmd_validate() {
 		bcrypt-2a) prefix='$2a$' ;;
 		*) prefix='$6$' ;;
 	esac
-	case "$(head -n 1 "${hashfile}")" in
-		"${prefix}"*) : ;;
-		*) die 2 "the password hash file holds no crypt hash in the scheme of the system (${prefix})" ;;
-	esac
+	# The whole file: one line, the whole crypt hash of the scheme (the
+	# root helper checks the same, lib/hashes.py).
+	python3 -I "${root}/lib/hashes.py" check "$(hash_scheme)" "${hashfile}" ||
+		die 2 "the password hash file holds no crypt hash in the scheme of the system (${prefix})"
 	if full=$(answers_get USER_FULLNAME) && [ -n "${full}" ]; then
 		full_name_valid "${full}" ||
 			die 2 'the full name may not hold a colon or a control character'
@@ -111,6 +111,21 @@ cmd_validate() {
 		ssh_key_file_valid "${keyfile}" ||
 			die 2 'the SSH key is not a public key of a known type'
 	fi
+	case "$(answers_get ROOT_MODE || printf 'locked')" in
+		locked) : ;;
+		password)
+			roothash=$(answers_get ROOT_HASHFILE) ||
+				die 2 'root needs a password hash file'
+			[ -s "${roothash}" ] || die 2 'the root password hash file is empty'
+			python3 -I "${root}/lib/hashes.py" check "$(hash_scheme)" "${roothash}" ||
+				die 2 'the root password hash file holds no crypt hash in the scheme of the system'
+			;;
+		*) die 2 'the root account is locked or has a password' ;;
+	esac
+	case "$(answers_get AUTOLOGIN || printf 'no')" in
+		yes|no) : ;;
+		*) die 2 'the automatic login is yes or no' ;;
+	esac
 	case "$(answers_get PRIVILEGE_PASSWORDLESS || printf 'no')" in
 		yes|no) : ;;
 		*) die 2 'the privilege setting is not known' ;;

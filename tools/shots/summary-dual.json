@@ -1,0 +1,40 @@
+[
+ {
+  "name": "summary-erase-windows-linux",
+  "page": "summary",
+  "full": true,
+  "disk_state": {
+   "mode": "erase",
+   "selected": [
+    "nda0"
+   ],
+   "usage": "together"
+  },
+  "state": {}
+ },
+ {
+  "name": "summary-erase-windows-linux-confirmed",
+  "page": "summary",
+  "full": false,
+  "disk_state": {
+   "mode": "erase",
+   "selected": [
+    "nda0"
+   ],
+   "usage": "together"
+  },
+  "state": {
+   "typed": "erase"
+  }
+ },
+ {
+  "name": "summary-alongside-windows-linux",
+  "page": "summary",
+  "full": false,
+  "disk_state": {
+   "mode": "alongside",
+   "region_gb": 100
+  },
+  "state": {}
+ }
+]

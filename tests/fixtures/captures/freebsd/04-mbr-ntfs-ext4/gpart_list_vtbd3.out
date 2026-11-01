@@ -1,0 +1,47 @@
+Geom name: vtbd3
+modified: false
+state: OK
+fwheads: 128
+fwsectors: 63
+last: 6291455
+first: 63
+entries: 4
+scheme: MBR
+Providers:
+1. Name: vtbd3s1
+   Mediasize: 1572864000 (1.5G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(1,MBR,0x5eed0004,0x800,0x2ee000)
+   attrib: active
+   rawtype: 7
+   length: 1572864000
+   offset: 1048576
+   type: ntfs
+   index: 1
+   end: 3074047
+   start: 2048
+2. Name: vtbd3s2
+   Mediasize: 1468006400 (1.4G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(2,MBR,0x5eed0004,0x2ee800,0x2bc000)
+   rawtype: 131
+   length: 1468006400
+   offset: 1573912576
+   type: linux-data
+   index: 2
+   end: 5941247
+   start: 3074048
+Consumers:
+1. Name: vtbd3
+   Mediasize: 3221225472 (3.0G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+

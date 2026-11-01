@@ -1,0 +1,14 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# A stand-in for gpt(8) show: prints the captured output of `gpt show DISK`
+# from the directory STUB_GPT_DIR (gpt_show_<disk>.out, as the captures of
+# tests/fixtures/captures name it).  Anything else fails.
+
+set -eu
+
+[ "${1:-}" = show ] || exit 1
+disk=${2:-}
+file="${STUB_GPT_DIR:-}/gpt_show_${disk}.out"
+[ -n "${STUB_GPT_DIR:-}" ] && [ -f "${file}" ] || exit 1
+cat "${file}"

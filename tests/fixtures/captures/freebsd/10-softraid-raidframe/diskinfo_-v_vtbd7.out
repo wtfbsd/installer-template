@@ -1,0 +1,12 @@
+vtbd7
+	512         	# sectorsize
+	1073741824  	# mediasize in bytes (1.0G)
+	2097152     	# mediasize in sectors
+	131072      	# stripesize
+	0           	# stripeoffset
+	            	# Disk descr.
+	BHYVE-0000-0000-0007	# Disk ident.
+	vtblk7      	# Attachment
+	Yes         	# TRIM/UNMAP support
+	Unknown     	# Rotation rate in RPM
+

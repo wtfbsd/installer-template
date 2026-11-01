@@ -31,10 +31,22 @@ os_disk_rows() {
 			cd[0-9]*|md[0-9]*|vn[0-9]*|fd[0-9]*) continue ;;
 		esac
 		disk_name_valid "${_d}" || continue
-		_size=$(dmesg_disk_size "${_d}") || _size=0
+		_size=$(dmesg_disk_size "${_d}") || _size=''
+		# virtio disks print no size in the kernel messages: gpt show
+		# lists every sector of a disk, with or without a table.
+		[ -n "${_size}" ] || _size=$(gpt_disk_size "${_d}") || _size=0
 		_descr=$(dmesg_disk_descr "${_d}") || _descr=''
 		printf '%s\t%s\t%s\n' "${_d}" "${_descr:-${_d}}" "${_size:-0}"
 	done
+}
+
+# gpt_disk_size <disk> — the size of a disk in bytes from gpt show: the
+# end of its last row (512 byte sectors).
+gpt_disk_size() {
+	gpt show "$1" 2>/dev/null | awk '
+		$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ { end = $1 + $2; if (end > max) max = end }
+		END { if (max > 0) printf "%.0f\n", max * 512; else exit 1 }
+	'
 }
 
 os_excluded_disks() {
@@ -43,6 +55,12 @@ os_excluded_disks() {
 		case "${_dev}" in
 			/dev/serno/*)
 				_link=$(readlink "${_dev%.s[0-9]*}" 2>/dev/null) || continue
+				_dev=${_link##*/}
+				;;
+			# The live system mounts its root by label (or by the
+			# uuid of the partition): devfs links to the device.
+			/dev/part-by-label/*|/dev/part-by-uuid/*|/dev/by-label/*|/dev/by-uuid/*)
+				_link=$(readlink "${_dev%%@*}" 2>/dev/null) || continue
 				_dev=${_link##*/}
 				;;
 		esac

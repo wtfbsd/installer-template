@@ -1,0 +1,31 @@
+    start     size  index  contents
+        0        1         PMBR
+        1        1         Pri GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000002
+        2       32         Pri GPT table
+       34        6         Unused
+       40     1024      1  GPT part - 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+                                 Type: unknown
+                                 TypeID: 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000011
+                                 Size: 512 K
+                                 Label: gptboot0
+                                 Attributes: None
+     1064  4194304      2  GPT part - FreeBSD UFS/UFS2
+                                 Type: fbsd-ufs
+                                 TypeID: 516e7cb6-6ecf-11d6-8ff8-00022d09712b
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000012
+                                 Size: 2048 M
+                                 Label: rootfs0
+                                 Attributes: None
+  4195368  1047472      3  GPT part - FreeBSD swap
+                                 Type: fbsd-swap
+                                 TypeID: 516e7cb5-6ecf-11d6-8ff8-00022d09712b
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000013
+                                 Size: 511 M
+                                 Label: swapfs0
+                                 Attributes: None
+  5242840        7         Unused
+  5242847       32         Sec GPT table
+  5242879        1         Sec GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000002

@@ -1,0 +1,7 @@
+[
+ {"name": "multi-question", "page": "disk", "full": false, "state": {"mode": "erase", "selected": ["ada0"]}},
+ {"name": "multi-together", "page": "disk", "full": true,
+  "state": {"mode": "erase", "usage": "together", "selected": ["ada0", "ada1"], "layout": "mirror", "data_disks": ["ada2"]}},
+ {"name": "multi-separate", "page": "disk", "full": true,
+  "state": {"mode": "erase", "usage": "separate", "selected": ["ada0"], "separate": {"ada1": "/home", "ada2": null}}}
+]

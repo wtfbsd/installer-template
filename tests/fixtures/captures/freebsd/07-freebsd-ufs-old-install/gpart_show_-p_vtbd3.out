@@ -1,0 +1,5 @@
+=>     40  5242800    vtbd3  GPT  (2.5G)
+       40     1024  vtbd3p1  freebsd-boot  (512K)
+     1064  4194304  vtbd3p2  freebsd-ufs  (2.0G)
+  4195368  1047472  vtbd3p3  freebsd-swap  (511M)
+

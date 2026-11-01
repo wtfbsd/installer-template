@@ -17,7 +17,7 @@ gui=$(cat "${root}/gui/README.md")
 agents=$(cat "${root}/AGENTS.md")
 
 for word in bin/installer-gui lib/wizard.py lib/passhash.py lib/adapter.sh \
-	install-into-stage.sh '<slug>-install -d DISK -u USER' 'PROGRESS <0-100>' \
+	install-into-stage.sh '<slug>-install -p PLANFILE | -d DISK' 'PROGRESS <0-100>' \
 	'## The live image' '## The graphical front end' hash-scheme USER_HASHFILE \
 	PRODUCT_LOGO MANIFEST 'Try the live desktop' 'bcrypt-2a' 'hw.disknames' \
 	'[-c FULLNAME] [-P]' 'IF:ADDR/MASK:GW' '^[a-z][a-z0-9]{0,14}$' setxkbmap \

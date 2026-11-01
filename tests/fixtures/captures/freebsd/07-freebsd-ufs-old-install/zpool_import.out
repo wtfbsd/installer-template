@@ -1,0 +1,8 @@
+  pool: tank
+    id: 10000000000000000001
+ state: ONLINE
+action: The pool can be imported using its name or numeric identifier.
+config:
+
+	tank        ONLINE
+	  vtbd1     ONLINE

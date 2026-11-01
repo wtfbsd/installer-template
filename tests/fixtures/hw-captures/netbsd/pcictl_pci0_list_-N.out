@@ -1,0 +1,7 @@
+000:00:0: Network Appliance product 1275 (host bridge) [pchb0]
+000:01:0: Intel 82371SB (PIIX3) PCI-ISA Bridge (ISA bridge) [pcib0]
+000:02:0: Qumranet Virtio Storage (SCSI mass storage, vendor-specific) [virtio0]
+000:03:0: Qumranet Virtio Network (ethernet network) [virtio1]
+000:04:0: Qumranet Virtio RNG Entropy (network/computing crypto) [virtio2]
+000:05:0: vendor fb5d product 40fb (VGA display) [vga0]
+000:06:0: Intel 7 Series USB xHCI (USB serial bus, xHCI) [xhci0]

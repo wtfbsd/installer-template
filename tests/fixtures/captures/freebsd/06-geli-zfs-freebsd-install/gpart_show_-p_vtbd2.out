@@ -1,0 +1,9 @@
+=>     40  7339952    vtbd2  GPT  (3.5G)
+       40     2008           - free -  (1004K)
+     2048   532480  vtbd2p1  efi  (260M)
+   534528     1024  vtbd2p2  freebsd-boot  (512K)
+   535552     1024           - free -  (512K)
+   536576  1048576  vtbd2p3  freebsd-swap  (512M)
+  1585152  5752832  vtbd2p4  freebsd-zfs  (2.7G)
+  7337984     2008           - free -  (1004K)
+

@@ -1,0 +1,19 @@
+# /dev/rsd8c:
+type: SCSI
+disk: SCSI disk
+label: SR RAID 1
+duid: d0d0000000000005
+flags:
+bytes/sector: 512
+sectors/track: 63
+tracks/cylinder: 255
+sectors/cylinder: 16065
+cylinders: 97
+total sectors: 1564047 # total bytes: 763.7M
+boundstart: 64
+boundend: 1564014
+
+16 partitions:
+#                size           offset  fstype [fsize bsize   cpg]
+  a:           763.6M               64  4.2BSD   2048 16384 12121 
+  c:           763.7M                0  unused                    

@@ -1,0 +1,48 @@
+[
+ {
+  "name": "disk-erase-1disk",
+  "page": "disk",
+  "full": true,
+  "state": {
+   "mode": "erase",
+   "selected": [
+    "nda0"
+   ],
+   "encrypt": true,
+   "passphrase": "correct horse battery 9"
+  }
+ },
+ {
+  "name": "disk-manual-1disk",
+  "page": "disk",
+  "full": true,
+  "state": {
+   "mode": "manual",
+   "partitions": [
+    {
+     "disk": "nda0",
+     "type": "efi",
+     "size_mb": 260,
+     "mount": "/boot/efi"
+    },
+    {
+     "disk": "nda0",
+     "type": "swap",
+     "size_mb": 8192
+    },
+    {
+     "disk": "nda0",
+     "type": "root",
+     "size_mb": 409600,
+     "mount": "/"
+    },
+    {
+     "disk": "nda0",
+     "type": "data",
+     "size_mb": 0,
+     "mount": "/home"
+    }
+   ]
+  }
+ }
+]

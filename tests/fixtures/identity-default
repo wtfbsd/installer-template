@@ -1,0 +1,7 @@
+# The identity of a release image of the default variant, as the build
+# writes it (/usr/local/share/<slug>/identity).
+PRODUCT=ExampleBSD
+VERSION=1.2
+BASE=FreeBSD 16.0
+VARIANT=default
+ARCH=amd64

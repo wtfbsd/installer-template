@@ -1,0 +1,4 @@
+[
+ {"name": "captured-netbsd-raid-type", "page": "type", "full": true, "state": {"mode": "erase"}},
+ {"name": "captured-netbsd-raid-disk", "page": "disk", "full": true, "disk_state": {"mode": "erase", "selected": ["ld6", "ld7"], "usage": "together"}, "state": {"mode": "erase", "selected": ["ld6", "ld7"], "usage": "together"}}
+]

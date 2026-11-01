@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- @NAME@ wordmark for dark backgrounds. Tokens are substituted by scripts/render.sh. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="@NAME@">
+  <title>@NAME@ wordmark (light)</title>
+  <g transform="translate(48,30) scale(0.535714)">
+    <rect x="0" y="0" width="448" height="448" rx="104" ry="104" fill="#@PRIMARY@"/>
+    <rect x="80" y="104" width="288" height="48" rx="24" ry="24" fill="#@LIGHT@"/>
+    <rect x="80" y="200" width="208" height="48" rx="24" ry="24" fill="#@ACCENT@"/>
+    <rect x="80" y="296" width="288" height="48" rx="24" ry="24" fill="#@LIGHT@"/>
+  </g>
+  <text x="352" y="193" font-family="DejaVu Sans, sans-serif" font-size="118" font-weight="bold" fill="#@LIGHT@">@NAME@</text>
+</svg>

@@ -1,0 +1,35 @@
+------------------------------------
+LABEL 0 
+------------------------------------
+    version: 5000
+    name: 'tank'
+    state: 1
+    txg: 24
+    pool_guid: 10000000000000000001
+    errata: 0
+    min_alloc: 512
+    max_alloc: 512
+    hostname: ''
+    top_guid: 1000000000000000002
+    guid: 1000000000000000002
+    vdev_children: 1
+    vdev_tree:
+        type: 'disk'
+        id: 0
+        guid: 1000000000000000002
+        top_guid: 1000000000000000002
+        path: '/dev/md0'
+        whole_disk: 1
+        rotational: 1
+        metaslab_array: 135
+        metaslab_shift: 26
+        ashift: 9
+        asize: 1605894144
+        min_alloc: 512
+        is_log: 0
+        create_txg: 4
+    features_for_read:
+        com.delphix:hole_birth
+        com.delphix:embedded_data
+        com.klarasystems:vdev_zaps_v2
+    labels = 0 1 2 3 
