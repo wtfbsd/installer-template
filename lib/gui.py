@@ -309,6 +309,10 @@ class InstallerWindow(Gtk.Window):
         import platform
         self.identity = identity.load(os.environ.get("INSTALLER_IDENTITY") or
                                       identity.path_for(self.wiz.slug))
+        if offscreen:
+            # A picture (--render, --smoke) shows the system it is drawn
+            # for: the BASE of a sample identity file never names another.
+            self.identity = identity.for_os(self.identity, self.wiz.os_name)
         uname = os.uname()
         self.identity_text = identity.line(
             self.identity, self.wiz.product, platform.machine(),
@@ -1985,6 +1989,21 @@ def render_reports(win, shot, page, state, outdir):
         write_report(outdir, shot, "encryption",
                      {"layout": dp.layout, "active": dp.enc_check.get_active(),
                       "sensitive": dp.enc_check.get_sensitive()})
+    if report == "usage":
+        dp = win.disk_page
+        if state.get("press_next"):
+            # Next before the question is answered, the way a person may.
+            win.act_next()
+        if state.get("choose"):
+            dp.usage_buttons[state["choose"]].set_active(True)
+        write_report(outdir, shot, "usage", {
+            "model": dp.usage,
+            "active": {k: b.get_active() for k, b in dp.usage_buttons.items()},
+            "sensitive": {k: b.get_sensitive() for k, b in dp.usage_buttons.items()},
+            "error": win.error_label.get_text(),
+            "layout_note": dp.layout_more.get_visible(),
+            "identity": win.identity_text,
+            "problems": list(dp.errors)})
     if report == "busy":
         # How the window lived through the slow probes of this shot.
         write_report(outdir, shot, "busy", win.busy_stats)

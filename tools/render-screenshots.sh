@@ -15,9 +15,12 @@
 #   tools/shots/docs-variant.json  the cyberpunk variant of the artwork
 #
 # Every picture carries the identity line in its lower left (product,
-# version, the BSD it shows, variant, architecture): the pictures show
-# FreeBSD 16.0 (tests/fixtures/identity-default, the cyberpunk ones
-# tests/fixtures/identity).
+# version, the BSD it shows, variant, architecture), from
+# tests/fixtures/identity-default (the cyberpunk ones tests/fixtures/identity).
+# The BSD is the one of the configuration the pictures are drawn for
+# (INSTALLER_CONF, else installer.conf: OS=openbsd shows OpenBSD 8.0), the
+# release of its template (RELEASE_BASES of lib/identity.py), whatever BASE
+# the sample identity file names.
 #
 # The PNGs are made smaller with optipng, oxipng or pngcrush when one of
 # them is installed.  Needs python3 with PyGObject (GTK 3) and broadwayd.

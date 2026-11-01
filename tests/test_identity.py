@@ -96,5 +96,21 @@ class ContrastTest(unittest.TestCase):
         self.assertEqual(brand.variant, "default")
 
 
+class ForOsTest(unittest.TestCase):
+    """A picture of the installer for one system never names another."""
+
+    def test_a_sample_base_of_another_system_is_replaced(self):
+        ident = {"PRODUCT": "ExampleBSD", "BASE": "FreeBSD 16.0", "ARCH": "amd64"}
+        for os_name, base in I.RELEASE_BASES.items():
+            with self.subTest(os_name):
+                self.assertEqual(I.for_os(ident, os_name)["BASE"],
+                                 "FreeBSD 16.0" if os_name == "freebsd" else base)
+
+    def test_a_base_of_the_same_system_is_kept(self):
+        ident = {"BASE": "OpenBSD 7.9"}
+        self.assertEqual(I.for_os(ident, "openbsd"), ident)
+        self.assertEqual(I.for_os({}, "netbsd")["BASE"], "NetBSD 11.0")
+
+
 if __name__ == "__main__":
     unittest.main()

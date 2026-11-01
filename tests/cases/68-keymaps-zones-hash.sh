@@ -101,7 +101,7 @@ import json, sys
 c = json.load(sys.stdin)["detail"]["capabilities"]
 print(" ".join(l["ident"] for l in c["layouts"]), "|", " ".join(c["modes"]), "|", c["data_pools"])')
 check "openbsd: the layouts, modes and data pools of its install command" \
-	"single raid1 crypto raid1c | erase | False" "${caps}"
+	"single raid1 crypto raid1c | erase | True" "${caps}"
 
 # The root helper refuses an OpenBSD plan with RAID 5.
 sub="${tmp}/submit"

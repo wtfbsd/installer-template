@@ -75,11 +75,13 @@ os_keymaps() {
 
 # os_layouts — what the install command of OpenBSD takes: whole disks,
 # single, softraid RAID 1, CRYPTO and RAID 1C; OpenBSD cannot start from a
-# softraid RAID 5.  Install alongside, manual partitions and data pools are
-# not offered yet.
+# softraid RAID 5.  Data disks (a plan's data[]: each disk its own FFS on
+# its mount point) are made by the install command, so the disks can be
+# used separately.  Install alongside and manual partitions are not offered
+# yet.
 os_layouts() {
 	cat <<'JSON'
-{"modes": ["erase"], "data_pools": false, "not_offered": "not offered on OpenBSD yet",
+{"modes": ["erase"], "data_pools": true, "not_offered": "not offered on OpenBSD yet",
  "encryption": "softraid CRYPTO", "filesystems": [["ffs", "FFS"]],
  "layouts": [
   {"ident": "single", "title": "Single disk", "min_disks": 1, "max_disks": 1},

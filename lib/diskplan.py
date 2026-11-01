@@ -143,7 +143,8 @@ SYSTEMS: Dict[str, dict] = {
         "encryption": "softraid CRYPTO",
         "boot": ("uefi", "bios"),
         "modes": ("erase",),
-        "data_pools": False,
+        # The install command makes each data disk its own FFS.
+        "data_pools": True,
         "not_offered": "not offered on OpenBSD yet",
     },
     "dragonfly": {
