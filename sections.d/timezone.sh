@@ -10,12 +10,30 @@ root=$(CDPATH= cd "${here}/.." && pwd)
 . "${root}/lib/backend.sh"
 . "${root}/lib/config.sh"
 
+TAB=$(printf '\t')
+
 verb=${1:-}
 if [ $# -ge 1 ]; then
 	shift
 fi
 
+# The zones the section offers when the adapter has no list of its own.
 ZONES='UTC America/New_York Europe/London Europe/Berlin Asia/Tokyo'
+
+OS=$(config_value OS) || exit 2
+
+# zone_rows — "name<TAB>description" for every zone: the list of the
+# adapter (the zone table of the system), or the list above.
+zone_rows() {
+	_rows=$(adapter_cmd timezones 2>/dev/null) || _rows=''
+	if [ -z "${_rows}" ]; then
+		for _z in ${ZONES}; do
+			printf '%s\t%s\n' "${_z}" "$(zone_descr "${_z}")"
+		done
+		return 0
+	fi
+	printf '%s\n' "${_rows}"
+}
 
 zone_descr() {
 	case "$1" in
@@ -26,17 +44,21 @@ zone_descr() {
 
 cmd_probe() {
 	default=$(config_value DEFAULT_TZ) || exit 2
-	case " ${ZONES} " in
-		*" ${default} "*) : ;;
-		*) ZONES="${default} ${ZONES}" ;;
-	esac
+	rows=$(zone_rows)
 	printf '{"section":"timezone","default":"%s","zones":[' "${default}"
 	first=1
-	for zone in ${ZONES}; do
+	if ! printf '%s\n' "${rows}" | cut -f1 | grep -Fxq -- "${default}"; then
+		printf '{"name":"%s","descr":"%s"}' "${default}" \
+			"$(json_escape "$(zone_descr "${default}")")"
+		first=0
+	fi
+	printf '%s\n' "${rows}" | while IFS="${TAB}" read -r name descr; do
+		[ -n "${name}" ] || continue
 		[ "${first}" -eq 1 ] || printf ','
 		first=0
 		printf '{"name":"%s","descr":"%s"}' \
-			"${zone}" "$(json_escape "$(zone_descr "${zone}")")"
+			"$(json_escape "$(sanitize_text "${name}")")" \
+			"$(json_escape "$(sanitize_text "${descr:-${name}}")")"
 	done
 	printf ']}\n'
 }
@@ -44,16 +66,9 @@ cmd_probe() {
 cmd_validate() {
 	zone=$(answers_get TIMEZONE) || die 2 'no time zone was chosen'
 	default=$(config_value DEFAULT_TZ) || exit 2
-	case " ${ZONES} " in
-		*" ${zone} "*) : ;;
-		*)
-			if [ "${zone}" = "${default}" ]; then
-				:
-			else
-				die 2 "the time zone '${zone}' is not known"
-			fi
-			;;
-	esac
+	[ "${zone}" = "${default}" ] && return 0
+	zone_rows | cut -f1 | grep -Fxq -- "${zone}" ||
+		die 2 "the time zone '${zone}' is not known"
 }
 
 cmd_apply() {

@@ -27,6 +27,7 @@
 set -eu
 
 here=$(CDPATH= cd "$(dirname "$0")" && pwd)
+. "${here}/../lib/rootguard.sh"
 root=${INSTALLER_ROOT:-$(CDPATH= cd "${here}/.." && pwd)}
 libexec=${INSTALLER_LIBEXEC:-${root}/sections.d}
 

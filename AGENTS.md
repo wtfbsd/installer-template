@@ -7,8 +7,10 @@ What this repository is, and the rules for changing it.
 ## What this is
 
 A generic, overlay-configurable BSD installer.  A section dispatch backend in
-POSIX sh, a `bsddialog(1)` text front end, a pure answer-gating module in
-Python 3 and per-OS adapter seams.  The product is a variable: the shipped
+POSIX sh, a `bsddialog(1)` text front end, a GTK 3 graphical front end
+(`bin/installer-gui`, its logic in `lib/wizard.py`), a pure answer-gating
+module in Python 3, per-OS adapters that run the install command of the
+template, and `install-into-stage.sh` for live images.  The product is a variable: the shipped
 configuration calls the product ExampleBSD.
 
 Read `README.md` for the backend contract, the adapter contract and the UX
@@ -23,8 +25,10 @@ rules.
 3. The sections in `sections.d/` are generic.  A section reads the answers,
    calls the adapter and prints JSON.  It never runs a system command
    itself.
-4. The front end in `bin/installer-tui` never installs anything itself.  It
-   drives the backend and writes the answers.
+4. The front ends (`bin/installer-tui`, `bin/installer-gui`) never install
+   anything themselves.  They drive the backend and write the answers.  A
+   decision of the graphical front end lives in `lib/wizard.py`, which
+   imports no GTK, so it is tested without a display.
 5. A conditional field is gated in `lib/gating.py` only.  The front end may
    hide a field, but the gate decides what reaches the answers file.
 6. The configuration file is parsed, never sourced.  No value is ever
@@ -33,6 +37,22 @@ rules.
    with `set -eu`, quoted expansions and no `eval`.
 8. A destructive command goes through the guarded `rmrf` helper.  It
    refuses an empty path and a path outside its root.
+9. The password never reaches a command line or a file.  Both front ends
+   hash it in process (`lib/passhash.py`, the password on standard input)
+   and write only the hash file (0600 in a 0700 directory), which the
+   answer `USER_HASHFILE` names and the install command gets.
+10. Only the root helper (`bin/installer-apply`, `lib/apply.py`) runs as
+    root.  The front ends run as the user and refuse root for GTK.  The
+    helper accepts its fixed verbs only, replaces its environment as root,
+    reads the directory of the front end with `O_NOFOLLOW` and checks every
+    answer again before it installs.  An override of the environment is
+    never honoured for root (`lib/rootguard.sh`, sourced first by every
+    script).  The doas or sudo rule names the helper and nothing else.
+11. Every Python runs as `python3 -I`; no `#!` line starts Python; no
+    perl, ruby, `awk -f` or relative sourcing.  The helper sets its own
+    `PATH` before it runs any command, is root only when `/usr/bin/id -u`
+    says 0, and leaves the directory of the caller (`cd /`) as root.  The installed tree belongs
+    to root: as root by chown, without root through `--metalog`.
 
 ## How to build
 

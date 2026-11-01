@@ -48,6 +48,8 @@ address_ok() {
 	case "$1" in
 		127.0.0.1) return 0 ;;
 		192.0.2.*|198.51.100.*|203.0.113.*) return 0 ;;
+		# A netmask names no machine.
+		255.255.255.*|255.255.0.0|255.0.0.0|0.0.0.0) return 0 ;;
 		::1|::) return 0 ;;
 		2001:db8:*) return 0 ;;
 	esac

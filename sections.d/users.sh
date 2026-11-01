@@ -5,8 +5,8 @@
 # password unless the installer is told that privileged access is passwordless.
 #
 # The section checks the answers and it does not make the account: the
-# install step makes the account and it reads the password file that the
-# answer USER_PASSFILE names.
+# install step makes the account from the crypt hash in the file that the
+# answer USER_HASHFILE names.
 
 set -eu
 
@@ -23,8 +23,51 @@ fi
 
 OS=$(config_value OS) || exit 2
 
+# hash_scheme — the crypt scheme the system accepts, from the adapter.
+# SHA-512 crypt when the adapter does not say.
+hash_scheme() {
+	_scheme=$(adapter_cmd hash-scheme 2>/dev/null) || _scheme=''
+	case "${_scheme}" in
+		sha512|bcrypt|bcrypt-2a) printf '%s\n' "${_scheme}" ;;
+		*) printf 'sha512\n' ;;
+	esac
+}
+
 cmd_probe() {
-	printf '{"section":"users","users":[],"privilege":"password"}\n'
+	printf '{"section":"users","users":[],"privilege":"password","hash_scheme":"%s"}\n' \
+		"$(hash_scheme)"
+}
+
+# hostname_valid <name> — a host name of labels of letters, digits and
+# dashes, separated by dots; a label neither starts nor ends with a dash.
+hostname_valid() {
+	[ "${#1}" -le 253 ] || return 1
+	printf '%s\n' "$1" | grep -Eq -- \
+		'^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$'
+}
+
+# full_name_valid <text> — printable text without a colon (the separator
+# of the account files), at most 64 characters.
+full_name_valid() {
+	[ "${#1}" -le 64 ] || return 1
+	case "$1" in
+		*:*) return 1 ;;
+	esac
+	_clean=$(printf '%s' "$1" | LC_ALL=C tr -d '[:cntrl:]')
+	[ "${_clean}" = "$1" ]
+}
+
+# ssh_key_file_valid <file> — every line that is not empty and not a
+# comment is a public key of a known type.
+ssh_key_file_valid() {
+	[ -f "$1" ] || return 1
+	[ -s "$1" ] || return 1
+	awk '
+		/^[ \t]*(#|$)/ { next }
+		$1 ~ /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh[.]com)$/ && $2 ~ /^[A-Za-z0-9+\/]+=*$/ { keys++; next }
+		{ bad = 1 }
+		END { exit (bad || keys == 0) ? 1 : 0 }
+	' "$1"
 }
 
 cmd_validate() {
@@ -35,16 +78,39 @@ cmd_validate() {
 	fi
 	user_name_valid "${name}" || die 2 "the user name '${name}' cannot be used"
 	auth=$(answers_get USER_AUTH) || auth=''
+	# The install command of the contract needs the hash of a password:
+	# an account without a password cannot be installed.
 	case "${auth}" in
-		password)
-			passfile=$(answers_get USER_PASSFILE) ||
-				die 2 'the account needs a password file'
-			[ -f "${passfile}" ] || die 2 'the password file is not there'
-			[ -s "${passfile}" ] || die 2 'the password of the account is empty'
-			;;
-		none) : ;;
+		password) : ;;
+		none) die 2 'the account needs a password' ;;
 		*) die 2 'the account authentication is not known' ;;
 	esac
+	# Both front ends write the crypt hash of the password and never the
+	# password itself.  The hash has to be in the scheme of the system.
+	hashfile=$(answers_get USER_HASHFILE) ||
+		die 2 'the account needs a password hash file'
+	[ -f "${hashfile}" ] || die 2 'the password hash file is not there'
+	[ -s "${hashfile}" ] || die 2 'the password hash file is empty'
+	case "$(hash_scheme)" in
+		bcrypt) prefix='$2b$' ;;
+		bcrypt-2a) prefix='$2a$' ;;
+		*) prefix='$6$' ;;
+	esac
+	case "$(head -n 1 "${hashfile}")" in
+		"${prefix}"*) : ;;
+		*) die 2 "the password hash file holds no crypt hash in the scheme of the system (${prefix})" ;;
+	esac
+	if full=$(answers_get USER_FULLNAME) && [ -n "${full}" ]; then
+		full_name_valid "${full}" ||
+			die 2 'the full name may not hold a colon or a control character'
+	fi
+	if host=$(answers_get HOSTNAME) && [ -n "${host}" ]; then
+		hostname_valid "${host}" || die 2 "the host name '${host}' cannot be used"
+	fi
+	if keyfile=$(answers_get SSH_KEYFILE) && [ -n "${keyfile}" ]; then
+		ssh_key_file_valid "${keyfile}" ||
+			die 2 'the SSH key is not a public key of a known type'
+	fi
 	case "$(answers_get PRIVILEGE_PASSWORDLESS || printf 'no')" in
 		yes|no) : ;;
 		*) die 2 'the privilege setting is not known' ;;
@@ -62,8 +128,8 @@ cmd_validate() {
 	fi
 }
 
-# cmd_apply — the section makes no account.  The install step makes it and
-# it reads the password file that the answer USER_PASSFILE names.
+# cmd_apply — the section makes no account.  The install step makes it from
+# the hash file that the answer USER_HASHFILE names.
 cmd_apply() {
 	printf 'users: the account is made by the install step\n'
 }

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for setxkbmap(1): it writes its arguments, one call per
+# line, to the file STUB_SETXKBMAP_LOG names, and refuses a call without a
+# layout the way the real tool does.
+
+[ $# -ge 1 ] || exit 1
+case "$1" in
+	-*) exit 1 ;;
+esac
+if [ -n "${STUB_SETXKBMAP_LOG:-}" ]; then
+	printf '%s\n' "$*" >> "${STUB_SETXKBMAP_LOG}"
+fi
+exit 0

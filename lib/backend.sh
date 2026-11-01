@@ -1,7 +1,11 @@
 # Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
 #
 # Shared helpers for the backend, the sections and the adapters.  Every script
-# that uses this file sets "root" to the repository root first.
+# that uses this file sets "root" to the repository root first, from its own
+# place.
+#
+# The overrides of the environment are dropped for root first.
+. "${root}/lib/rootguard.sh"
 
 # die <exit code> <message...> — stop with a message on standard error.
 die() {

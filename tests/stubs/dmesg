@@ -1,0 +1,10 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for dmesg(8): it prints the file STUB_DMESG names, or
+# nothing.
+
+if [ -n "${STUB_DMESG:-}" ] && [ -f "${STUB_DMESG}" ]; then
+	cat "${STUB_DMESG}"
+fi
+exit 0

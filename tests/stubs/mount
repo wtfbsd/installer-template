@@ -5,6 +5,9 @@
 # in the columns of the real tool: the device, the mount point, the type of
 # the file system, the options, the number of dumps and the pass number.
 #
+# Without an option it prints the table the way NetBSD, OpenBSD and
+# DragonFly print it: "<device> on <mount point> type <type> (<options>)".
+#
 # Environment:
 #   STUB_MOUNTS  the file that holds the lines of the mount table
 
@@ -16,6 +19,14 @@ case "${1:-}" in
 			exit 0
 		fi
 		printf '/dev/ada0p3 / ufs rw 0 0\n'
+		;;
+	'')
+		file=${STUB_MOUNTS:-}
+		if [ -n "${file}" ] && [ -f "${file}" ]; then
+			awk '{ printf "%s on %s type %s (%s)\n", $1, $2, $3, $4 }' "${file}"
+			exit 0
+		fi
+		printf '/dev/wd0a on / type ffs (local)\n'
 		;;
 	*) exit 1 ;;
 esac

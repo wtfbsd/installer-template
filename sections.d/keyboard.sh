@@ -10,12 +10,32 @@ root=$(CDPATH= cd "${here}/.." && pwd)
 . "${root}/lib/backend.sh"
 . "${root}/lib/config.sh"
 
+TAB=$(printf '\t')
+
 verb=${1:-}
 if [ $# -ge 1 ]; then
 	shift
 fi
 
+# The layouts the section offers when the adapter has no list of its own
+# (a rehearsal without KEYMAPS, or a system whose adapter is not written).
 LAYOUTS='us gb de fr es'
+
+OS=$(config_value OS) || exit 2
+
+# layout_rows — "name<TAB>description" for every layout: the list of the
+# adapter, or the list above.  The configured default comes first when it
+# is not in the list.
+layout_rows() {
+	_rows=$(adapter_cmd keymaps 2>/dev/null) || _rows=''
+	if [ -z "${_rows}" ]; then
+		for _l in ${LAYOUTS}; do
+			printf '%s\t%s\n' "${_l}" "$(layout_descr "${_l}")"
+		done
+		return 0
+	fi
+	printf '%s\n' "${_rows}"
+}
 
 layout_descr() {
 	case "$1" in
@@ -30,17 +50,21 @@ layout_descr() {
 
 cmd_probe() {
 	default=$(config_value DEFAULT_KEYMAP) || exit 2
-	case " ${LAYOUTS} " in
-		*" ${default} "*) : ;;
-		*) LAYOUTS="${default} ${LAYOUTS}" ;;
-	esac
+	rows=$(layout_rows)
 	printf '{"section":"keyboard","default":"%s","layouts":[' "${default}"
 	first=1
-	for layout in ${LAYOUTS}; do
+	if ! printf '%s\n' "${rows}" | cut -f1 | grep -Fxq -- "${default}"; then
+		printf '{"name":"%s","descr":"%s"}' "${default}" \
+			"$(json_escape "$(layout_descr "${default}")")"
+		first=0
+	fi
+	printf '%s\n' "${rows}" | while IFS="${TAB}" read -r name descr; do
+		[ -n "${name}" ] || continue
 		[ "${first}" -eq 1 ] || printf ','
 		first=0
 		printf '{"name":"%s","descr":"%s"}' \
-			"${layout}" "$(json_escape "$(layout_descr "${layout}")")"
+			"$(json_escape "$(sanitize_text "${name}")")" \
+			"$(json_escape "$(sanitize_text "${descr:-${name}}")")"
 	done
 	printf ']}\n'
 }
@@ -48,16 +72,9 @@ cmd_probe() {
 cmd_validate() {
 	layout=$(answers_get KEYMAP) || die 2 'no keyboard layout was chosen'
 	default=$(config_value DEFAULT_KEYMAP) || exit 2
-	case " ${LAYOUTS} " in
-		*" ${layout} "*) : ;;
-		*)
-			if [ "${layout}" = "${default}" ]; then
-				:
-			else
-				die 2 "the keyboard layout '${layout}' is not known"
-			fi
-			;;
-	esac
+	[ "${layout}" = "${default}" ] && return 0
+	layout_rows | cut -f1 | grep -Fxq -- "${layout}" ||
+		die 2 "the keyboard layout '${layout}' is not known"
 }
 
 cmd_apply() {

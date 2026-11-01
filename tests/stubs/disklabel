@@ -1,0 +1,21 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for disklabel(8) of NetBSD and OpenBSD.  "disklabel <disk>"
+# prints the header of the label with the lines "bytes/sector:" and "total
+# sectors:" the real tool prints.
+#
+# Environment:
+#   STUB_DISK_INFO  the file that holds "name<TAB>description<TAB>bytes"
+#                   lines; a disk that is not in it has no label
+
+disk=${1:-}
+[ -n "${disk}" ] || exit 1
+file=${STUB_DISK_INFO:-}
+[ -n "${file}" ] && [ -f "${file}" ] || exit 1
+size=$(awk -F '\t' -v d="${disk}" '$1 == d { print $3; exit }' "${file}")
+[ -n "${size}" ] || exit 1
+printf '# /dev/r%sc:\n' "${disk}"
+printf 'type: SCSI\ndisk: SCSI disk\nlabel: fictitious\n'
+printf 'bytes/sector: 512\nsectors/track: 63\ntracks/cylinder: 255\n'
+printf 'total sectors: %s\n' "$((size / 512))"

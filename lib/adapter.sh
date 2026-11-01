@@ -1,0 +1,636 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The part of an adapter that is the same on every system.  An adapter sets
+# "root", sources lib/backend.sh, lib/config.sh and this file, defines its
+# hooks and calls adapter_main "$@".
+#
+# The hooks of a system:
+#
+#   os_disk_rows                 print "name<TAB>description<TAB>bytes" for
+#                                every disk of the machine
+#   os_excluded_disks <names>    print the names of the disks that must not
+#                                be written to (the running system and the
+#                                installation media), separated by spaces
+#   os_interfaces                print the names of the network adapters,
+#                                one per line
+#   os_keymaps                   print "name<TAB>description" for every
+#                                keyboard layout the system knows
+#   os_hash_scheme               print the crypt scheme the system accepts
+#                                (sha512, bcrypt or bcrypt-2a)
+#
+# Operations (the adapter contract of README.md):
+#
+#   disks, network, apply-disk, verify-disk, apply-install, verify-install,
+#   target-root, keymaps, timezones, hash-scheme
+#
+# The installation itself is done by the install command of the template,
+# "<PRODUCT_SLUG>-install" (or INSTALLER_INSTALL_COMMAND):
+#
+#   <slug>-install -d DISK -u USER [-k PUBKEYFILE] -H HASHFILE [-n HOSTNAME]
+#                  [-z TIMEZONE] [-K KEYMAP] [-c FULLNAME] [-P]
+#                  [-N IF:ADDR/MASK:GW | -N IF:dhcp] -y --progress
+#
+# It prints "PROGRESS <0-100> <message>" lines and "ERROR <message>" before
+# a non-zero exit.  The adapter passes those lines on unchanged.
+
+. "${root}/lib/ipv4.sh"
+
+TAB=$(printf '\t')
+
+# The path the installation media is mounted on.
+media_mount=${INSTALLER_MEDIA_MOUNT:-/mnt}
+
+# The file that holds the mark of a rehearsal that failed once.  It lives in
+# the state directory of the run, so a retry of the same run succeeds.  A
+# run without a state directory gets a directory of its own that is gone
+# when the run ends: a mark that outlives its run would make a later
+# rehearsal succeed when it has to fail.
+tmp_root=${TMPDIR:-/tmp}
+fail_marker_dir=''
+fail_marker=''
+
+work=''
+kept=''
+
+# cleanup — the files of the run and the directory of the mark are gone when
+# the run ends.
+cleanup() {
+	if [ -n "${work:-}" ]; then
+		rm -f -- "${work}" 2>/dev/null || :
+	fi
+	if [ -n "${kept:-}" ]; then
+		rm -f -- "${kept}" 2>/dev/null || :
+	fi
+	if [ -n "${fail_marker_dir}" ]; then
+		rmrf "${fail_marker_dir}" "${tmp_root}" || :
+	fi
+	return 0
+}
+
+# setup_fail_marker — where the mark of a rehearsal that failed once lives.
+setup_fail_marker() {
+	if [ -n "${INSTALLER_STATE_DIR:-}" ]; then
+		fail_marker=${INSTALLER_STATE_DIR}/install-failed-once
+	else
+		fail_marker_dir=$(mktemp -d "${tmp_root}/wtfbsd-fail-marker.XXXXXX") ||
+			die 3 'cannot create the directory of the mark of the rehearsal'
+		fail_marker=${fail_marker_dir}/install-failed-once
+	fi
+}
+
+# rehearsal_file — the file that holds the hardware of a rehearsal: the one
+# the environment names, or rehearsal.conf next to the configuration file.
+rehearsal_file() {
+	# A rehearsal is never carried out as root: root installs for real.
+	if installer_is_root; then
+		return 1
+	fi
+	if [ -n "${INSTALLER_ADAPTER_FIXTURE:-}" ]; then
+		printf '%s\n' "${INSTALLER_ADAPTER_FIXTURE}"
+		return 0
+	fi
+	_conf=$(config_file) || return 1
+	_dir=${_conf%/*}
+	[ "${_dir}" != "${_conf}" ] || _dir=.
+	if [ -f "${_dir}/rehearsal.conf" ]; then
+		printf '%s\n' "${_dir}/rehearsal.conf"
+		return 0
+	fi
+	return 1
+}
+
+# fixture_items <key> — the items of a fixture key, one per line, as
+# "name<TAB>description<TAB>size in bytes".
+fixture_items() {
+	_value=$(kv_get "${rehearsal}" "$1") || _value=''
+	printf '%s' "${_value}" | awk '
+		BEGIN { OFS = "\t" }
+		{
+			count = split($0, items, ",")
+			for (i = 1; i <= count; i++) {
+				item = items[i]
+				gsub(/^[ \t]+|[ \t]+$/, "", item)
+				if (item == "") continue
+				parts = split(item, fields, "|")
+				name = fields[1]
+				descr = name
+				if (parts > 1 && fields[2] != "") descr = fields[2]
+				size = 0
+				if (parts > 2 && fields[3] ~ /^[0-9]+$/) size = fields[3]
+				print name, descr, size
+			}
+		}
+	'
+}
+
+# emit_item <name> <descr> <size> — one JSON object.  The text comes from the
+# machine and is reduced to printable ASCII without a quote and without a
+# backslash first.
+emit_item() {
+	_name=$(sanitize_text "$1")
+	_descr=$(sanitize_text "$2")
+	[ -n "${_descr}" ] || _descr=${_name}
+	case "${3:-}" in
+		''|*[!0-9]*) _size=0 ;;
+		*) _size=$3 ;;
+	esac
+	printf '{"name":"%s","descr":"%s","size_bytes":%s}' \
+		"${_name}" "${_descr}" "${_size}"
+}
+
+# emit_items <file> — the JSON array of the "name<TAB>descr<TAB>size" lines.
+emit_items() {
+	_first=1
+	printf '['
+	while IFS="${TAB}" read -r _n _d _s; do
+		[ -n "${_n}" ] || continue
+		[ "${_first}" -eq 1 ] || printf ','
+		_first=0
+		emit_item "${_n}" "${_d}" "${_s}"
+	done < "$1"
+	printf ']\n'
+}
+
+# device_disk_prefix <device> <disks> — the disk of the list that holds the
+# device: the disk itself or a disk followed by a partition or slice suffix
+# (wd0a, sd0a, da0s1d, ada0p3).  A disk name is never followed by a digit,
+# so sd1 is never taken for a part of sd10.
+device_disk_prefix() {
+	_dev=${1#/dev/}
+	_dev=${_dev#r}
+	_dev=${_dev%%@*}
+	for _cand in $2; do
+		case "${_dev}" in
+			"${_cand}") printf '%s\n' "${_cand}"; return 0 ;;
+			"${_cand}"[!0-9]*) printf '%s\n' "${_cand}"; return 0 ;;
+		esac
+	done
+	# The device may be named without the leading r of a raw device.
+	_dev=${1#/dev/}
+	for _cand in $2; do
+		case "${_dev}" in
+			"${_cand}"|"${_cand}"[!0-9]*) printf '%s\n' "${_cand}"; return 0 ;;
+		esac
+	done
+	return 1
+}
+
+# mounted_device <path> — the device that mount(8) shows on the path, from
+# the "<device> on <path> type ..." lines that NetBSD, OpenBSD and DragonFly
+# print.
+mounted_device() {
+	mount 2>/dev/null | awk -v want="$1" '$2 == "on" && $3 == want { print $1; exit }'
+}
+
+# dmesg_text — the kernel messages: the running buffer and the boot copy.
+dmesg_text() {
+	dmesg 2>/dev/null || :
+	cat "${INSTALLER_DMESG_BOOT:-/var/run/dmesg.boot}" 2>/dev/null || :
+}
+
+# dmesg_disk_descr <name> — the model of the disk in the kernel messages:
+# "sd0 at scsibus1 ...: <ATA, Model, 1.0>" or "wd0: <Model>".
+dmesg_disk_descr() {
+	dmesg_text | awk -v d="$1" '
+		index($0, d ":") == 1 || index($0, d " at ") == 1 {
+			s = index($0, "<"); e = index($0, ">")
+			if (s > 0 && e > s) { print substr($0, s + 1, e - s - 1); exit }
+		}
+	'
+}
+
+# dmesg_disk_size <name> — the size of the disk in bytes from the kernel
+# messages.  The systems write it in three ways:
+#   da0: 20480MB (41943040 512 byte sectors)                  DragonFly
+#   wd0: 20 GB, ..., 512 bytes/sect x 41943040 sectors       NetBSD
+#   sd0: 20480MB, 512 bytes/sector, 41943040 sectors          OpenBSD
+dmesg_disk_size() {
+	dmesg_text | awk -v d="$1" '
+		index($0, d ":") != 1 { next }
+		match($0, /\([0-9]+ [0-9]+ byte sectors/) {
+			split(substr($0, RSTART + 1, RLENGTH - 1), f, " ")
+			printf "%.0f\n", f[1] * f[2]; exit
+		}
+		match($0, /[0-9]+ bytes\/sect x [0-9]+ sectors/) {
+			split(substr($0, RSTART, RLENGTH), f, " ")
+			printf "%.0f\n", f[1] * f[4]; exit
+		}
+		match($0, /[0-9]+ bytes\/sector, [0-9]+ sectors/) {
+			split(substr($0, RSTART, RLENGTH), f, " ")
+			printf "%.0f\n", f[1] * f[3]; exit
+		}
+	'
+}
+
+# disklabel_size <name> — the size in bytes from disklabel(8) (NetBSD,
+# OpenBSD): the "bytes/sector:" and "total sectors:" lines.
+disklabel_size() {
+	disklabel "$1" 2>/dev/null | awk '
+		/^bytes\/sector:/ { b = $2 }
+		/^total sectors:/ { s = $3 }
+		END { if (b > 0 && s > 0) printf "%.0f\n", b * s }
+	'
+}
+
+# keymap_descr <name> — the name of the country of a layout.
+keymap_descr() {
+	_k=${1%.kbd}
+	_k=${_k%%.*}
+	case "${_k}" in
+		us) printf 'United States\n' ;;
+		uk|gb) printf 'United Kingdom\n' ;;
+		de|german) printf 'Germany\n' ;;
+		sg) printf 'Switzerland (German)\n' ;;
+		fr|french) printf 'France\n' ;;
+		es|spanish) printf 'Spain\n' ;;
+		it|italian) printf 'Italy\n' ;;
+		pt|portuguese) printf 'Portugal\n' ;;
+		br) printf 'Brazil\n' ;;
+		ch|swiss) printf 'Switzerland\n' ;;
+		sf) printf 'Switzerland (French)\n' ;;
+		be|belgian) printf 'Belgium\n' ;;
+		nl|dutch) printf 'Netherlands\n' ;;
+		dk|danish) printf 'Denmark\n' ;;
+		fi|finnish) printf 'Finland\n' ;;
+		no|norwegian) printf 'Norway\n' ;;
+		se|sv|swedish) printf 'Sweden\n' ;;
+		pl|polish) printf 'Poland\n' ;;
+		cz|czech) printf 'Czech Republic\n' ;;
+		hu|hungarian) printf 'Hungary\n' ;;
+		ru|russian) printf 'Russia\n' ;;
+		ua|ukrainian) printf 'Ukraine\n' ;;
+		jp|jp106|japanese) printf 'Japan\n' ;;
+		tr|turkish) printf 'Turkey\n' ;;
+		gr|greek) printf 'Greece\n' ;;
+		is|icelandic) printf 'Iceland\n' ;;
+		la|latinamerican) printf 'Latin America\n' ;;
+		*) printf '%s\n' "$1" ;;
+	esac
+}
+
+# keymap_rows <names...> — "name<TAB>description" for every name.
+keymap_rows() {
+	for _k in "$@"; do
+		printf '%s\t%s\n' "${_k}" "$(keymap_descr "${_k}")"
+	done
+}
+
+# keymap_dir_rows <dir> <suffix> — the layouts of a directory of keymap
+# files, the suffix removed.  Fails when the directory has none.
+keymap_dir_rows() {
+	[ -d "$1" ] || return 1
+	_found=0
+	for _f in "$1"/*"$2"; do
+		[ -f "${_f}" ] || continue
+		_n=${_f##*/}
+		_n=${_n%"$2"}
+		printf '%s\n' "${_n}" | grep -Eq '^[A-Za-z0-9._-]{1,32}$' || continue
+		printf '%s\t%s\n' "${_n}" "$(keymap_descr "${_n}")"
+		_found=1
+	done
+	[ "${_found}" -eq 1 ]
+}
+
+# zone_rows — "name<TAB>description" for the time zones of the system, from
+# zone1970.tab or zone.tab of the zoneinfo directory.  UTC comes first.
+zone_rows() {
+	_zi=${INSTALLER_ZONEINFO:-/usr/share/zoneinfo}
+	_tab=''
+	for _t in "${_zi}/zone1970.tab" "${_zi}/zone.tab"; do
+		if [ -f "${_t}" ]; then
+			_tab=${_t}
+			break
+		fi
+	done
+	[ -n "${_tab}" ] || return 1
+	printf 'UTC\tCoordinated Universal Time\n'
+	awk -F '\t' '
+		/^#/ || NF < 3 { next }
+		$3 !~ /^[A-Za-z][A-Za-z0-9+_-]*(\/[A-Za-z0-9+_-]+)*$/ { next }
+		{ d = (NF >= 4 && $4 != "") ? $4 : $3; print $3 "\t" d }
+	' "${_tab}" | sort -u -t "${TAB}" -k1,1
+}
+
+cmd_disks() {
+	work=$(mktemp "${tmp_root}/wtfbsd-disks.XXXXXX") ||
+		die 3 'cannot create a temporary file'
+	kept=$(mktemp "${tmp_root}/wtfbsd-disks.XXXXXX") ||
+		die 3 'cannot create a temporary file'
+	if [ -n "${rehearsal}" ]; then
+		fixture_items DISKS > "${work}"
+	else
+		os_disk_rows > "${work}"
+	fi
+	# The disks that must not be written to are left out, in a rehearsal
+	# too: a rehearsal is carried out on the machine that is the target.
+	_names=$(cut -f1 "${work}" | tr '\n' ' ')
+	_excluded=$(os_excluded_disks "${_names}") || _excluded=''
+	while IFS="${TAB}" read -r _n _d _s; do
+		[ -n "${_n}" ] || continue
+		disk_name_valid "${_n}" || continue
+		case " ${_excluded} " in
+			*" ${_n} "*) continue ;;
+		esac
+		printf '%s\t%s\t%s\n' "${_n}" "${_d}" "${_s}" >> "${kept}"
+	done < "${work}"
+	emit_items "${kept}"
+}
+
+cmd_network() {
+	work=$(mktemp "${tmp_root}/wtfbsd-network.XXXXXX") ||
+		die 3 'cannot create a temporary file'
+	if [ -n "${rehearsal}" ]; then
+		fixture_items INTERFACES > "${work}"
+	else
+		os_interfaces | while IFS= read -r _a; do
+			case "${_a}" in
+				''|lo|lo[0-9]*|pflog*|pfsync*|enc*|gif*|stf*|faith*|tun*|tap*|bridge*|vether*|carp*) continue ;;
+			esac
+			printf '%s\t%s\t0\n' "${_a}" 'network adapter'
+		done > "${work}"
+	fi
+	emit_items "${work}"
+}
+
+cmd_apply_disk() {
+	[ $# -eq 1 ] || die 3 'apply-disk needs the name of the disk'
+	disk_name_valid "$1" || die 3 "the name '$1' is not the name of a disk"
+	if [ -n "${rehearsal}" ]; then
+		printf 'disk: preparing %s\n' "$1"
+		return 0
+	fi
+	# The install command of the template writes the disk itself.
+	printf 'disk: %s is prepared by the install command\n' "$1"
+}
+
+cmd_verify_disk() {
+	[ $# -eq 1 ] || die 3 'verify-disk needs the name of the disk'
+	disk_name_valid "$1" || die 3 "the name '$1' is not the name of a disk"
+	if [ -n "${rehearsal}" ]; then
+		printf 'disk: %s is ready\n' "$1"
+		return 0
+	fi
+	cmd_disks | grep -q "\"name\":\"$1\"" ||
+		die 3 "the disk $1 is not a disk that may be written to"
+	printf 'disk: %s is ready\n' "$1"
+}
+
+# rehearse_install — the rehearsal of the installation: progress lines on
+# standard output, the steps on standard error, and the exit code the
+# fixture asks for.
+rehearse_install() {
+	for _step in '10 preparing the target disk' '40 writing the system files' \
+		'70 applying the settings' '90 installing the boot loader'; do
+		printf 'PROGRESS %s\n' "${_step}"
+		printf 'install: %s\n' "${_step#* }"
+		# A site or a test may slow the rehearsal down to watch it.
+		case "${INSTALLER_REHEARSAL_STEP_SECONDS:-0}" in
+			0|''|*[!0-9]*) : ;;
+			*) sleep "${INSTALLER_REHEARSAL_STEP_SECONDS}" ;;
+		esac
+	done
+	_code=$(kv_get "${rehearsal}" INSTALL_EXIT) || _code=0
+	case "${_code}" in
+		''|*[!0-9]*) _code=0 ;;
+	esac
+	_once=$(kv_get "${rehearsal}" INSTALL_FAIL_ONCE) || _once=''
+	if [ "${_once}" = yes ] && [ ! -f "${fail_marker}" ]; then
+		: > "${fail_marker}"
+		_code=3
+	fi
+	if [ "${_code}" -ne 0 ]; then
+		printf 'ERROR the installation failed\n'
+		printf 'install: the installation failed\n'
+		exit "${_code}"
+	fi
+	printf 'PROGRESS 100 the system is installed\n'
+	return 0
+}
+
+# install_command — the path of the install command of the template.
+install_command() {
+	if [ -n "${INSTALLER_INSTALL_COMMAND:-}" ]; then
+		printf '%s\n' "${INSTALLER_INSTALL_COMMAND}"
+		return 0
+	fi
+	_slug=$(config_value PRODUCT_SLUG) || return 2
+	command -v "${_slug}-install" 2>/dev/null || {
+		printf '%s-install\n' "${_slug}"
+		return 1
+	}
+}
+
+# arg_full_name_ok <text> — a full name may go on the command line: at most
+# 64 characters, no colon (the separator of the account files), no line
+# break and no other control character.
+arg_full_name_ok() {
+	[ -n "$1" ] || return 1
+	[ "${#1}" -le 64 ] || return 1
+	case "$1" in
+		*:*) return 1 ;;
+	esac
+	_clean=$(printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177')
+	[ "${_clean}" = "$1" ]
+}
+
+# arg_ifname_ok <name> — the name of a network adapter.
+arg_ifname_ok() {
+	printf '%s\n' "$1" | grep -Eq '^[a-z][a-z0-9]{0,14}$' &&
+		[ "$(printf '%s' "$1" | wc -l | tr -d ' ')" = 0 ]
+}
+
+# arg_ipv4_ok <address> is in lib/ipv4.sh, which the network section uses
+# as well.
+
+# network_arg — the value of -N for the answers, or nothing for a system
+# without a network.  Fails with a reason when an answer is not well formed.
+network_arg() {
+	_mode=$(answers_get NETWORK_MODE) || _mode=dhcp
+	case "${_mode}" in
+		offline) return 0 ;;
+		dhcp|static) : ;;
+		*) printf 'the network mode is not known'; return 1 ;;
+	esac
+	_if=$(answers_get NET_IF) || _if=''
+	if [ -z "${_if}" ]; then
+		[ "${_mode}" = dhcp ] && return 0
+		printf 'a manual address needs a network adapter'
+		return 1
+	fi
+	arg_ifname_ok "${_if}" || { printf 'the network adapter name is not valid'; return 1; }
+	if [ "${_mode}" = dhcp ]; then
+		printf '%s:dhcp' "${_if}"
+		return 0
+	fi
+	_a=$(answers_get IPV4_ADDR) || _a=''
+	_m=$(answers_get IPV4_MASK) || _m=''
+	_g=$(answers_get IPV4_GW) || _g=''
+	arg_ipv4_ok "${_a}" || { printf 'the address is not an IPv4 address'; return 1; }
+	arg_ipv4_ok "${_m}" || { printf 'the netmask is not an IPv4 netmask'; return 1; }
+	if [ -n "${_g}" ]; then
+		arg_ipv4_ok "${_g}" || { printf 'the gateway is not an IPv4 address'; return 1; }
+	fi
+	printf '%s:%s/%s:%s' "${_if}" "${_a}" "${_m}" "${_g}"
+}
+
+# run_install_command — build the arguments of the install command from the
+# answers, run it and pass its progress lines on.  The hash file is named,
+# never read: the password itself never reaches this script.
+run_install_command() {
+	_cmd=$(install_command) || {
+		printf 'ERROR the install command %s is not installed\n' "${_cmd}"
+		exit 3
+	}
+	_disk=$(answers_get DISK) || { printf 'ERROR no disk was chosen\n'; exit 2; }
+	disk_name_valid "${_disk}" || { printf 'ERROR the disk name is not valid\n'; exit 2; }
+	_user=$(answers_get USER_NAME) || { printf 'ERROR no user name was given\n'; exit 2; }
+	_auth=$(answers_get USER_AUTH) || _auth=password
+	if [ "${_auth}" != password ]; then
+		printf 'ERROR the install command needs a password for %s\n' "${_user}"
+		exit 2
+	fi
+	_hash=$(answers_get USER_HASHFILE) || {
+		printf 'ERROR no password hash file was given\n'
+		exit 2
+	}
+	[ -s "${_hash}" ] || { printf 'ERROR the password hash file is empty\n'; exit 2; }
+	set -- "${_cmd}" -d "${_disk}" -u "${_user}"
+	if _key=$(answers_get SSH_KEYFILE) && [ -n "${_key}" ]; then
+		set -- "$@" -k "${_key}"
+	fi
+	set -- "$@" -H "${_hash}"
+	if _v=$(answers_get HOSTNAME) && [ -n "${_v}" ]; then
+		set -- "$@" -n "${_v}"
+	fi
+	if _v=$(answers_get TIMEZONE) && [ -n "${_v}" ]; then
+		set -- "$@" -z "${_v}"
+	fi
+	if _v=$(answers_get KEYMAP) && [ -n "${_v}" ]; then
+		set -- "$@" -K "${_v}"
+	fi
+	if _v=$(answers_get USER_FULLNAME) && [ -n "${_v}" ]; then
+		arg_full_name_ok "${_v}" || {
+			printf 'ERROR the full name may not hold a colon or a control character\n'
+			exit 2
+		}
+		set -- "$@" -c "${_v}"
+	fi
+	if [ "$(answers_get PRIVILEGE_PASSWORDLESS || :)" = yes ]; then
+		set -- "$@" -P
+	fi
+	_v=$(network_arg) || { printf 'ERROR %s\n' "${_v}"; exit 2; }
+	if [ -n "${_v}" ]; then
+		set -- "$@" -N "${_v}"
+	fi
+	set -- "$@" -y --progress
+	printf 'install: running %s\n' "$*" >&2
+	_rcfile=$(mktemp "${tmp_root}/wtfbsd-install-rc.XXXXXX") ||
+		die 3 'cannot create a temporary file'
+	_errfile=$(mktemp "${tmp_root}/wtfbsd-install-err.XXXXXX") || {
+		rm -f "${_rcfile}"
+		die 3 'cannot create a temporary file'
+	}
+	{
+		_c=0
+		"$@" < /dev/null || _c=$?
+		printf '%s\n' "${_c}" > "${_rcfile}"
+	} | while IFS= read -r _line; do
+		printf '%s\n' "${_line}"
+		case "${_line}" in
+			ERROR\ *) : > "${_errfile}.seen" ;;
+		esac
+	done
+	_c=$(cat "${_rcfile}" 2>/dev/null) || _c=4
+	case "${_c}" in ''|*[!0-9]*) _c=4 ;; esac
+	_seen=no
+	[ ! -f "${_errfile}.seen" ] || _seen=yes
+	rm -f "${_rcfile}" "${_errfile}" "${_errfile}.seen"
+	if [ "${_c}" -ne 0 ]; then
+		[ "${_seen}" = yes ] ||
+			printf 'ERROR the install command failed with exit code %s\n' "${_c}"
+		exit "${_c}"
+	fi
+	if [ -n "${INSTALLER_STATE_DIR:-}" ]; then
+		: > "${INSTALLER_STATE_DIR}/install-done" 2>/dev/null || :
+	fi
+	return 0
+}
+
+cmd_apply_install() {
+	if [ -n "${rehearsal}" ]; then
+		rehearse_install
+		return 0
+	fi
+	run_install_command
+}
+
+cmd_verify_install() {
+	if [ -n "${rehearsal}" ]; then
+		printf 'install: the system is installed\n'
+		return 0
+	fi
+	# The install command exits 0 only when the disk is bootable and the
+	# first boot configuration is written; apply leaves a mark when it did.
+	if [ -n "${INSTALLER_STATE_DIR:-}" ] &&
+		[ -f "${INSTALLER_STATE_DIR}/install-done" ]; then
+		printf 'install: the system is installed\n'
+		return 0
+	fi
+	die 4 'the install command did not report a finished installation'
+}
+
+cmd_target_root() {
+	if [ -n "${rehearsal}" ]; then
+		kv_get "${rehearsal}" TARGET_ROOT || :
+	fi
+	return 0
+}
+
+# cmd_keymaps — the keyboard layouts.  A rehearsal reads KEYMAPS from the
+# fixture; without it the section falls back to its own list.
+cmd_keymaps() {
+	if [ -n "${rehearsal}" ]; then
+		_v=$(kv_get "${rehearsal}" KEYMAPS) || return 1
+		# shellcheck disable=SC2046
+		keymap_rows $(printf '%s' "${_v}" | tr ',' ' ')
+		return 0
+	fi
+	os_keymaps
+}
+
+cmd_timezones() {
+	if [ -n "${rehearsal}" ]; then
+		_v=$(kv_get "${rehearsal}" ZONES) || return 1
+		for _z in $(printf '%s' "${_v}" | tr ',' ' '); do
+			printf '%s\t%s\n' "${_z}" "${_z}"
+		done
+		return 0
+	fi
+	zone_rows
+}
+
+# adapter_main <operation> [arguments...]
+adapter_main() {
+	_op=${1:-}
+	if [ $# -ge 1 ]; then
+		shift
+	fi
+	rehearsal=$(rehearsal_file) || rehearsal=''
+	trap 'cleanup' EXIT INT TERM HUP
+	case "${_op}" in
+		apply-install) setup_fail_marker ;;
+	esac
+	case "${_op}" in
+		disks) cmd_disks "$@" ;;
+		network) cmd_network "$@" ;;
+		apply-disk) cmd_apply_disk "$@" ;;
+		verify-disk) cmd_verify_disk "$@" ;;
+		apply-install) cmd_apply_install "$@" ;;
+		verify-install) cmd_verify_install "$@" ;;
+		target-root) cmd_target_root "$@" ;;
+		keymaps) cmd_keymaps "$@" ;;
+		timezones) cmd_timezones "$@" ;;
+		hash-scheme) os_hash_scheme ;;
+		*) die 3 "unknown adapter operation '${_op}'" ;;
+	esac
+}

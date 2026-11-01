@@ -1,0 +1,10 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=@PRODUCT@ Installer
+Comment=Open the installer of @PRODUCT@ when the live session starts
+Exec=@LIBEXEC@/bin/installer-session
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

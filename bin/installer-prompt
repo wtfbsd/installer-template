@@ -1,0 +1,240 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# installer-prompt — the questions of the text front end as plain prompts,
+# for a system that has neither bsddialog(1) nor dialog(1).
+#
+# It takes the arguments of bsddialog for the boxes the installer uses and
+# answers the way bsddialog does: the screen goes to standard output, the
+# choice to the descriptor of --output-fd (standard error without it), and
+# the exit code is 0 for OK or Yes, 1 for Cancel, Back or No, 5 for the
+# escape key and 255 at the end of the input.  The answers are read from standard input, one line each:
+#
+#   <      the second button (Back, Quit, No)
+#   !      the escape key (the installer then asks whether to quit)
+#   a number or a tag  chooses from a list; an empty line takes the default
+#
+# Boxes: --msgbox, --yesno, --inputbox, --passwordbox, --menu,
+# --radiolist, --checklist, --gauge.
+#
+# Every prompt shows its keys the same way, at its end:
+#
+#   [Enter: <what Enter does> · <: <the second button> · !: Quit]
+#
+# (with | instead of · when the locale is not UTF-8, so that a console
+# without UTF-8 shows no stray bytes).
+
+set -eu
+
+title=''
+outfd=2
+ok_label=OK
+cancel_label=Cancel
+yes_label=Yes
+no_label=No
+default_item=''
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--title) title=$2; shift 2 ;;
+		--output-fd) outfd=$2; shift 2 ;;
+		--ok-label) ok_label=$2; shift 2 ;;
+		--cancel-label) cancel_label=$2; shift 2 ;;
+		--yes-label) yes_label=$2; shift 2 ;;
+		--no-label) no_label=$2; shift 2 ;;
+		--default-item) default_item=$2; shift 2 ;;
+		--*) break ;;
+		*) shift ;;
+	esac
+done
+case "${outfd}" in
+	''|*[!0-9]*) outfd=2 ;;
+esac
+
+widget=${1:-}
+[ $# -ge 1 ] && shift
+text=${1:-}
+[ $# -ge 1 ] && shift
+
+# The separator of the keys: a middle dot in a UTF-8 locale, a bar
+# otherwise.
+sep='|'
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+	*[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) sep='·' ;;
+esac
+
+# keys <Enter> [<back>] — the keys of the prompt: what Enter does, the
+# second button when the box has one, and the escape key.
+keys() {
+	if [ $# -ge 2 ]; then
+		printf '[Enter: %s %s <: %s %s !: Quit]' "$1" "${sep}" "$2" "${sep}"
+	else
+		printf '[Enter: %s %s !: Quit]' "$1" "${sep}"
+	fi
+}
+
+header() {
+	printf '\n'
+	[ -z "${title}" ] || printf '== %s ==\n\n' "${title}"
+	printf '%s\n\n' "${text}"
+}
+
+# answer — one line of the user; the special lines end the box.  The end
+# of the input is an error (255): nobody is there to answer.
+answer() {
+	if ! IFS= read -r line; then
+		exit 255
+	fi
+	case "${line}" in
+		'<') exit 1 ;;
+		'!') exit 5 ;;
+	esac
+}
+
+out() {
+	printf '%s\n' "$1" >&"${outfd}"
+}
+
+# pick <default> <tags...> — the tag the line names by number or by name.
+pick() {
+	_default=$1
+	shift
+	if [ -z "${line}" ]; then
+		[ -n "${_default}" ] || return 1
+		chosen=${_default}
+		return 0
+	fi
+	_i=0
+	for _tag in "$@"; do
+		_i=$((_i + 1))
+		if [ "${line}" = "${_i}" ] || [ "${line}" = "${_tag}" ]; then
+			chosen=${_tag}
+			return 0
+		fi
+	done
+	return 1
+}
+
+case "${widget}" in
+	--msgbox)
+		header
+		printf '%s ' "$(keys "${ok_label}")"
+		answer
+		exit 0
+		;;
+	--yesno)
+		header
+		while :; do
+			printf '%s or %s? %s ' "${yes_label}" "${no_label}" \
+				"$(keys "${yes_label}" "${no_label}")"
+			answer
+			case "${line}" in
+				''|y|Y|yes|"${yes_label}") exit 0 ;;
+				n|N|no|"${no_label}") exit 1 ;;
+			esac
+		done
+		;;
+	--inputbox|--passwordbox)
+		shift 2 2>/dev/null || :
+		header
+		printf '%s > ' "$(keys "${ok_label}" "${cancel_label}")"
+		secret=no
+		if [ "${widget}" = --passwordbox ] && [ -t 0 ]; then
+			secret=yes
+			stty -echo 2>/dev/null || :
+		fi
+		status=0
+		IFS= read -r line || status=255
+		[ "${secret}" = no ] || { stty echo 2>/dev/null || :; printf '\n'; }
+		[ "${status}" -eq 0 ] || exit 255
+		case "${line}" in
+			'<') exit 1 ;;
+			'!') exit 5 ;;
+		esac
+		out "${line}"
+		exit 0
+		;;
+	--menu|--radiolist|--checklist)
+		shift 3 2>/dev/null || :
+		header
+		tags=''
+		default=${default_item}
+		selected=''
+		i=0
+		while [ $# -ge 2 ]; do
+			tag=$1
+			item=$2
+			shift 2
+			state=''
+			if [ "${widget}" != --menu ] && [ $# -ge 1 ]; then
+				state=$1
+				shift
+			fi
+			i=$((i + 1))
+			mark='   '
+			case "${state}" in
+				on|ON) mark='[x]'; selected="${selected} ${tag}"; [ -n "${default}" ] || default=${tag} ;;
+				off|OFF) mark='[ ]' ;;
+			esac
+			printf '  %2d) %s %s  %s\n' "${i}" "${mark}" "${tag}" "${item}"
+			tags="${tags} ${tag}"
+		done
+		[ -n "${default}" ] || default=${tags# }
+		default=${default%% *}
+		while :; do
+			if [ "${widget}" = --checklist ]; then
+				printf '\nNumbers or tags, separated by spaces %s > ' \
+					"$(keys 'as marked' "${cancel_label}")"
+				answer
+				if [ -z "${line}" ]; then
+					out "${selected# }"
+					exit 0
+				fi
+				result=''
+				ok=yes
+				for word in ${line}; do
+					line=${word}
+					# shellcheck disable=SC2086
+					if pick '' ${tags}; then
+						result="${result} ${chosen}"
+					else
+						ok=no
+					fi
+				done
+				if [ "${ok}" = yes ]; then
+					out "${result# }"
+					exit 0
+				fi
+			else
+				printf '\nNumber or tag %s > ' "$(keys "${default}" "${cancel_label}")"
+				answer
+				# shellcheck disable=SC2086
+				if pick "${default}" ${tags}; then
+					out "${chosen}"
+					exit 0
+				fi
+			fi
+			printf 'That is not one of the choices.\n'
+		done
+		;;
+	--gauge)
+		header
+		# The protocol of the gauge: XXX, the percentage, the text, XXX.
+		state=0
+		percent=0
+		while IFS= read -r line; do
+			case "${state}:${line}" in
+				*:EOF) break ;;
+				0:XXX) state=1 ;;
+				1:*) percent=${line}; state=2 ;;
+				2:XXX) state=0 ;;
+				2:*) printf '[%3s%%] %s\n' "${percent}" "${line}" ;;
+			esac
+		done
+		exit 0
+		;;
+	*)
+		printf 'installer-prompt: the box %s is not known\n' "${widget}" >&2
+		exit 255
+		;;
+esac

@@ -20,9 +20,12 @@ trap 'rmrf "${tmp}" "${tmp_root}" || :' EXIT INT TERM HUP
 backend="${root}/bin/installer-backend"
 
 answers="${tmp}/answers.conf"
+# The account needs the hash of a password; the name checks use one.
+hashfile_for_names="${tmp}/names.hash"
+printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${hashfile_for_names}"
 
 # The apply of the accounts makes no account: the install step does.
-printf 'USER_NAME=tester\nUSER_AUTH=none\n' > "${answers}"
+printf 'USER_NAME=tester\nUSER_AUTH=password\nUSER_HASHFILE=%s\n' "${hashfile_for_names}" > "${answers}"
 rc=0
 out=$(INSTALLER_ANSWERS="${answers}" \
 	INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/adapter-fixture.conf" \
@@ -45,7 +48,7 @@ printf 'DISKS=ada0|Samsung SSD 860|500107862016\nINTERFACES=em0\n' \
 	> "${fixture}"
 printf 'TARGET_ROOT=%s\n' "${target}" >> "${fixture}"
 
-printf 'USER_NAME=targetuser\nUSER_AUTH=none\n' > "${answers}"
+printf 'USER_NAME=targetuser\nUSER_AUTH=password\nUSER_HASHFILE=%s\n' "${hashfile_for_names}" > "${answers}"
 rc=0
 out=$(INSTALLER_ANSWERS="${answers}" \
 	INSTALLER_ADAPTER_FIXTURE="${fixture}" \
@@ -56,7 +59,7 @@ check_contains "the refusal names the account" "targetuser" "${out}"
 
 # A name that is not an account of the system that is installed is
 # accepted.
-printf 'USER_NAME=tester\nUSER_AUTH=none\n' > "${answers}"
+printf 'USER_NAME=tester\nUSER_AUTH=password\nUSER_HASHFILE=%s\n' "${hashfile_for_names}" > "${answers}"
 rc=0
 INSTALLER_ANSWERS="${answers}" \
 	INSTALLER_ADAPTER_FIXTURE="${fixture}" \

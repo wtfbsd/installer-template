@@ -14,6 +14,7 @@
 set -eu
 
 here=$(CDPATH= cd "$(dirname "$0")" && pwd)
+. "${here}/../lib/rootguard.sh"
 root=${INSTALLER_ROOT:-$(CDPATH= cd "${here}/.." && pwd)}
 . "${root}/lib/backend.sh"
 . "${root}/lib/config.sh"
@@ -28,6 +29,11 @@ case "${command}" in
 		config_validate || exit 2
 		for _key in $(config_keys); do
 			printf '%s=%s\n' "${_key}" "$(config_value "${_key}")"
+		done
+		for _key in $(config_optional_keys); do
+			if _value=$(config_value "${_key}" 2>/dev/null); then
+				printf '%s=%s\n' "${_key}" "${_value}"
+			fi
 		done
 		;;
 	get)

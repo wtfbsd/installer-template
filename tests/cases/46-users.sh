@@ -20,14 +20,18 @@ backend="${root}/bin/installer-backend"
 export INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/adapter-fixture.conf"
 
 answers="${tmp}/answers.conf"
-passfile="${tmp}/user.pass"
-: > "${passfile}"
-printf 'a password\n' > "${passfile}"
+# The account needs the hash of a password; the name checks use one.
+hashfile_for_names="${tmp}/names.hash"
+printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${hashfile_for_names}"
+# The front ends hand the backend the crypt hash of the password, never the
+# password.
+passfile="${tmp}/user.hash"
+printf '%s\n' 'a password' | python3 -I "${root}/lib/passhash.py" write sha512 "${passfile}"
 
 validate_user() { # validate_user <name> <auth> — the exit code of the check
 	printf 'USER_NAME=%s\nUSER_AUTH=%s\n' "$1" "$2" > "${answers}"
 	if [ "${2}" = password ]; then
-		printf 'USER_PASSFILE=%s\n' "${passfile}" >> "${answers}"
+		printf 'USER_HASHFILE=%s\n' "${passfile}" >> "${answers}"
 	fi
 	rc=0
 	INSTALLER_ANSWERS="${answers}" "${backend}" users validate >/dev/null 2>&1 || rc=$?
@@ -48,10 +52,16 @@ check_rc "the name of the directory service is refused" 2 \
 	"$(validate_user _ypldap password)"
 check_rc "the name of the tests is refused" 2 "$(validate_user tests password)"
 
+# A file that holds the password itself instead of its hash is refused.
+printf 'a password\n' > "${passfile}"
+check_rc "a file that holds the password itself is refused" 2 \
+	"$(validate_user tester password)"
+
 # An empty password is refused unless the account is told to have none.
 : > "${passfile}"
 check_rc "an empty password is refused" 2 "$(validate_user tester password)"
-check_rc "an account without a password is accepted" 0 "$(validate_user tester none)"
+check_rc "an account without a password is refused (the install command needs a hash)" 2 \
+	"$(validate_user tester none)"
 
 # The account of the installed system may not be taken over.  The file of
 # the accounts is the one of the system that is installed.
@@ -71,7 +81,7 @@ printf 'TARGET_ROOT=%s\n' "${target}" >> "${fixture}"
 
 check_user() { # check_user <name> <fixture> <verb> — the exit code and the
 	# message of the section of the accounts
-	printf 'USER_NAME=%s\nUSER_AUTH=none\n' "$1" > "${answers}"
+	printf 'USER_NAME=%s\nUSER_AUTH=password\nUSER_HASHFILE=%s\n' "$1" "${hashfile_for_names}" > "${answers}"
 	rc=0
 	out=$(INSTALLER_ANSWERS="${answers}" \
 		INSTALLER_ADAPTER_FIXTURE="$2" \
@@ -134,7 +144,9 @@ tui_run "${root}/tests/fixtures/answers-emptypass.txt"
 check_rc "the installer finishes after the password is asked again" 0 "${tui_rc}"
 check_contains "the account has a password" \
 	"USER_AUTH=password" "$(cat "${INSTALLER_ANSWERS}" 2>/dev/null || true)"
-check_contains "the front end asks about the empty password" \
+check_contains "the front end says that a password is needed" \
+	"A password is needed for tester" "$(cat "${BSDDIALOG_LOG}")"
+check_absent "the front end never offers an account without a password" \
 	"no password" "$(cat "${BSDDIALOG_LOG}")"
 
 finish

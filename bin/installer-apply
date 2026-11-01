@@ -1,0 +1,142 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# installer-apply — the only part of the installer that runs as root.
+#
+# The front ends (installer-gui, installer-tui) run as the user of the live
+# session.  The doas or sudo rule of the live system names this file and
+# nothing else:
+#
+#   permit nopass live as root cmd /usr/local/libexec/wtfbsd-installer/installer-apply
+#
+# Verbs (nothing else is accepted):
+#
+#   --list disks|network|keymaps|timezones|users|welcome
+#                    print the JSON of the probe of that section; read only
+#   --install DIR    install from the directory the front end wrote: the
+#                    answers (answers.conf), the hash of the password
+#                    (user.hash, mode 0600) and an optional public key
+#                    (ssh_key.pub).  The files are copied into a private
+#                    directory of root, every answer is checked again, and the
+#                    PROGRESS and ERROR lines of the installation are written
+#                    on standard output.  A line "STOP" on standard input
+#                    ends the installation.
+#   --reboot         reboot the machine
+#
+# As root the environment is replaced: the helper runs under
+#   env -i PATH=<the directories of the system> HOME=/root LANG=C
+# with python3 by its absolute path in isolated mode (-I), so no variable of
+# the caller (INSTALLER_*, BSDDIALOG, LD_PRELOAD, PYTHONPATH, PATH...) has an
+# effect.  The overrides of the tests are honoured only for a user that is
+# not root.
+#
+# sudo with env_reset keeps the PATH of the caller unless secure_path is
+# set, so the first thing the helper does is to set PATH itself: before it
+# no external command runs, and every command after it is a built-in of the
+# shell or named by its absolute path.  The PATH of the caller is kept in a
+# variable only, and only a user that is not root gets it back.
+#
+# Root is what /usr/bin/id -u says, and nothing else: no id(1) of PATH; an
+# answer that is not a number stops the helper.  The
+# tests take the branch of root without being root by setting
+# WTFBSD_TEST_AS_ROOT=yes.  It is read only when /usr/bin/id does not say 0,
+# and it can only send a user that is not root down the stricter branch of
+# root (environment replaced, overrides dropped); it never lets a real root
+# keep its environment.
+
+caller_path=${PATH-}
+PATH=/sbin:/bin:/usr/sbin:/usr/bin; export PATH
+
+set -eu
+
+# The directory of this file, without dirname(1): $0 without a slash was
+# found in the current directory (sh installer-apply).
+case "$0" in
+	*/*) here=${0%/*} ;;
+	*) here=. ;;
+esac
+[ -n "${here}" ] || here=/
+here=$(CDPATH= cd -- "${here}" && pwd -P)
+# Installed as libexec/wtfbsd-installer/installer-apply, or as bin/ of a
+# checkout: the library is next to it or one directory up.
+if [ -f "${here}/lib/apply.py" ]; then
+	base=${here}
+else
+	base=$(CDPATH= cd -- "${here}/.." && pwd -P)
+fi
+
+refuse() {
+	printf 'ERROR %s\n' "$*"
+	exit 2
+}
+
+case "${1:-}" in
+	--list)
+		[ $# -eq 2 ] || refuse 'usage: installer-apply --list disks|network|keymaps|timezones|users|welcome'
+		case "$2" in
+			disks|network|keymaps|timezones|users|welcome) : ;;
+			*) refuse "'$2' is not a list of the installer" ;;
+		esac
+		;;
+	--install)
+		[ $# -eq 2 ] || refuse 'usage: installer-apply --install DIR'
+		;;
+	--reboot)
+		[ $# -eq 1 ] || refuse 'usage: installer-apply --reboot'
+		;;
+	*) refuse 'usage: installer-apply --list LIST | --install DIR | --reboot' ;;
+esac
+
+python=''
+for candidate in /usr/local/bin/python3 /usr/pkg/bin/python3 /usr/bin/python3; do
+	if [ -x "${candidate}" ]; then
+		python=${candidate}
+		break
+	fi
+done
+[ -n "${python}" ] || refuse 'python3 is not installed'
+
+# Who runs the helper, by the absolute path of id(1) only.  It fails
+# closed: an id that is missing, fails or prints anything but a number
+# stops the helper before anything else runs.  (id_tool is set here and
+# nowhere else; no variable of the environment changes it.)
+id_tool=/usr/bin/id
+uid=$("${id_tool}" -u 2>/dev/null) || refuse 'cannot tell who is running the helper'
+case "${uid}" in
+	''|*[!0-9]*) refuse 'cannot tell who is running the helper' ;;
+esac
+is_root=no
+if [ "${uid}" = 0 ]; then
+	is_root=yes
+elif [ "${WTFBSD_TEST_AS_ROOT:-}" = yes ]; then
+	is_root=yes
+fi
+
+if [ "${is_root}" = yes ]; then
+	# doas and sudo keep the directory of the caller: nothing may be found
+	# relative to it, so the helper leaves it first.
+	cd / || refuse 'cannot change to /'
+	# The user that asked: sudo names it by number, doas by name.
+	invoker=0
+	case "${SUDO_UID:-}" in
+		''|*[!0-9]*) : ;;
+		*) invoker=${SUDO_UID} ;;
+	esac
+	if [ "${invoker}" = 0 ] && [ -n "${DOAS_USER:-}" ]; then
+		case "${DOAS_USER}" in
+			*[!A-Za-z0-9._-]*) : ;;
+			*) invoker=$("${id_tool}" -u -- "${DOAS_USER}" 2>/dev/null || printf '0') ;;
+		esac
+	fi
+	exec /usr/bin/env -i \
+		PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/pkg/sbin:/usr/pkg/bin \
+		HOME=/root LANG=C WTFBSD_APPLY_MODE=root WTFBSD_INVOKER_UID="${invoker}" \
+		"${python}" -I "${base}/lib/apply.py" "$@"
+fi
+# A user that is not root: a test or a rehearsal.  Its environment stays,
+# its PATH too (an empty one is never taken: it would mean ".").
+[ -z "${caller_path}" ] || PATH=${caller_path}
+WTFBSD_APPLY_MODE=user
+WTFBSD_INVOKER_UID=${uid}
+export PATH WTFBSD_APPLY_MODE WTFBSD_INVOKER_UID
+exec "${python}" -I "${base}/lib/apply.py" "$@"
