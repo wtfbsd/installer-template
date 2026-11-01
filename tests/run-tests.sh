@@ -9,6 +9,17 @@ set -eu
 here=$(CDPATH= cd "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd "${here}/.." && pwd)
 cd "${root}"
+. "${here}/lib.sh"
+
+# Every case and every unit test runs with a TMPDIR of the suite's own
+# (mode 0700, made by mktemp -d), so two suites that run at the same time
+# never see each other's files, and nothing is left in the shared one.
+suite_parent=${TMPDIR:-/tmp}
+suite_tmp=$(mktemp -d "${suite_parent}/wtfbsd-tests.XXXXXX")
+chmod 700 "${suite_tmp}"
+trap 'chmod -R u+rwX "${suite_tmp}" 2>/dev/null || :; rmrf "${suite_tmp}" "${suite_parent}" || :' EXIT INT TERM HUP
+TMPDIR=${suite_tmp}
+export TMPDIR
 
 pass=0
 fail=0
@@ -24,7 +35,7 @@ for case_script in "${here}"/cases/*.sh; do
 	fi
 done
 
-if python3 -m unittest discover -s tests -p 'test_*.py'; then
+if python3 -I -m unittest discover -s tests -p 'test_*.py'; then
 	printf 'ok   python-unittest\n'
 	pass=$((pass + 1))
 else

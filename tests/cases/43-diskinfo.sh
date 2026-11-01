@@ -33,7 +33,7 @@ probe_size() {
 	STUB_DISK_INFO="${tmp}/disk-info" \
 	STUB_MOUNTS="${tmp}/mounts" \
 	STUB_GEOM_SIZE="${geom_size:-}" \
-	"${backend}" disk probe 2>/dev/null | python3 -c '
+	"${backend}" disk probe 2>/dev/null | python3 -I -c '
 import json, sys
 data = json.load(sys.stdin)
 print(data["disks"][0]["size_bytes"])

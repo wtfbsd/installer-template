@@ -4,6 +4,9 @@
 # The stand-in for ifconfig(8).  With the option -l it prints the names of
 # the network adapters of the machine, one per line.
 #
+# Without an option it prints the adapters the way OpenBSD does, whose
+# ifconfig(8) has no -l: one "<name>: flags=..." line per adapter.
+#
 # Environment:
 #   STUB_INTERFACES  the names of the adapters, separated by spaces
 
@@ -12,6 +15,12 @@ case "${1:-}" in
 		names=${STUB_INTERFACES:-}
 		[ -n "${names}" ] || exit 1
 		printf '%s\n' "${names}" | tr ' ' '\n'
+		;;
+	'')
+		for name in ${STUB_INTERFACES:-}; do
+			printf '%s: flags=8843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST> mtu 1500\n' "${name}"
+			printf '\tindex 1 priority 0 llprio 3\n'
+		done
 		;;
 	*) exit 1 ;;
 esac

@@ -33,7 +33,7 @@ dialog_log=$(cat "${BSDDIALOG_LOG}")
 TAB=$(printf '\t')
 check_contains "the state directory is private" "STATE${TAB}700" "${dialog_log}"
 check_contains "the secret file is private" \
-	"FILE${TAB}secrets/user.pass${TAB}600" "${dialog_log}"
+	"FILE${TAB}secrets/user.hash${TAB}600" "${dialog_log}"
 
 left=$(find "${tmp}" -maxdepth 1 -type d -name 'wtfbsd-installer.*' | wc -l | tr -d ' ')
 check "the state directory is gone" "0" "${left}"

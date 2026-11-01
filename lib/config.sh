@@ -14,10 +14,19 @@ config_keys() {
 	printf '%s\n' PRODUCT_NAME PRODUCT_SLUG OS DEFAULT_KEYMAP DEFAULT_TZ
 }
 
+# config_optional_keys — the keys a configuration may leave out.
+#
+# PRODUCT_LOGO  the absolute path of an image the graphical front end shows
+#               next to the name of the product
+config_optional_keys() {
+	printf '%s\n' PRODUCT_LOGO
+}
+
 # config_known_key <key> — succeed when the key is one the installer knows.
 config_known_key() {
 	case "$1" in
 		PRODUCT_NAME|PRODUCT_SLUG|OS|DEFAULT_KEYMAP|DEFAULT_TZ) return 0 ;;
+		PRODUCT_LOGO) return 0 ;;
 		*) return 1 ;;
 	esac
 }
@@ -30,6 +39,12 @@ config_valid_value() {
 		OS) _pattern='^(freebsd|netbsd|openbsd|dragonfly|illumos)$' ;;
 		DEFAULT_KEYMAP) _pattern='^[A-Za-z0-9._-]{1,32}$' ;;
 		DEFAULT_TZ) _pattern='^[A-Za-z][A-Za-z0-9+_-]*(/[A-Za-z0-9+_-]+)*$' ;;
+		PRODUCT_LOGO)
+			case "$2" in
+				*/../*|*/..|*/./*) return 1 ;;
+			esac
+			_pattern='^/[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$'
+			;;
 		*) return 2 ;;
 	esac
 	printf '%s\n' "$2" | grep -Eq -- "${_pattern}"

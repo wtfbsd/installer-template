@@ -1,0 +1,78 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# installer-session — the start of the live session of @PRODUCT@.
+#
+# The live session runs this from its autostart (the file
+# share/wtfbsd-installer/autostart/wtfbsd-installer.desktop, copied into the
+# autostart directory of the live user).  It
+#
+#   1. puts the "Install @PRODUCT@" icon on the desktop of the user, marked
+#      as trusted so that the desktop starts it without asking, and
+#   2. opens the installer full screen, unless the user already chose "Try
+#      the live desktop" since this boot.
+#
+# The choice is kept in a file of the user that holds the boot time of the
+# machine, so the installer opens again first after the next boot.
+
+set -eu
+
+launcher='@BINDIR@/wtfbsd-installer'
+entry='@APPDIR@/wtfbsd-installer.desktop'
+EXIT_TRY_LIVE=10
+
+state_dir=${XDG_RUNTIME_DIR:-${HOME:-/tmp}/.cache}
+marker=${state_dir}/wtfbsd-installer.try-live
+
+boot_time() {
+	sysctl -n kern.boottime 2>/dev/null || printf 'unknown\n'
+}
+
+desktop_dir() {
+	dir=''
+	if command -v xdg-user-dir >/dev/null 2>&1; then
+		dir=$(xdg-user-dir DESKTOP 2>/dev/null || :)
+	fi
+	if [ -z "${dir}" ] || [ "${dir}" = "${HOME:-}" ]; then
+		dir=${HOME:-/tmp}/Desktop
+	fi
+	printf '%s\n' "${dir}"
+}
+
+place_icon() {
+	[ -f "${entry}" ] || return 0
+	dir=$(desktop_dir)
+	mkdir -p "${dir}" || return 0
+	icon=${dir}/wtfbsd-installer.desktop
+	[ ! -L "${icon}" ] || return 0
+	cp "${entry}" "${icon}.tmp.$$" && mv -f "${icon}.tmp.$$" "${icon}" || return 0
+	chmod 755 "${icon}" 2>/dev/null || :
+	# Xfce starts a launcher on the desktop without asking only when the
+	# checksum of the file is in its metadata.
+	if command -v gio >/dev/null 2>&1; then
+		ns=metadata
+		sum=$(python3 -I -c 'import hashlib, sys
+print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "${icon}" 2>/dev/null) || sum=''
+		if [ -n "${sum}" ]; then
+			gio set -t string "${icon}" "${ns}::xfce-exe-checksum" "${sum}" \
+				>/dev/null 2>&1 || :
+			gio set -t string "${icon}" "${ns}::trusted" true >/dev/null 2>&1 || :
+		fi
+	fi
+}
+
+place_icon
+
+now=$(boot_time)
+if [ -f "${marker}" ] && [ "$(cat "${marker}" 2>/dev/null)" = "${now}" ]; then
+	exit 0
+fi
+
+rc=0
+"${launcher}" "$@" || rc=$?
+if [ "${rc}" -eq "${EXIT_TRY_LIVE}" ]; then
+	mkdir -p "${state_dir}" 2>/dev/null || :
+	printf '%s\n' "${now}" > "${marker}" 2>/dev/null || :
+	exit 0
+fi
+exit "${rc}"

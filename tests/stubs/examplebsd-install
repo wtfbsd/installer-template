@@ -1,0 +1,86 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for the install command a template ships, with the options
+# and the output of the contract:
+#
+#   examplebsd-install -d DISK -u USER [-k PUBKEYFILE] -H HASHFILE
+#       [-n HOSTNAME] [-z TIMEZONE] [-K KEYMAP] [-c FULLNAME] [-P]
+#       [-N IF:ADDR/MASK:GW | -N IF:dhcp] -y --progress
+#
+# It prints "PROGRESS <n> <message>" lines on standard output and "ERROR
+# <message>" before a non-zero exit, and nothing else on standard output.
+#
+# Environment:
+#   STUB_INSTALL_ARGS       a file that gets the arguments, one per line
+#   STUB_INSTALL_HASH_COPY  a file that gets the content of the hash file
+#   STUB_INSTALL_FAIL       exit with this code after the second step
+#   STUB_INSTALL_SILENT     "yes": fail without an ERROR line
+#   STUB_INSTALL_ROOT_DISK  the disk of the running system, refused
+#   STUB_INSTALL_SLEEP      seconds to wait after each step
+
+set -eu
+
+fail() {
+	printf 'ERROR %s\n' "$2"
+	exit "$1"
+}
+
+if [ -n "${STUB_INSTALL_ARGS:-}" ]; then
+	: > "${STUB_INSTALL_ARGS}"
+	for arg in "$@"; do
+		printf '%s\n' "${arg}" >> "${STUB_INSTALL_ARGS}"
+	done
+fi
+
+disk='' user='' key='' hash='' yes=no progress=no
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-d) disk=$2; shift 2 ;;
+		-u) user=$2; shift 2 ;;
+		-k) key=$2; shift 2 ;;
+		-H) hash=$2; shift 2 ;;
+		-n|-z|-K|-c) [ $# -ge 2 ] || fail 2 "$1 needs a value"; shift 2 ;;
+		-P) shift ;;
+		-N)
+			[ $# -ge 2 ] || fail 2 '-N needs a value'
+			printf '%s\n' "$2" | grep -Eq '^[a-z][a-z0-9]{0,14}:(dhcp|([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]{1,3}\.){3}[0-9]{1,3}:(([0-9]{1,3}\.){3}[0-9]{1,3})?)$' ||
+				fail 2 "-N $2 is not IF:dhcp or IF:ADDR/MASK:GW"
+			shift 2
+			;;
+		-y) yes=yes; shift ;;
+		--progress) progress=yes; shift ;;
+		*) fail 2 "unknown option $1" ;;
+	esac
+done
+[ -n "${disk}" ] || fail 2 'no disk (-d)'
+[ -n "${user}" ] || fail 2 'no user (-u)'
+[ -n "${hash}" ] || fail 2 'no hash file (-H)'
+[ "${yes}" = yes ] || fail 2 'not confirmed (-y)'
+[ "${progress}" = yes ] || fail 2 'no --progress'
+[ -f "${hash}" ] || fail 2 "the hash file ${hash} is not there"
+mode=$(stat -c %a "${hash}" 2>/dev/null || stat -f %Lp "${hash}")
+[ "${mode}" = 600 ] || fail 2 "the hash file has mode ${mode}, not 600"
+case "$(head -n 1 "${hash}")" in
+	'$6$'*|'$2a$'*|'$2b$'*) : ;;
+	*) fail 2 'the hash file holds no crypt hash' ;;
+esac
+[ -z "${key}" ] || [ -f "${key}" ] || fail 2 "the key file ${key} is not there"
+if [ -n "${STUB_INSTALL_HASH_COPY:-}" ]; then
+	cat "${hash}" > "${STUB_INSTALL_HASH_COPY}"
+fi
+[ "${disk}" != "${STUB_INSTALL_ROOT_DISK:-}" ] ||
+	fail 3 "${disk} holds the running system"
+
+step() {
+	printf 'PROGRESS %s %s\n' "$1" "$2"
+	[ -z "${STUB_INSTALL_SLEEP:-}" ] || sleep "${STUB_INSTALL_SLEEP}"
+}
+step 5 "Writing the image to ${disk}"
+step 60 "Growing the file system"
+if [ -n "${STUB_INSTALL_FAIL:-}" ]; then
+	[ "${STUB_INSTALL_SILENT:-}" = yes ] || printf 'ERROR the disk %s could not be written\n' "${disk}"
+	exit "${STUB_INSTALL_FAIL}"
+fi
+step 90 "Writing the first boot configuration"
+step 100 "Done"

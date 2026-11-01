@@ -55,7 +55,7 @@ check_absent "a gated-off address is dropped" "IPV4_ADDR=" "${answer_text}"
 check_absent "the screen of the dialog tool is not an answer" \
 	"fake screen" "${answer_text}"
 
-secret=$(sed -n 's/^USER_PASSFILE=//p' "${INSTALLER_ANSWERS}")
+secret=$(sed -n 's/^USER_HASHFILE=//p' "${INSTALLER_ANSWERS}")
 if [ -n "${secret}" ] && [ ! -e "${secret}" ]; then
 	printf 'ok   the user secret is removed after the install\n'
 else
@@ -68,9 +68,9 @@ check_rc "the installer finishes with a manual address" 0 "${tui_rc}"
 
 static_text=$(answers_text)
 check_contains "a gated-on interface is kept" "NET_IF=em0" "${static_text}"
-check_contains "a gated-on address is kept" "IPV4_ADDR=static-address" "${static_text}"
-check_contains "a gated-on netmask is kept" "IPV4_MASK=static-netmask" "${static_text}"
-check_contains "a gated-on gateway is kept" "IPV4_GW=static-gateway" "${static_text}"
+check_contains "a gated-on address is kept" "IPV4_ADDR=192.0.2.10" "${static_text}"
+check_contains "a gated-on netmask is kept" "IPV4_MASK=255.255.255.0" "${static_text}"
+check_contains "a gated-on gateway is kept" "IPV4_GW=192.0.2.1" "${static_text}"
 
 # A machine without a disk: the screen before the first page says so and
 # offers a way out.

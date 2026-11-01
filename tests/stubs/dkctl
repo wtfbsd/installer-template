@@ -1,0 +1,18 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The stand-in for dkctl(8) of NetBSD.  "dkctl dkN getwedgeinfo" prints the
+# line the real tool prints: "dkN at <disk>: <name>".
+#
+# Environment:
+#   STUB_WEDGES  "dkN:disk" pairs, separated by spaces
+
+[ "${2:-}" = getwedgeinfo ] || exit 1
+for pair in ${STUB_WEDGES:-}; do
+	if [ "${pair%%:*}" = "$1" ]; then
+		printf '%s at %s: root\n' "$1" "${pair#*:}"
+		printf '%s: 41943040 blocks at 64, type: ffs\n' "$1"
+		exit 0
+	fi
+done
+exit 1

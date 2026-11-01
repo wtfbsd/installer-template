@@ -10,6 +10,7 @@ here=$(CDPATH= cd "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd "${here}/.." && pwd)
 . "${root}/lib/backend.sh"
 . "${root}/lib/config.sh"
+. "${root}/lib/ipv4.sh"
 
 verb=${1:-}
 if [ $# -ge 1 ]; then
@@ -35,6 +36,13 @@ cmd_validate() {
 				die 2 'no address was given'
 			answers_get IPV4_MASK >/dev/null ||
 				die 2 'no netmask was given'
+			arg_ipv4_ok "$(answers_get IPV4_ADDR)" ||
+				die 2 'the address is not an IPv4 address'
+			arg_ipv4_ok "$(answers_get IPV4_MASK)" ||
+				die 2 'the netmask is not an IPv4 netmask'
+			if gw=$(answers_get IPV4_GW) && [ -n "${gw}" ]; then
+				arg_ipv4_ok "${gw}" || die 2 'the gateway is not an IPv4 address'
+			fi
 			;;
 		*) die 2 "the network mode '${mode}' is not known" ;;
 	esac

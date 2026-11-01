@@ -1,0 +1,11 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# installer-gui — the graphical front end of the installer (lib/gui.py).
+#
+# Python runs in isolated mode (-I): neither the current directory nor the
+# directory of the script nor a PYTHON* variable decides what is imported.
+# See lib/gui.py for the arguments and the exit codes.
+
+here=$(CDPATH= cd "$(dirname "$0")" && pwd -P)
+exec python3 -I "${here}/../lib/gui.py" "$@"

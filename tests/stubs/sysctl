@@ -14,6 +14,10 @@
 #   STUB_DISKS_LATER  the names of the disks after STUB_DISKS_AFTER calls
 #   STUB_DISKS_AFTER  the number of calls that answer with STUB_DISKS
 #   STUB_STATE        the file that holds the number of calls
+#   STUB_HW_DISKNAMES the value of hw.disknames (NetBSD: "wd0 cd0 dk0",
+#                     OpenBSD: "sd0:0123456789abcdef,cd0:")
+#   STUB_ROOT_DEVICE  the value of kern.root_device (NetBSD)
+#   STUB_BOOTTIME     the value of kern.boottime
 
 case "${1:-}" in
 	-n)
@@ -42,6 +46,17 @@ case "${1:-}" in
 				fi
 				[ -n "${names}" ] || exit 1
 				printf '%s\n' "${names}"
+				;;
+			hw.disknames)
+				[ -n "${STUB_HW_DISKNAMES:-}" ] || exit 1
+				printf '%s\n' "${STUB_HW_DISKNAMES}"
+				;;
+			kern.root_device)
+				[ -n "${STUB_ROOT_DEVICE:-}" ] || exit 1
+				printf '%s\n' "${STUB_ROOT_DEVICE}"
+				;;
+			kern.boottime)
+				printf '%s\n' "${STUB_BOOTTIME:-{ sec = 1700000000, usec = 0 \}}"
 				;;
 			*) exit 1 ;;
 		esac

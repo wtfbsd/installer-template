@@ -28,7 +28,7 @@ cmd_validate() {
 	[ -n "${disk}" ] || die 2 'the chosen disk has no name'
 	disk_name_valid "${disk}" || die 2 "the name '${disk}' is not the name of a disk"
 	disks=$(adapter_cmd disks) || exit $?
-	printf '%s' "${disks}" | DISK="${disk}" python3 -c '
+	printf '%s' "${disks}" | DISK="${disk}" python3 -I -c '
 import json, os, sys
 
 try:

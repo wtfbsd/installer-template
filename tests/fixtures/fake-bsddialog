@@ -244,11 +244,16 @@ case "${code}" in
 esac
 
 # The gauge widget takes its protocol from standard input.  Drain it so the
-# writer is not killed by a broken pipe, the way the real tool does.
+# writer is not killed by a broken pipe, the way the real tool does.  When
+# BSDDIALOG_GAUGE_LOG names a file, the protocol is kept there.
 case "${widget}" in
 	--gauge)
 		if [ ! -t 0 ]; then
-			cat >/dev/null 2>&1 || :
+			if [ -n "${BSDDIALOG_GAUGE_LOG:-}" ]; then
+				cat >> "${BSDDIALOG_GAUGE_LOG}" 2>/dev/null || :
+			else
+				cat >/dev/null 2>&1 || :
+			fi
 		fi
 		;;
 esac

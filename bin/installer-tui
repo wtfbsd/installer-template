@@ -18,13 +18,34 @@
 set -eu
 
 here=$(CDPATH= cd "$(dirname "$0")" && pwd)
+. "${here}/../lib/rootguard.sh"
 root=${INSTALLER_ROOT:-$(CDPATH= cd "${here}/.." && pwd)}
 . "${root}/lib/backend.sh"
 . "${root}/lib/config.sh"
 . "${root}/lib/accounts.sh"
 
 BACKEND="${root}/bin/installer-backend"
-BSDDIALOG=${BSDDIALOG:-bsddialog}
+# The dialog tool.  bsddialog(1) is in the base of FreeBSD; OpenBSD and
+# NetBSD package dialog(1), which takes the same arguments; without either
+# the installer asks its questions with plain prompts on the terminal
+# (bin/installer-prompt).  BSDDIALOG names another tool (tests, rehearsals;
+# never honoured for root).
+if [ -z "${BSDDIALOG:-}" ]; then
+	if command -v bsddialog >/dev/null 2>&1; then
+		BSDDIALOG=bsddialog
+	elif command -v dialog >/dev/null 2>&1; then
+		BSDDIALOG=dialog
+	else
+		BSDDIALOG="${root}/bin/installer-prompt"
+	fi
+fi
+# The exit code of the escape key: dialog(1) answers it with 255, bsddialog
+# and the prompts with 5.
+case "${BSDDIALOG##*/}" in
+	*bsddialog*|installer-prompt) DLG_ESCAPE=5 ;;
+	*dialog) DLG_ESCAPE=255 ;;
+	*) DLG_ESCAPE=5 ;;
+esac
 
 # die <exit code> <message...> — stop with a message on standard error.
 #
@@ -65,6 +86,8 @@ user_auth=password
 privilege_passwordless=no
 secret_written=no
 secret_password=''
+secret_hash=''
+hash_scheme=sha512
 network_mode=dhcp
 net_if=''
 ipv4_addr=''
@@ -157,11 +180,20 @@ leave() {
 # whether to leave the installer; only an answer of yes leaves and every
 # other answer brings the same dialog back.
 #
+# dialog(1) exits with 255 for the escape key and for every error of its
+# own, so a tool that fails would bring the same dialog back for ever.  The
+# box "Quit the installer?" has two answers, 0 and 1; anything else (an
+# error, or for dialog(1) the escape key, which cannot be told from one)
+# stops the installer with exit code 3.  The escape key of bsddialog and
+# of the prompts (5) on that box is Continue.  Three escapes in a row on the
+# same screen stop it as well.
+#
 # A yes or no box writes nothing: the answer of the user is the exit code
 # of the dialog, 0 for yes and 1 for no.  Such a box is given no output
 # descriptor at all: there is nothing to read, and a descriptor that points
 # at the terminal would let the tool write to it.
 dlg() {
+	_escapes=0
 	while :; do
 		DLG_RC=0
 		DLG_OUT=''
@@ -172,18 +204,30 @@ dlg() {
 			DLG_OUT=$("$BSDDIALOG" --title "${DLG_TITLE}" --output-fd 4 "$@" \
 				4>&1 1>&3 2>>"${log}") || DLG_RC=$?
 		fi
-		if [ "${DLG_RC}" -ne 5 ]; then
+		if [ "${DLG_RC}" -ne "${DLG_ESCAPE}" ]; then
 			break
+		fi
+		_escapes=$((_escapes + 1))
+		if [ "${_escapes}" -ge 3 ]; then
+			die 3 "the dialog tool ${BSDDIALOG} returned ${DLG_ESCAPE} three times in a row on the same screen (the escape key or an error of the tool); see ${log_destination:-${log}}"
 		fi
 		DLG_RC=0
 		DLG_OUT=''
 		"$BSDDIALOG" --title "${DLG_TITLE}" --yes-label Quit --no-label Continue \
 			--yesno "Quit the installer?" \
 			0 0 1>&3 2>>"${log}" || DLG_RC=$?
-		if [ "${DLG_RC}" -eq 0 ]; then
-			DLG_RC=9
-			break
-		fi
+		case "${DLG_RC}" in
+			0)
+				DLG_RC=9
+				break
+				;;
+			1) : ;;
+			*)
+				if [ "${DLG_RC}" -ne "${DLG_ESCAPE}" ] || [ "${DLG_ESCAPE}" -eq 255 ]; then
+					die 3 "the dialog tool ${BSDDIALOG} failed (exit code ${DLG_RC}) on the box \"Quit the installer?\"; see ${log_destination:-${log}}"
+				fi
+				;;
+		esac
 		DLG_RC=0
 	done
 	return 0
@@ -261,7 +305,7 @@ page_prev() {
 # json_items <json> <key> — the items of a JSON array, one per line, as
 # "name<TAB>description<TAB>size".
 json_items() {
-	printf '%s' "$1" | python3 -c '
+	printf '%s' "$1" | python3 -I -c '
 import json, sys
 
 
@@ -300,7 +344,7 @@ for item in data.get(sys.argv[1]) or []:
 
 # json_value <json> <key> — one value of a JSON object.
 json_value() {
-	printf '%s' "$1" | python3 -c '
+	printf '%s' "$1" | python3 -I -c '
 import json, sys
 try:
     data = json.load(sys.stdin)
@@ -313,9 +357,12 @@ sys.stdout.write("%s" % data.get(sys.argv[1], ""))
 # write_answers — write the answers the backend reads.  The gating module
 # decides which fields survive.
 #
-# The password of the account is written to a file of its own.  The file is
-# made in a file of its own and moved into place, and a password file that
-# this run did not write is never written over.
+# The password of the account is never written anywhere: it is turned into
+# a crypt hash in the scheme of the system (lib/passhash.py reads it on
+# standard input, so it is never on a command line either) and only the
+# hash is written, to a file of mode 0600 in a directory of mode 0700.  The
+# file is made in a file of its own and moved into place, and a hash file
+# that this run did not write is never written over.
 #
 # The answers reach the file of the answers through the gate: the gate
 # writes a file of its own and the file of the answers is only replaced
@@ -327,22 +374,28 @@ write_answers() {
 		chmod 700 "${secrets}" || return 1
 	fi
 	if [ "${user_auth}" = password ]; then
-		# The password of the account is written to a file of its own.
-		# A password file that this run did not write is never written
-		# over.  The file of this run may be replaced when the password
-		# of the account changes.
-		if [ -e "${secrets}/user.pass" ]; then
-			held=$(cat "${secrets}/user.pass" 2>/dev/null || printf '')
-			if [ "${secret_written}" != yes ] ||
-				[ "${held}" != "${secret_password}" ]; then
+		hashfile="${secrets}/user.hash"
+		if [ -e "${hashfile}" ] || [ -L "${hashfile}" ]; then
+			# A hash file that this run did not write, or that was
+			# changed since, is never written over.
+			held=$(cat "${hashfile}" 2>/dev/null || printf '')
+			if [ "${secret_written}" != yes ] || [ -L "${hashfile}" ] ||
+				[ "${held}" != "${secret_hash}" ]; then
 				return 1
 			fi
-			replace_secret_file "${secrets}" "${user_password}" || return 1
-		else
-			write_secret_file "${secrets}" "${user_password}" || return 1
 		fi
-		secret_written=yes
-		secret_password=${user_password}
+		if [ ! -e "${hashfile}" ] || [ "${secret_password}" != "${user_password}" ]; then
+			# printf is built into the shell: the password is never
+			# on a command line.
+			if ! printf '%s\n' "${user_password}" |
+				python3 -I "${root}/lib/passhash.py" write "${hash_scheme}" \
+					"${hashfile}" 2>>"${log}"; then
+				return 1
+			fi
+			secret_hash=$(cat "${hashfile}") || return 1
+			secret_written=yes
+			secret_password=${user_password}
+		fi
 	fi
 	raw="${state}/answers.raw"
 	gated="${state}/answers.gated"
@@ -353,7 +406,7 @@ write_answers() {
 		printf 'USER_NAME=%s\n' "${user_name}"
 		printf 'USER_AUTH=%s\n' "${user_auth}"
 		if [ "${user_auth}" = password ]; then
-			printf 'USER_PASSFILE=%s\n' "${secrets}/user.pass"
+			printf 'USER_HASHFILE=%s\n' "${secrets}/user.hash"
 		fi
 		printf 'PRIVILEGE_PASSWORDLESS=%s\n' "${privilege_passwordless}"
 		printf 'NETWORK_MODE=%s\n' "${network_mode}"
@@ -368,7 +421,7 @@ write_answers() {
 	# The gate writes a file of its own.  The file of the answers is only
 	# replaced when the gate was happy with the answers, so a gate that
 	# fails never leaves an empty file of answers behind.
-	if ! python3 "${root}/lib/gating.py" gate "${raw}" > "${gated}"; then
+	if ! python3 -I "${root}/lib/gating.py" gate "${raw}" > "${gated}"; then
 		rm -f "${gated}"
 		return 1
 	fi
@@ -376,18 +429,18 @@ write_answers() {
 		rm -f "${gated}"
 		return 1
 	fi
-	if ! python3 "${root}/lib/gating.py" secrets "${raw}" \
+	if ! python3 -I "${root}/lib/gating.py" secrets "${raw}" \
 		> "${state}/consumed-secrets.txt"; then
 		return 1
 	fi
 	return 0
 }
 
-# delete_secrets — the password of the account is gone once the backend has
+# delete_secrets — the hash of the password is gone once the backend has
 # read it.
 delete_secrets() {
 	[ -n "${state}" ] || return 0
-	rm -f "${state}/secrets/user.pass"
+	rm -f "${state}/secrets/user.hash" "${state}/secrets/answers.conf"
 }
 
 summary_text() {
@@ -621,10 +674,13 @@ page_keyboard() {
 	json_items "${probe}" layouts > "${items}"
 	fallback=$(json_value "${probe}" default)
 	[ -n "${fallback}" ] || fallback="${default_keymap}"
-	set -- --menu 'Choose the keyboard layout.' 0 0 12
+	# The options of the dialog tool come before the box: dialog(1) reads
+	# nothing after it but the items.
+	set --
 	if [ -s "${items}" ]; then
-		set -- "$@" --default-item "${fallback}"
+		set -- --default-item "${fallback}"
 	fi
+	set -- "$@" --menu 'Choose the keyboard layout.' 0 0 12
 	while IFS="${TAB}" read -r name descr size; do
 		[ -n "${name}" ] || continue
 		set -- "$@" "${name}" "${descr}"
@@ -648,10 +704,13 @@ page_timezone() {
 	json_items "${probe}" zones > "${items}"
 	fallback=$(json_value "${probe}" default)
 	[ -n "${fallback}" ] || fallback="${default_timezone}"
-	set -- --menu 'Choose the time zone.' 0 0 12
+	# The options of the dialog tool come before the box: dialog(1) reads
+	# nothing after it but the items.
+	set --
 	if [ -s "${items}" ]; then
-		set -- "$@" --default-item "${fallback}"
+		set -- --default-item "${fallback}"
 	fi
+	set -- "$@" --menu 'Choose the time zone.' 0 0 12
 	while IFS="${TAB}" read -r name descr size; do
 		[ -n "${name}" ] || continue
 		set -- "$@" "${name}" "${descr}"
@@ -743,19 +802,16 @@ A name starts with a letter or an underline and holds letters, digits, underline
 			*) return 3 ;;
 		esac
 		if [ -z "${user_password}" ]; then
-			dlg_yesno "No password was given for ${user_name}.
+			# The installed system needs a password for the account:
+			# the install command takes its hash.  An empty password is
+			# asked again.
+			dlg_page --msgbox "A password is needed for ${user_name}.
 
-Do you want this account to have no password?" 0 0
+Type a password for the account." 0 0
 			case "${DLG_RC}" in
-				0)
-					user_auth=none
-					user_password=''
-					break
-					;;
-				1) : ;;
+				0|1) continue ;;
 				*) return 3 ;;
 			esac
-			continue
 		fi
 		dlg_page --passwordbox "Repeat the password for ${user_name}:" 0 0 ''
 		case "${DLG_RC}" in
@@ -872,30 +928,96 @@ Choose OK to install ${product} with these settings." 0 0
 }
 
 # feed_gauge — the protocol bsddialog(1) reads for the gauge widget.
+#
+# A "PROGRESS <n> <message>" line of the install command sets the gauge to
+# n and shows the message; an "ERROR <message>" line shows the message.
+# Until the first PROGRESS line, every line moves the gauge on by ten.
 feed_gauge() {
 	count=0
+	percent=0
+	seen_progress=no
 	while IFS= read -r line; do
-		count=$((count + 1))
-		percent=$((count * 10))
-		if [ "${percent}" -gt 100 ]; then
-			percent=100
-		fi
-		printf 'XXX\n%s\n%s\nXXX\n' "${percent}" "${line}"
+		text=${line}
+		case "${line}" in
+			PROGRESS\ *)
+				rest=${line#PROGRESS }
+				n=${rest%% *}
+				case "${n}" in
+					''|*[!0-9]*) : ;;
+					*)
+						seen_progress=yes
+						[ "${n}" -le 100 ] || n=100
+						percent=${n}
+						text=${rest#"${n}"}
+						text=${text# }
+						;;
+				esac
+				;;
+			ERROR\ *) text=${line#ERROR } ;;
+			*)
+				if [ "${seen_progress}" = no ]; then
+					count=$((count + 1))
+					percent=$((count * 10))
+					[ "${percent}" -le 100 ] || percent=100
+				fi
+				;;
+		esac
+		printf 'XXX\n%s\n%s\nXXX\n' "${percent}" "${text}"
 	done
 	printf 'EOF\n'
 }
 
+# apply_helper — the root helper of the installer, next to the libraries
+# when it is installed, in bin/ of a checkout.
+apply_helper() {
+	if [ -x "${root}/installer-apply" ]; then
+		printf '%s\n' "${root}/installer-apply"
+	else
+		printf '%s\n' "${root}/bin/installer-apply"
+	fi
+}
+
+# privileged <command...> — run the root helper.  The front end runs as the
+# user of the session; when the helper is installed (it belongs to root) and
+# the user is not root, doas or sudo runs it, without asking for a password
+# when there is no terminal.  Otherwise (a checkout, a rehearsal, root
+# itself) the helper is run directly.
+privileged() {
+	_owner=$(ls -ln "$1" 2>/dev/null | awk '{ print $3 }')
+	if [ "$(id -u)" != 0 ] && [ "${_owner}" = 0 ]; then
+		for _tool in doas sudo; do
+			if command -v "${_tool}" >/dev/null 2>&1; then
+				"${_tool}" -n "$@"
+				return
+			fi
+		done
+	fi
+	"$@"
+}
+
+# submit_dir — the directory the root helper reads: the answers, the hash of
+# the password and nothing else.  It is the private directory of the
+# secrets of the run.
+submit_dir() {
+	cp "${answers_file}" "${state}/secrets/answers.conf" || return 1
+	chmod 600 "${state}/secrets/answers.conf" || return 1
+	printf '%s\n' "${state}/secrets"
+}
+
 # run_install — install the system while the gauge widget shows the progress.
-# The output of the backend goes to the log and to the gauge.
+# The root helper checks every answer again and runs the installation; its
+# output goes to the log and to the gauge.
 run_install() {
 	rm -f "${state}/install.rc"
+	dir=$(submit_dir) || return 4
+	helper=$(apply_helper)
 	(
-		# The exit code of the backend is the exit code of the run.
-		# It is caught here, so that it is written down even when the
+		# The exit code of the helper is the exit code of the run.  It
+		# is caught here, so that it is written down even when the
 		# installation fails: the file of the status is written after
-		# the backend, and not before it.
+		# the helper, and not before it.
 		code=0
-		"$BACKEND" install apply 2>&1 || code=$?
+		privileged "${helper}" --install "${dir}" < /dev/null 2>&1 || code=$?
 		printf '%s\n' "$code" > "${state}/install.rc"
 	) | tee -a "${log}" | feed_gauge |
 		"$BSDDIALOG" --title "${DLG_TITLE}" --gauge "Installing ${product}." \
@@ -1011,6 +1133,8 @@ main() {
 	# that cannot be used stops the run before the first page.
 	config_value PRODUCT_SLUG >/dev/null || exit 2
 	config_value OS >/dev/null || exit 2
+	hash_scheme=$(json_value "$("$BACKEND" users probe 2>>"${log}" || :)" hash_scheme)
+	[ -n "${hash_scheme}" ] || hash_scheme=sha512
 	if ! command -v "${BSDDIALOG}" >/dev/null 2>&1; then
 		printf 'installer-tui: the dialog tool %s is not installed\n' \
 			"${BSDDIALOG}" >&2

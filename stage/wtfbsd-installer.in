@@ -1,0 +1,65 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# wtfbsd-installer [--graphical | --text]
+#
+# Starts the installer of @PRODUCT@ as the user that runs it: the graphical
+# front end when an X display is there, the text front end otherwise.  The
+# front ends never run as root.  The only part of the installer that does
+# is the root helper @LIBEXEC@/installer-apply, which the front ends run
+# through doas or sudo; the rule of the live system names that helper and
+# nothing else.
+#
+# Root itself gets the text front end: the graphical one does not run as
+# root.  No other argument is accepted.
+#
+# The exit code is the one of the front end: 0 done, 1 the installation
+# failed, 2 a wrong argument, 3 the installer cannot start, 10 the user
+# chose "Try the live desktop".
+
+set -eu
+
+libexec='@LIBEXEC@'
+
+mode=auto
+case $# in
+	0) : ;;
+	1)
+		case "$1" in
+			--graphical) mode=graphical ;;
+			--text) mode=text ;;
+			*)
+				printf 'usage: wtfbsd-installer [--graphical | --text]\n' >&2
+				exit 2
+				;;
+		esac
+		;;
+	*)
+		printf 'usage: wtfbsd-installer [--graphical | --text]\n' >&2
+		exit 2
+		;;
+esac
+
+is_root=no
+[ "$(/usr/bin/id -u 2>/dev/null || :)" = 0 ] && is_root=yes
+[ "$(id -u 2>/dev/null || :)" = 0 ] && is_root=yes
+
+if [ "${is_root}" = yes ]; then
+	# Root runs the text front end in a clean environment: no override of
+	# the environment, no module of a graphical toolkit.
+	exec /usr/bin/env -i PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/pkg/sbin:/usr/pkg/bin \
+		HOME=/root LANG=C TERM="${TERM:-vt100}" "${libexec}/bin/installer-tui"
+fi
+
+if [ "${mode}" = auto ]; then
+	if [ -n "${DISPLAY:-}" ]; then
+		mode=graphical
+	else
+		mode=text
+	fi
+fi
+
+case "${mode}" in
+	graphical) exec "${libexec}/bin/installer-gui" ;;
+	*) exec "${libexec}/bin/installer-tui" ;;
+esac

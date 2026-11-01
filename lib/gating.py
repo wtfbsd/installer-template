@@ -21,7 +21,7 @@ import sys
 from typing import Callable, Dict, List, Mapping, Optional, Set, Tuple
 
 GATES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
-    "USER_PASSFILE": ("USER_AUTH", ("password",)),
+    "USER_HASHFILE": ("USER_AUTH", ("password",)),
     "NET_IF": ("NETWORK_MODE", ("dhcp", "static")),
     "NET_IPV4": ("NETWORK_MODE", ("static",)),
     "IPV4_ADDR": ("NET_IPV4", ("static",)),
@@ -32,7 +32,7 @@ GATES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
 # SECRET_GATES maps a secret file to the option that allows it to be read
 # and to the value that option must have.
 SECRET_GATES: Dict[str, Tuple[str, str]] = {
-    "USER_PASSFILE": ("USER_AUTH", "password"),
+    "USER_HASHFILE": ("USER_AUTH", "password"),
 }
 
 USAGE = "usage: gating.py <gate|secrets|gates> [file]"

@@ -1,0 +1,12 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Install @PRODUCT@
+GenericName=Installer
+Comment=Install @PRODUCT@ on a disk of this machine
+Exec=@BINDIR@/wtfbsd-installer --graphical
+Icon=@ICON@
+Terminal=false
+Categories=System;
+StartupNotify=true

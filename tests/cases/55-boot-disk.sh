@@ -47,7 +47,7 @@ probe_disks() {
 	STUB_GLABEL="${tmp}/glabels" \
 	STUB_ZFS_ROOT="${STUB_ZFS_ROOT:-}" \
 	STUB_ZPOOL="${tmp}/zpool" \
-	"${backend}" disk probe 2>/dev/null | python3 -c '
+	"${backend}" disk probe 2>/dev/null | python3 -I -c '
 import json, sys
 data = json.load(sys.stdin)
 for disk in data["disks"]:
@@ -105,5 +105,40 @@ check "the disk of the installation media is not offered" "ada2" "$(offered)"
 mount_table '/dev/ada0p3 / ufs rw 0 0'
 check_contains "the description of a disk is read" "ada2 Crucial MX500" \
 	"$(probe_disks)"
+
+# The live media of an ISO image: the root is the label of the ISO 9660
+# file system, whose provider is the disk the image was written to.
+mount_table '/dev/iso9660/LIVE_MEDIA / cd9660 ro 0 0'
+printf 'iso9660/LIVE_MEDIA  N/A  ada1\n' > "${tmp}/glabels"
+check "an ISO 9660 root (a written image) is not offered" "ada0 ada2" "$(offered)"
+
+# A root named by the disk identifier of the disk.
+mount_table '/dev/diskid/DISK-S3Z9NB0K123456p2 / ufs rw 0 0'
+printf 'diskid/DISK-S3Z9NB0K123456  N/A  ada2\n' > "${tmp}/glabels"
+check "a root named by its disk identifier is not offered" "ada0 ada1" "$(offered)"
+
+# The installation media mounted on /mnt with a GPT identifier label.
+mount_table '/dev/ada0p3 / ufs rw 0 0' '/dev/gptid/0b1c2d3e-0000-0000-0000-000000000001 /mnt ufs ro 0 0'
+printf 'gptid/0b1c2d3e-0000-0000-0000-000000000001  N/A  ada2p1\n' > "${tmp}/glabels"
+check "the media named by a GPT identifier is not offered" "ada1" "$(offered)"
+
+# A ZFS root whose pool names its devices by labels.
+cat > "${tmp}/zpool" <<'ZPOOL'
+  pool: zroot
+ state: ONLINE
+config:
+
+	NAME                       STATE     READ WRITE CKSUM
+	zroot                      ONLINE       0     0     0
+	  mirror-0                 ONLINE       0     0     0
+	    /dev/gpt/zfs0          ONLINE       0     0     0
+	    /dev/diskid/DISK-XYZ   ONLINE       0     0     0
+
+errors: No known data errors
+ZPOOL
+mount_table 'zroot/ROOT/default / zfs rw 0 0'
+printf 'gpt/zfs0  N/A  ada0p3\ndiskid/DISK-XYZ  N/A  ada1\n' > "${tmp}/glabels"
+check "every labelled device of a ZFS root pool is followed" "ada2" \
+	"$(STUB_ZFS_ROOT=zroot/ROOT/default offered)"
 
 finish

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# fake-dialog: a stand-in for dialog(1), the tool OpenBSD and NetBSD
+# package.  It takes the same arguments as bsddialog and answers the same
+# way, except for the escape key: dialog(1) exits with 255 for it (bsddialog
+# with 5).  It runs the stand-in of bsddialog and changes that code.
+
+here=$(CDPATH= cd "$(dirname "$0")" && pwd)
+rc=0
+"${here}/fake-bsddialog" "$@" || rc=$?
+if [ "${rc}" -eq 5 ]; then
+	exit 255
+fi
+exit "${rc}"

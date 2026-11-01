@@ -29,16 +29,16 @@ tui_run "${root}/tests/fixtures/answers-static.txt"
 check_rc "the installer finishes with a manual address" 0 "${tui_rc}"
 
 summary=$(cat "${BSDDIALOG_LOG}")
-check_contains "the summary shows the address" "static-address" "${summary}"
-check_contains "the summary shows the netmask" "static-netmask" "${summary}"
-check_contains "the summary shows the gateway" "static-gateway" "${summary}"
+check_contains "the summary shows the address" "192.0.2.10" "${summary}"
+check_contains "the summary shows the netmask" "255.255.255.0" "${summary}"
+check_contains "the summary shows the gateway" "192.0.2.1" "${summary}"
 
 answers=$(cat "${INSTALLER_ANSWERS}" 2>/dev/null || true)
-check_contains "the answers hold the address" "IPV4_ADDR=static-address" \
+check_contains "the answers hold the address" "IPV4_ADDR=192.0.2.10" \
 	"${answers}"
-check_contains "the answers hold the netmask" "IPV4_MASK=static-netmask" \
+check_contains "the answers hold the netmask" "IPV4_MASK=255.255.255.0" \
 	"${answers}"
-check_contains "the answers hold the gateway" "IPV4_GW=static-gateway" \
+check_contains "the answers hold the gateway" "IPV4_GW=192.0.2.1" \
 	"${answers}"
 
 # An automatic address has no address, no netmask and no gateway.
@@ -46,9 +46,9 @@ tui_run "${root}/tests/fixtures/answers-happy.txt"
 check_rc "the installer finishes on the happy path" 0 "${tui_rc}"
 
 summary=$(cat "${BSDDIALOG_LOG}")
-check_absent "the summary shows no address" "static-address" "${summary}"
-check_absent "the summary shows no netmask" "static-netmask" "${summary}"
-check_absent "the summary shows no gateway" "static-gateway" "${summary}"
+check_absent "the summary shows no address" "192.0.2.10" "${summary}"
+check_absent "the summary shows no netmask" "255.255.255.0" "${summary}"
+check_absent "the summary shows no gateway" "192.0.2.1" "${summary}"
 
 answers=$(cat "${INSTALLER_ANSWERS}" 2>/dev/null || true)
 check_absent "the answers hold no netmask" "IPV4_MASK=" "${answers}"

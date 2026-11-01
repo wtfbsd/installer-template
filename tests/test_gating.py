@@ -21,7 +21,10 @@ ANSWER_KEYS = {
     "DISK",
     "USER_NAME",
     "USER_AUTH",
-    "USER_PASSFILE",
+    "USER_HASHFILE",
+    "USER_FULLNAME",
+    "HOSTNAME",
+    "SSH_KEYFILE",
     "PRIVILEGE_PASSWORDLESS",
     "NETWORK_MODE",
     "NET_IF",
@@ -36,38 +39,38 @@ class GatedAnswersTest(unittest.TestCase):
     def test_a_gated_off_password_is_dropped(self):
         answers = {
             "USER_AUTH": "none",
-            "USER_PASSFILE": "user.pass",
+            "USER_HASHFILE": "user.hash",
             "USER_NAME": "tester",
         }
         gated = gating.gated_answers(answers)
-        self.assertNotIn("USER_PASSFILE", gated)
+        self.assertNotIn("USER_HASHFILE", gated)
         self.assertEqual(gated["USER_AUTH"], "none")
         self.assertEqual(gated["USER_NAME"], "tester")
 
     def test_a_gated_off_password_is_not_a_consumed_secret(self):
         answers = {
             "USER_AUTH": "none",
-            "USER_PASSFILE": "user.pass",
+            "USER_HASHFILE": "user.hash",
         }
-        self.assertNotIn("USER_PASSFILE", gating.consumed_secrets(answers))
+        self.assertNotIn("USER_HASHFILE", gating.consumed_secrets(answers))
         self.assertEqual(gating.consumed_secrets(answers), set())
 
     def test_a_gated_on_password_is_kept(self):
         answers = {
             "USER_AUTH": "password",
-            "USER_PASSFILE": "user.pass",
+            "USER_HASHFILE": "user.hash",
         }
         gated = gating.gated_answers(answers)
-        self.assertEqual(gated["USER_PASSFILE"], "user.pass")
-        self.assertIn("USER_PASSFILE", gating.consumed_secrets(answers))
+        self.assertEqual(gated["USER_HASHFILE"], "user.hash")
+        self.assertIn("USER_HASHFILE", gating.consumed_secrets(answers))
 
     def test_the_answers_are_never_modified(self):
         answers = {
             "USER_AUTH": "none",
-            "USER_PASSFILE": "user.pass",
+            "USER_HASHFILE": "user.hash",
         }
         gating.gated_answers(answers)
-        self.assertIn("USER_PASSFILE", answers)
+        self.assertIn("USER_HASHFILE", answers)
 
     def test_the_interface_is_kept_in_both_modes(self):
         for mode in ("dhcp", "static"):
@@ -130,7 +133,7 @@ class GateTableTest(unittest.TestCase):
             self.assertIn(controller, ANSWER_KEYS)
 
     def test_every_gated_field_has_a_secret_rule_when_it_is_a_password(self):
-        for field in ("USER_PASSFILE",):
+        for field in ("USER_HASHFILE",):
             self.assertIn(field, gating.GATES)
             self.assertIn(field, gating.SECRET_GATES)
 
@@ -141,7 +144,7 @@ class GateTableTest(unittest.TestCase):
 
 class CommandLineTest(unittest.TestCase):
     def test_the_gate_command_reads_standard_input_twice(self):
-        text = "USER_AUTH=password\nUSER_PASSFILE=user.pass\n"
+        text = "USER_AUTH=password\nUSER_HASHFILE=user.hash\n"
         out = io.StringIO()
         err = io.StringIO()
         with mock.patch.object(sys, "stdin", io.StringIO(text)):
@@ -151,8 +154,17 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(first, 0)
         self.assertEqual(second, 0)
         self.assertNotIn("closed file", err.getvalue())
-        self.assertIn("USER_PASSFILE=user.pass", out.getvalue())
+        self.assertIn("USER_HASHFILE=user.hash", out.getvalue())
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoPasswordFileTest(unittest.TestCase):
+    def test_no_field_names_a_file_of_the_password_itself(self):
+        # The front ends write the crypt hash only; a field for a file
+        # that holds the password itself has no place in the gates.
+        self.assertNotIn("USER_PASSFILE", gating.GATES)
+        self.assertNotIn("USER_PASSFILE", gating.SECRET_GATES)
+        self.assertEqual(set(gating.SECRET_GATES), {"USER_HASHFILE"})
