@@ -21,8 +21,12 @@ from typing import Dict, List, Optional, Tuple
 
 import i18n
 
-COLOURS = ("PRIMARY", "ACCENT", "DARK", "DARK2", "LIGHT", "MUTED")
-TEXTS = ("NAME", "NAME_LOWER", "TAGLINE")
+# HIGHLIGHT (the accent of the focus), IDENTITY_FG (the identity line),
+# FONT and VARIANT_LABEL are optional: the artwork packs have them.
+COLOURS = ("PRIMARY", "ACCENT", "DARK", "DARK2", "LIGHT", "MUTED", "HIGHLIGHT", "IDENTITY_FG")
+TEXTS = ("NAME", "NAME_LOWER", "TAGLINE", "FONT", "VARIANT_LABEL")
+# A font family the window's style can name: letters, digits, spaces.
+FONT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}", re.ASCII)
 DEFAULT = {"NAME": "", "NAME_LOWER": "", "TAGLINE": "", "PRIMARY": "4C8BF5",
            "ACCENT": "26A269", "DARK": "1F2430", "DARK2": "262C3A", "LIGHT": "F7F7F7",
            "MUTED": "8A93B2"}
@@ -36,10 +40,11 @@ class BrandingError(ValueError):
     """Artwork that cannot be used."""
 
 
-def parse_palette(path: str) -> Dict[str, str]:
+def parse_palette(path: str, base: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     """palette.env, parsed (never sourced): colours of six hex digits and
-    short texts without quotes or control characters."""
-    out = dict(DEFAULT)
+    short texts without quotes or control characters.  A variant's file
+    sets only what it changes: its keys go over the base palette."""
+    out = dict(base if base is not None else DEFAULT)
     with open(path, encoding="utf-8") as stream:
         for number, raw in enumerate(stream, start=1):
             entry = _palette_line(number, raw.rstrip("\n"))
@@ -110,7 +115,8 @@ class Branding:
         readable on both ends of the sidebar, else the first of LIGHT and
         white that is (contrast at least 4.5:1)."""
         p = self.palette
-        for colour in (p["MUTED"], p["LIGHT"], "FFFFFF"):
+        own = [p["IDENTITY_FG"]] if p.get("IDENTITY_FG") else []
+        for colour in own + [p["MUTED"], p["LIGHT"], "FFFFFF"]:
             if all(contrast(colour, p[bg]) >= 4.5 for bg in ("DARK", "DARK2")):
                 return colour
         return "FFFFFF"
@@ -147,7 +153,31 @@ progressbar progress {{ background-image: none; background-color: #{p['PRIMARY']
 .slide {{ background-color: #{p['DARK']}; }}
 .slide-title {{ color: #ffffff; font-size: 26px; font-weight: bold; }}
 .slide-text {{ color: #{p['LIGHT']}; font-size: 15px; }}
+""" + self.highlight_css() + self.font_css()
+
+    def highlight_css(self) -> str:
+        """HIGHLIGHT is the accent of the focus: a ring of two tones, the
+        highlight inside and DARK outside, so it reads on a light page
+        whatever the highlight is (it must stand out from DARK, 3:1)."""
+        p = self.palette
+        hl = p.get("HIGHLIGHT")
+        if not hl or contrast(hl, p["DARK"]) < 3:
+            return ""
+        return f"""
+button:focus, radiobutton:focus, checkbutton:focus, entry:focus, treeview:focus,
+spinbutton:focus, combobox:focus, scale:focus, flowboxchild:focus {{ outline-color: #{p['DARK']}; }}
+button:focus {{ box-shadow: inset 0 0 0 2px #{hl}, 0 0 0 2px #{p['DARK']}; }}
+button.suggested-action:focus, button.destructive-action:focus {{
+    box-shadow: inset 0 0 0 2px #{hl}, 0 0 0 2px #{p['DARK']}; }}
 """
+
+    def font_css(self) -> str:
+        """FONT is the font family of the window (when it is a plain name)."""
+        font = self.palette.get("FONT", "")
+        if not FONT_RE.fullmatch(font):
+            return ""
+        return f'\nwindow, window * {{ font-family: "{font}"; }}\n'
+
 
     def slides(self, product: str, lang: str) -> List[dict]:
         """The slides shown while the system is installed."""
@@ -184,5 +214,6 @@ def load(directory: str, variant: str = "") -> Branding:
         vdir = os.path.join(directory, "variants", variant)
         vpal = os.path.join(vdir, "palette.env")
         if os.path.isfile(vpal):
-            return Branding(directory, parse_palette(vpal), variant, vdir)
+            return Branding(directory, parse_palette(vpal, parse_palette(palette_path)),
+                            variant, vdir)
     return Branding(directory, parse_palette(palette_path))

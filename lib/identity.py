@@ -26,6 +26,25 @@ VALUE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._+:-]{0,47}")
 MAX_BYTES = 4096
 
 
+# The release each template targets: what a picture of the installer for
+# that system shows (tools/render-screenshots.sh, --render).
+RELEASE_BASES = {"freebsd": "FreeBSD 16.0", "netbsd": "NetBSD 11.0", "openbsd": "OpenBSD 8.0",
+                 "dragonfly": "DragonFly 6.4", "illumos": "illumos"}
+
+
+def for_os(ident: Dict[str, str], os_name: str) -> Dict[str, str]:
+    """The identity a picture of the installer for os_name shows: a BASE
+    that names another system (a sample identity file) is replaced by the
+    release of os_name, so an OpenBSD picture never says FreeBSD."""
+    want = RELEASE_BASES.get(os_name)
+    if not want:
+        return ident
+    base = ident.get("BASE", "")
+    if base.split(" ")[0].lower() == want.split(" ")[0].lower():
+        return ident
+    return dict(ident, BASE=want)
+
+
 def path_for(slug: str) -> str:
     return f"/usr/local/share/{slug}/identity"
 

@@ -384,7 +384,8 @@ class DiskPage:
         separate = asks and self.usage == "separate"
         pools = D.data_pools_offered(self.os, self.detail)
         self.data_expander.set_visible(self.mode == "erase" and answered and not separate and pools)
-        self.usage_buttons["separate"].set_sensitive(pools)
+        # Separately is always possible: the other disks can be left as
+        # they are; formatting them needs data disks (see fill_separate).
         caption = lbl("Disks outside the system pool (optional): each formatted as its own drive"
                       if asks else "Data disks (optional)")
         caption.set_max_width_chars(40)
@@ -687,6 +688,8 @@ class DiskPage:
         if not button.get_active():
             return
         self.usage = ident
+        # The question is answered: a message that asked for it goes.
+        self.win.show_error("")
         if ident == "separate":
             self.selected = self.selected[:1] or [self.detail["disks"][0]["name"]]
             self.data_disks = []
@@ -708,7 +711,8 @@ class DiskPage:
                                f"{D.human(int(disk.get('size_bytes', 0)))}", wrap=False), False, False, 0)
             combo = Gtk.ComboBoxText()
             combo.append("keep", "Leave it as it is")
-            combo.append("format", "Format it as a drive on")
+            if D.data_pools_offered(self.os, self.detail):
+                combo.append("format", "Format it as a drive on")
             mount = Gtk.Entry(width_chars=10)
             mount.set_text(self.separate[name] or (DATA_MOUNT if not any(self.separate.values()) else "/home"))
             combo.set_active_id("format" if self.separate[name] else "keep")
@@ -724,6 +728,12 @@ class DiskPage:
             row.pack_start(combo, False, False, 0)
             row.pack_start(mount, False, False, 0)
             self.separate_list.pack_start(row, False, False, 0)
+        if not D.data_pools_offered(self.os, self.detail) and self.separate:
+            # Said, not greyed: why the other disks can only be kept.
+            self.separate_list.pack_start(
+                lbl("Formatting the other disks as drives is "
+                    f"{D.system(self.os, self.detail)['not_offered']}; they are left as they are.",
+                    "muted"), False, False, 0)
         self.separate_area.show_all()
 
     def on_toggle(self, _renderer, path):
@@ -894,7 +904,8 @@ class DiskPage:
         self.layout_more.set_text(
             "Need more disks: " + ", ".join(f"{c['title']} ({c['min_disks']}+)" for c in others)
             if others else "")
-        self.layout_more.set_visible(bool(others))
+        # Used separately the system takes one disk: no layout, no note.
+        self.layout_more.set_visible(bool(others) and not (self.asks_usage() and self.usage == "separate"))
         for card in [c for c in cards if not c["reason"]]:
             button = Gtk.RadioButton.new_from_widget(group)
             group = group or button

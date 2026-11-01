@@ -526,3 +526,38 @@ class AsciiDigitsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AdapterTableAgreeTest(unittest.TestCase):
+    """The built-in table (diskplan.SYSTEMS) is the fallback for the
+    capabilities an adapter's os_layouts reports; the two must say the
+    same, or a disk report without capabilities offers something the
+    install command does not take."""
+
+    FIELDS = ("modes", "data_pools", "encryption", "not_offered", "filesystems")
+
+    @staticmethod
+    def adapter_caps(os_name):
+        text = (ROOT / "adapters" / f"{os_name}.sh").read_text()
+        start = text.find("os_layouts() {")
+        if start < 0:
+            return None
+        body = text[text.index("<<'JSON'\n", start) + len("<<'JSON'\n"):]
+        return json.loads(body[:body.index("\nJSON\n")])
+
+    def test_every_adapter_with_layouts_matches_the_table(self):
+        checked = 0
+        for os_name in sorted(D.SYSTEMS):
+            caps = self.adapter_caps(os_name)
+            if caps is None:
+                continue
+            checked += 1
+            table = D.system(os_name)
+            reported = D.system(os_name, {"capabilities": caps})
+            with self.subTest(os=os_name):
+                self.assertEqual(
+                    [(x.ident, x.min_disks, x.max_disks, x.encrypted) for x in table["layouts"]],
+                    [(x.ident, x.min_disks, x.max_disks, x.encrypted) for x in reported["layouts"]])
+                for key in self.FIELDS:
+                    self.assertEqual(table[key], reported[key], key)
+        self.assertGreater(checked, 0)

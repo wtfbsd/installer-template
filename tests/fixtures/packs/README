@@ -1,0 +1,7 @@
+The palette files of the two artwork packs of artwork-template 353ef29
+(release pack-353ef29aa000), copied unchanged: palette.env and
+variants/<name>/palette.env of examplebsd-353ef29aa000-default.tar.xz
+(sha256 10f2507cd0bb325534157f073d79bc08da6a5e1ded34686ebe683a75a0a1d3e4)
+and examplebsd-353ef29aa000-cyberpunk.tar.xz
+(sha256 9e53a16fa3676daa9da8fa888fdfde9a7ac80b44bcf57ddac391e9f438bdcbd6).
+Case 88 installs them with install-into-stage.sh --artwork.
