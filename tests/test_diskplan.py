@@ -388,6 +388,45 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertTrue(any("data pools" in e for e in errors), errors)
         self.assertFalse(D.data_pools_offered("openbsd", self.report()))
 
+    def test_the_boot_modes_are_those_of_the_install_command(self):
+        def boot(value):
+            caps = dict(self.OPENBSD, boot=value)
+            return D.system("dragonfly", dict(detail("three-disks"), capabilities=caps))["boot"]
+        self.assertEqual(boot(["uefi"]), ("uefi",))
+        self.assertEqual(boot(["uefi", "floppy"]), ("uefi",))
+        self.assertEqual(boot(["floppy"]), ("uefi", "bios"))
+        self.assertEqual(boot([]), ("uefi", "bios"))
+        self.assertEqual(boot("uefi"), ("uefi", "bios"))
+        uefi = dict(detail("three-disks"), capabilities=dict(self.OPENBSD, boot=["uefi"]))
+        plan = {"version": 1, "mode": "erase", "disks": ["ada0"], "layout": "single",
+                "filesystem": "ffs", "boot": "bios"}
+        self.assertTrue(any("boot mode" in e for e in D.validate(plan, uefi, "openbsd")))
+
+    def test_the_answer_of_capabilities_is_checked(self):
+        good = json.dumps(dict(self.OPENBSD, boot=["uefi"], other=1))
+        self.assertEqual(D.check_capabilities(good)["boot"], ["uefi"])
+        self.assertNotIn("other", D.check_capabilities(good))
+        for bad in ("not JSON", "[]", '{"boot": ["uefi"]}', '{"layouts": [{"title": "x"}]}',
+                    json.dumps(dict(self.OPENBSD, pad="x" * 70000))):
+            with self.subTest(bad[:30]):
+                self.assertIsNone(D.check_capabilities(bad))
+
+    def test_as_root_only_a_command_of_root_runs(self):
+        import os
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd = os.path.join(tmp, "x-install")
+            with open(cmd, "w", encoding="utf-8") as stream:
+                stream.write("#!/bin/sh\nexit 0\n")
+            os.chmod(cmd, 0o755)  # nosec B103 - a stub that must be executable, in a private temp dir
+            self.assertTrue(D.trusted_command(cmd))
+            if os.geteuid() != 0:
+                with mock.patch("os.geteuid", return_value=0):
+                    self.assertFalse(D.trusted_command(cmd))
+            os.chmod(cmd, 0o644)
+            self.assertFalse(D.trusted_command(cmd))
+
     def test_without_capabilities_the_built_in_table_is_used(self):
         self.assertTrue(D.data_pools_offered("freebsd", detail("three-disks")))
 

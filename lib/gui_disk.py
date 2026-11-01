@@ -89,6 +89,9 @@ def bar(segments, width=BAR_WIDTH, captions=True):
     return box
 
 
+BOOT_TITLES = {"uefi": "UEFI", "bios": "Legacy BIOS"}
+
+
 class DiskPage:
     """The widgets and the state of the disk page."""
 
@@ -477,12 +480,15 @@ class DiskPage:
         adv.attach(self.trim, 1, arow, 1, 1)
         arow += 1
         adv.attach(lbl("Start the system with", "field-label"), 0, arow, 1, 1)
+        # A choice when the system offers more than one way, else a text.
         self.boot_combo = Gtk.ComboBoxText()
-        for ident in D.system(self.os)["boot"]:
-            self.boot_combo.append(ident, {"uefi": "UEFI", "bios": "Legacy BIOS"}[ident])
-        self.boot_combo.set_active_id("uefi")
+        self.boot_fixed = lbl("", wrap=False)
+        boot_cell = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        boot_cell.pack_start(self.boot_combo, False, False, 0)
+        boot_cell.pack_start(self.boot_fixed, False, False, 0)
+        self.fill_boot()
         self.boot_combo.connect("changed", lambda *_a: self.refresh())
-        adv.attach(self.boot_combo, 1, arow, 1, 1)
+        adv.attach(boot_cell, 1, arow, 1, 1)
         self.boot_warning = lbl("", "warn-text")
         adv.attach(self.boot_warning, 2, arow, 1, 1)
         box.pack_start(grid, False, False, 0)
@@ -513,7 +519,7 @@ class DiskPage:
         parts.append(f"swap {swap} GB" if swap else "no swap")
         boot = self.boot_combo.get_active_id()
         if boot:
-            parts.append({"uefi": "UEFI", "bios": "Legacy BIOS"}.get(boot, boot))
+            parts.append(BOOT_TITLES.get(boot, boot))
         parts.append("TRIM on" if self.trim.get_active() else "TRIM off")
         if self.sector_4k.get_active():
             parts.append("4K")
@@ -579,9 +585,26 @@ class DiskPage:
 
     # ------------------------------------------------------------ data
 
+    def fill_boot(self):
+        """The boot modes the install command takes (its capabilities):
+        a drop-down of them, or the one as a fixed text."""
+        offered = list(D.system(self.os, self.detail)["boot"])
+        current = self.boot_combo.get_active_id()
+        self.boot_combo.remove_all()
+        for ident in offered:
+            self.boot_combo.append(ident, BOOT_TITLES[ident])
+        self.boot_combo.set_active_id(current if current in offered else offered[0])
+        single = len(offered) == 1
+        self.boot_fixed.set_text(BOOT_TITLES[offered[0]] if single else "")
+        self.boot_combo.set_no_show_all(single)
+        self.boot_combo.set_visible(not single)
+        self.boot_fixed.set_no_show_all(not single)
+        self.boot_fixed.set_visible(single)
+
     def load(self):
         """Read the report of the disks again and fill the page."""
         self.detail, err = self.wiz.disk_report()
+        self.fill_boot()
         index = D.disk_index(self.detail)
         self.selected = [n for n in self.selected if n in index]
         if not self.selected and index:
