@@ -5,6 +5,7 @@
 # and the output of the contract:
 #
 #   examplebsd-install -d DISK -u USER [-k PUBKEYFILE] -H HASHFILE
+#       [-p PLANFILE] [-E PASSPHRASEFILE]
 #       [-n HOSTNAME] [-z TIMEZONE] [-K KEYMAP] [-c FULLNAME] [-P]
 #       [-N IF:ADDR/MASK:GW | -N IF:dhcp] -y --progress
 #
@@ -13,6 +14,8 @@
 #
 # Environment:
 #   STUB_INSTALL_ARGS       a file that gets the arguments, one per line
+#   STUB_INSTALL_ROOT_HASH_COPY  a file that gets the content of the root
+#                           hash file of -r
 #   STUB_INSTALL_HASH_COPY  a file that gets the content of the hash file
 #   STUB_INSTALL_FAIL       exit with this code after the second step
 #   STUB_INSTALL_SILENT     "yes": fail without an ERROR line
@@ -37,10 +40,57 @@ disk='' user='' key='' hash='' yes=no progress=no
 while [ $# -gt 0 ]; do
 	case "$1" in
 		-d) disk=$2; shift 2 ;;
+		-p)
+			[ -f "$2" ] || fail 2 "the plan file $2 is not there"
+			pmode=$(stat -c %a "$2" 2>/dev/null || stat -f %Lp "$2")
+			[ "${pmode}" = 600 ] || fail 2 "the plan file has mode ${pmode}, not 600"
+			python3 -I -c 'import json, sys; json.load(open(sys.argv[1]))' "$2" ||
+				fail 2 'the plan file is not JSON'
+			[ -z "${STUB_INSTALL_PLAN_COPY:-}" ] || cp "$2" "${STUB_INSTALL_PLAN_COPY}"
+			# The disks of the plan, by name, the way -d named one.
+			disk=$(python3 -I -c '
+import json, sys
+plan = json.load(open(sys.argv[1]))
+disks = plan.get("disks") or [(plan.get("alongside") or {}).get("disk")] or []
+print(" ".join(d for d in disks if d) or "plan")' "$2")
+			shift 2
+			;;
+		-l)
+			[ -f "$2" ] || fail 2 "the file of the accepted licences $2 is not there"
+			lmode=$(stat -c %a "$2" 2>/dev/null || stat -f %Lp "$2")
+			[ "${lmode}" = 600 ] || fail 2 "the file of the accepted licences has mode ${lmode}, not 600"
+			[ -z "${STUB_INSTALL_ACCEPT_COPY:-}" ] || cp "$2" "${STUB_INSTALL_ACCEPT_COPY}"
+			shift 2
+			;;
+		-E)
+			[ -f "$2" ] || fail 2 "the passphrase file $2 is not there"
+			emode=$(stat -c %a "$2" 2>/dev/null || stat -f %Lp "$2")
+			[ "${emode}" = 600 ] || fail 2 "the passphrase file has mode ${emode}, not 600"
+			shift 2
+			;;
 		-u) user=$2; shift 2 ;;
 		-k) key=$2; shift 2 ;;
 		-H) hash=$2; shift 2 ;;
-		-n|-z|-K|-c) [ $# -ge 2 ] || fail 2 "$1 needs a value"; shift 2 ;;
+		-n|-z|-K|-c|-L|-6|-D) [ $# -ge 2 ] || fail 2 "$1 needs a value"; shift 2 ;;
+		-r)
+			case "${2:-}" in
+				locked) : ;;
+				*)
+					[ -s "$2" ] || fail 2 'the root hash file is not there'
+					if [ -n "${STUB_INSTALL_ROOT_HASH_COPY:-}" ]; then
+						cat "$2" > "${STUB_INSTALL_ROOT_HASH_COPY}"
+					fi
+					;;
+			esac
+			shift 2
+			;;
+		-W)
+			wmode=$(stat -c %a "$2" 2>/dev/null || stat -f %Lp "$2")
+			[ "${wmode}" = 600 ] || fail 2 "the Wi-Fi file has mode ${wmode}, not 600"
+			shift 2
+			;;
+		-A|-U) shift ;;
+		-Z) case "${2:-}" in utc|local) shift 2 ;; *) fail 2 "-Z takes utc or local" ;; esac ;;
 		-P) shift ;;
 		-N)
 			[ $# -ge 2 ] || fail 2 '-N needs a value'

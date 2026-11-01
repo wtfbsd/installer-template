@@ -35,8 +35,8 @@ ARGS = sys.argv[1:]
 # Only the root helper (installer-apply) runs as root.  The check comes
 # before anything but os and sys is imported.
 if os.geteuid() == 0:
-    if "--smoke" in ARGS or "--screenshots" in ARGS:
-        sys.stderr.write("installer-gui: --smoke and --screenshots are refused for root\n")
+    if "--smoke" in ARGS or "--screenshots" in ARGS or "--render" in ARGS or "--keyboard-walk" in ARGS:
+        sys.stderr.write("installer-gui: --smoke, --screenshots and --render are refused for root\n")
         sys.exit(2)
     sys.stderr.write("installer-gui: the graphical installer does not run as root; "
                      "run it as the user of the session, or run installer-tui\n")
@@ -50,6 +50,7 @@ ROOT = os.environ.get("INSTALLER_ROOT") or os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 import wizard as W  # noqa: E402
+import i18n  # noqa: E402
 
 
 def fallback_tui(reason: str) -> int:
@@ -106,7 +107,22 @@ if "--check" in ARGS:
 if not GTK_OK:
     sys.exit(fallback_tui(GTK_REASON))
 
+from gui_lists import not_a_list, scrolled  # noqa: E402
+
 CSS = b"""
+.flag-button { padding: 2px 4px; min-width: 30px; }
+.flag-badge { font-size: 10px; font-weight: bold; color: #333333; background-color: #e3e7ee;
+              border-radius: 3px; padding: 1px 4px; }
+.flag-button:checked { background-image: none; background-color: #cfe0ff; border-color: #4c8bf5; }
+button:focus, radiobutton:focus, checkbutton:focus, entry:focus, treeview:focus,
+spinbutton:focus, combobox:focus, scale:focus, flowboxchild:focus {
+    outline-color: #4c8bf5; outline-style: solid; outline-width: 2px; outline-offset: 1px; }
+/* The outline is only drawn while the toolkit thinks the keyboard is in
+   use, which some systems never report: a button with the focus also gets
+   a ring of its own, always. */
+button:focus { box-shadow: inset 0 0 0 2px #4c8bf5, 0 0 0 1px #4c8bf5; }
+button.suggested-action:focus, button.destructive-action:focus {
+    box-shadow: inset 0 0 0 2px #ffffff, 0 0 0 2px #4c8bf5; }
 .sidebar { background-color: #1f2430; }
 .sidebar label { color: #c8ccd4; }
 .sidebar .product { color: #ffffff; font-size: 20px; font-weight: bold; }
@@ -117,6 +133,7 @@ CSS = b"""
 .page-title { font-size: 26px; font-weight: bold; }
 .lead { font-size: 15px; }
 .lead-big { font-size: 20px; }
+.tagline { font-size: 12px; }
 .error-text { color: #c01c28; }
 .warning-text { color: #a05a00; font-weight: bold; }
 .action-bar { padding: 12px 18px; border-top: 1px solid alpha(#000000, 0.12); }
@@ -125,6 +142,10 @@ CSS = b"""
 """
 
 PAGE_TITLES = dict(W.PAGES)
+
+
+# The message of a page whose fields show their own problems.
+FIELDS_NEED_ATTENTION = "Some fields need attention."
 
 
 def label(text="", css=None, wrap=True, xalign=0.0, selectable=False):
@@ -137,6 +158,48 @@ def label(text="", css=None, wrap=True, xalign=0.0, selectable=False):
         for name in css.split():
             widget.get_style_context().add_class(name)
     return widget
+
+
+def svg_pixbuf(data, width, height, fill=False):
+    """A pixbuf of SVG bytes at a size (the whole area when fill), or None."""
+    if not data:
+        return None
+    try:
+        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
+        loader.write(data)
+        loader.close()
+        pix = loader.get_pixbuf()
+    except GLib.Error:
+        return None
+    if fill:
+        scale = max(width / pix.get_width(), height / pix.get_height())
+        scaled = pix.scale_simple(int(pix.get_width() * scale) + 1, int(pix.get_height() * scale) + 1,
+                                  GdkPixbuf.InterpType.BILINEAR)
+        return scaled.new_subpixbuf(0, 0, min(width, scaled.get_width()), min(height, scaled.get_height()))
+    scale = min(width / pix.get_width(), height / pix.get_height())
+    return pix.scale_simple(max(int(pix.get_width() * scale), 1), max(int(pix.get_height() * scale), 1),
+                            GdkPixbuf.InterpType.BILINEAR)
+
+
+def wrap_toggle_labels(widget):
+    if isinstance(widget, Gtk.CheckButton) and isinstance(widget.get_child(), Gtk.Label):
+        child = widget.get_child()
+        child.set_line_wrap(True)
+        child.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        child.set_max_width_chars(60)
+        child.set_xalign(0.0)
+    if isinstance(widget, Gtk.Container):
+        for child in widget.get_children():
+            wrap_toggle_labels(child)
+
+
+def mnemonic_label(text, used):
+    """The label with an underline before its first letter that no other
+    button of the cluster uses, and that letter."""
+    for i, ch in enumerate(text):
+        if ch.isalpha() and ch.lower() not in used:
+            return text[:i] + "_" + text[i:].replace("_", "__"), ch.lower()
+    return text.replace("_", "__"), ""
 
 
 def field_label(text, control):
@@ -223,6 +286,7 @@ class InstallerWindow(Gtk.Window):
         super().__init__(title=f"{wiz.product} Installer")
         self.wiz = wiz
         self.result = W.EXIT_OK
+        self.lang = "en"
         self.page = "welcome"
         self.failure = None
         self.failures = []
@@ -233,12 +297,41 @@ class InstallerWindow(Gtk.Window):
         # content of a page scrolls, so the buttons are always on screen.
         width, height = monitor_size()
         self.set_default_size(min(width, 1280), min(height, 900))
-        provider = Gtk.CssProvider()
-        provider.load_from_data(CSS)
-        Gtk.StyleContext.add_provider_for_screen(
-            Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        import gui_disk
+        import gui_software
+        import branding
+        # The look of the product: its artwork template, next to the
+        # installer (install-into-stage.sh --artwork), or INSTALLER_ARTWORK.
+        art = os.environ.get("INSTALLER_ARTWORK") or os.path.join(ROOT, "artwork")
+        # The identity of the image (lib/identity.py): the line in the lower
+        # left, and the variant of the artwork it was built with.
+        import identity
+        import platform
+        self.identity = identity.load(os.environ.get("INSTALLER_IDENTITY") or
+                                      identity.path_for(self.wiz.slug))
+        uname = os.uname()
+        self.identity_text = identity.line(
+            self.identity, self.wiz.product, platform.machine(),
+            identity.detected_base((uname.sysname, uname.release), self.wiz.os_name))
+        try:
+            self.brand = branding.load(art if os.path.isfile(os.path.join(art, "palette.env")) else "",
+                                       self.identity.get("VARIANT", ""))
+        except (branding.BrandingError, OSError) as error:
+            sys.stderr.write(f"installer-gui: the artwork cannot be used: {error}\n")
+            self.brand = branding.load("")
+        for css in (CSS, gui_disk.CSS, gui_software.CSS, self.brand.css().encode("utf-8")):
+            provider = Gtk.CssProvider()
+            provider.load_from_data(css)
+            Gtk.StyleContext.add_provider_for_screen(
+                Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.disk_page = gui_disk.DiskPage(self)
+        self.software_page = gui_software.SoftwarePage(self)
+        import gui_network
+        self.network_page = gui_network.NetworkPage(self)
         self.connect("delete-event", self.on_delete)
         self.connect("key-press-event", self.on_key)
+        self.connect("key-release-event", self.on_key_release)
+        self.connect("focus-out-event", lambda *_a: setattr(self, "alt_down", False))
 
         outer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         # The smoke run draws the pages in an offscreen window, so that a
@@ -249,6 +342,8 @@ class InstallerWindow(Gtk.Window):
             width, height = size or (1024, 768)
             self.offscreen.set_size_request(width, height)
             self.offscreen.add(outer)
+            self.offscreen.connect("key-press-event", self.on_key)
+            self.offscreen.connect("key-release-event", self.on_key_release)
         else:
             self.add(outer)
         outer.pack_start(self.build_sidebar(), False, False, 0)
@@ -276,17 +371,37 @@ class InstallerWindow(Gtk.Window):
         self.actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self.actions_box.set_halign(Gtk.Align.END)
         bar.pack_end(self.actions_box, False, False, 0)
+        # Shown while a slow probe runs (the disks of a system can take
+        # minutes to read): the window stays alive, the buttons wait.
+        self.busy_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.busy_spinner = Gtk.Spinner()
+        self.busy_label = label("Reading the hardware\u2026", "muted", wrap=False)
+        self.busy_box.pack_start(self.busy_spinner, False, False, 0)
+        self.busy_box.pack_start(self.busy_label, False, False, 0)
+        self.busy_box.set_no_show_all(True)
+        bar.pack_start(self.busy_box, False, False, 0)
+        self.busy = False
+        self.busy_stats = {"waits": 0, "iterations": 0, "longest": 0.0}
+        self.wiz.backend.runner = self.background
         main.pack_end(bar, False, False, 0)
 
         self.builders = {
             "preflight": self.page_preflight, "welcome": self.page_welcome,
             "keyboard": self.page_keyboard, "timezone": self.page_timezone,
-            "disk": self.page_disk, "users": self.page_users,
-            "network": self.page_network, "summary": self.page_summary,
+            "type": self.page_type, "disk": self.page_disk, "users": self.page_users,
+            "network": self.page_network, "software": self.page_software,
+            "summary": self.page_summary,
             "install": self.page_install, "finish": self.page_finish,
+            "hardware": self.page_hardware,
         }
         for name, build in self.builders.items():
             self.stack.add_named(build(), name)
+        # The label of every check and radio button wraps: no long label
+        # makes a page wider than the screen.
+        wrap_toggle_labels(self.stack)
+        self.stack.set_hhomogeneous(False)
+        # The page scrolls by its own height, not the height of the tallest.
+        self.stack.set_vhomogeneous(False)
         if windowed:
             self.set_position(Gtk.WindowPosition.CENTER)
         else:
@@ -300,19 +415,33 @@ class InstallerWindow(Gtk.Window):
         side.set_size_request(240, -1)
         head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         head.set_border_width(18)
-        if self.wiz.logo:
+        logo = svg_pixbuf(self.brand.svg("logo"), 72, 72)
+        if logo is None and self.wiz.logo:
             try:
-                pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(self.wiz.logo, 160, 96, True)
-                head.pack_start(Gtk.Image.new_from_pixbuf(pix), False, False, 0)
+                logo = GdkPixbuf.Pixbuf.new_from_file_at_scale(self.wiz.logo, 160, 96, True)
             except GLib.Error:
-                pass
+                logo = None
+        if logo is not None:
+            image = Gtk.Image.new_from_pixbuf(logo)
+            image.set_halign(Gtk.Align.START)
+            head.pack_start(image, False, False, 0)
         head.pack_start(label(self.wiz.product, "product"), False, False, 0)
+        if self.brand.palette.get("TAGLINE"):
+            head.pack_start(label(self.brand.palette["TAGLINE"], "tagline"), False, False, 0)
         side.pack_start(head, False, False, 0)
         self.step_labels = {}
         for ident, title in W.PAGES:
             widget = label(title, "step", wrap=False)
             self.step_labels[ident] = widget
             side.pack_start(widget, False, False, 0)
+        # Which product, version, variant and architecture this is, small
+        # and understated in the lower left: every picture says it.
+        self.identity_label = label(self.identity_text, "identity")
+        self.identity_label.set_margin_start(18)
+        self.identity_label.set_margin_bottom(12)
+        self.identity_label.set_margin_end(12)
+        self.identity_label.set_max_width_chars(34)
+        side.pack_end(self.identity_label, False, False, 0)
         return side
 
     def mark_steps(self):
@@ -330,11 +459,22 @@ class InstallerWindow(Gtk.Window):
         for child in self.actions_box.get_children():
             self.actions_box.remove(child)
         self.buttons = {}
+        used = set()
         acts = self.wiz.actions(self.page, failed=self.wiz.install_failed and not self.running,
                                 running=self.running, failure=self.failure)
         primary = None
         for act in acts:
-            button = Gtk.Button(label=act.label)
+            # Every button has a mnemonic: Alt and its underlined letter.
+            key = "action.install-product" if (self.page, act.ident) == ("welcome", "next") \
+                else f"action.{act.ident}"
+            text = i18n.t(key, self.lang, product=self.wiz.product) \
+                if key in i18n.STRINGS["en"] else act.label
+            label, letter = mnemonic_label(text, used)
+            used.add(letter)
+            button = Gtk.Button.new_with_mnemonic(label)
+            button.mnemonic_letter = letter
+            button.is_primary = bool(act.primary)
+            button.is_destructive = bool(act.destructive)
             ctx = button.get_style_context()
             if act.primary:
                 ctx.add_class("destructive-action" if act.destructive else "suggested-action")
@@ -349,24 +489,67 @@ class InstallerWindow(Gtk.Window):
         self.refresh_sensitivity()
 
     def refresh_sensitivity(self):
+        install = getattr(self, "buttons", {}).get("install")
+        if install is not None and self.page == "summary":
+            install.set_sensitive(self.wiz.install_allowed())
         button = self.buttons.get("next")
         if button is None:
             return
-        if self.page == "disk":
-            button.set_sensitive(bool(selected_name(self.disk_view)))
-        elif self.page in ("keyboard", "timezone"):
+        if self.page in ("keyboard", "timezone"):
             view = self.kb_view if self.page == "keyboard" else self.tz_view
             button.set_sensitive(bool(selected_name(view)))
         else:
             button.set_sensitive(True)
 
+    def background(self, func, *args):
+        """Run func (a backend command) in a thread of its own; the main loop
+        keeps running (the window redraws, the spinner turns), the buttons
+        and the keys wait until it is done.  The result, or its exception."""
+        import threading
+        import time
+        if self.busy or threading.current_thread() is not threading.main_thread():
+            return func(*args)
+        result = {}
+
+        def work():
+            try:
+                result["value"] = func(*args)
+            except BaseException as error:  # NOSONAR python:S5754 - re-raised in the main thread below
+                result["error"] = error
+        thread = threading.Thread(target=work, daemon=True)
+        started = time.monotonic()
+        self.busy = True
+        self.actions_box.set_sensitive(False)
+        self.busy_box.show()
+        self.busy_spinner.show()
+        self.busy_label.show()
+        self.busy_spinner.start()
+        thread.start()
+        try:
+            while thread.is_alive():
+                Gtk.main_iteration_do(False)
+                self.busy_stats["iterations"] += 1
+                thread.join(0.01)
+        finally:
+            self.busy = False
+            self.busy_spinner.stop()
+            self.busy_box.hide()
+            self.actions_box.set_sensitive(True)
+            self.busy_stats["waits"] += 1
+            self.busy_stats["longest"] = max(self.busy_stats["longest"], time.monotonic() - started)
+        if "error" in result:
+            raise result["error"]
+        return result.get("value")
+
     def show_page(self, page):
+        if page != getattr(self, "page", None):
+            self.wiz.forget_disks()
         self.page = page
         self.error_label.set_text("")
         if page == "preflight":
             self.title_label.set_text("Unfortunately")
         else:
-            self.title_label.set_text(PAGE_TITLES.get(page, page))
+            self.title_label.set_text(i18n.t(f"page.{page}", self.lang))
         enter = getattr(self, f"enter_{page}", None)
         if enter:
             enter()
@@ -380,6 +563,8 @@ class InstallerWindow(Gtk.Window):
     # ------------------------------------------------------------ events
 
     def on_action(self, _button, ident):
+        if self.busy:
+            return
         handler = getattr(self, "act_" + ident.replace("-", "_"))
         handler()
 
@@ -388,7 +573,7 @@ class InstallerWindow(Gtk.Window):
             self.wiz.install_failed = False
             self.show_page("summary")
             return
-        self.show_page(W.Wizard.prev_page(self.page))
+        self.show_page(self.wiz.prev_page(self.page))
 
     def act_next(self):
         collect = getattr(self, f"collect_{self.page}", None)
@@ -401,7 +586,7 @@ class InstallerWindow(Gtk.Window):
         if problem:
             self.show_error(problem)
             return
-        self.show_page(W.Wizard.next_page(self.page))
+        self.show_page(self.wiz.next_page(self.page))
 
     def act_try_live(self):
         self.result = W.EXIT_TRY_LIVE
@@ -455,11 +640,88 @@ class InstallerWindow(Gtk.Window):
             self.run.kill()
         return False
 
+    ALT_KEYS = ("Alt_L", "Alt_R", "Meta_L", "Meta_R")
+
+    def on_key_release(self, _widget, event):
+        if Gdk.keyval_name(event.keyval) in self.ALT_KEYS:
+            self.alt_down = False
+        return False
+
+    def alt_held(self, event):
+        """Alt is down: the modifier of the event (Mod1, or Meta where the X
+        server maps Alt there), or an Alt key pressed and not yet released
+        (a server that does not set the modifier on the next key)."""
+        mask = Gdk.ModifierType.MOD1_MASK | Gdk.ModifierType.META_MASK
+        return bool(event.state & mask) or getattr(self, "alt_down", False)
+
+    def event_letter(self, event):
+        """The letter of a key, also when Alt turned its keysym into another
+        one: the key read again without modifiers."""
+        letter = chr(Gdk.keyval_to_unicode(Gdk.keyval_to_lower(event.keyval)) or 0)
+        if letter.isalpha():
+            return letter
+        keymap = Gdk.Keymap.get_for_display(Gdk.Display.get_default())
+        ok, keyval, *_rest = keymap.translate_keyboard_state(event.hardware_keycode, 0, event.group)
+        if ok:
+            letter = chr(Gdk.keyval_to_unicode(Gdk.keyval_to_lower(keyval)) or 0)
+        return letter if letter.isalpha() else ""
+
     def on_key(self, _widget, event):
+        if self.busy:
+            return True
+        if Gdk.keyval_name(event.keyval) in self.ALT_KEYS:
+            self.alt_down = True
+            return False
         if event.keyval == Gdk.KEY_Escape:
             self.request_close()
             return True
+        if self.return_on_list(event):
+            return True
+        return self.alt_mnemonic(event)
+
+    def return_on_list(self, event):
+        """Return on a row of a list (the layouts, the zones, the disks) goes
+        on, like the primary button: the row is the choice.  The page
+        checks itself the way the button does.  Whether it went on."""
+        if event.keyval not in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter) or \
+                event.state & (Gdk.ModifierType.MOD1_MASK | Gdk.ModifierType.CONTROL_MASK):
+            return False
+        focus = self.get_focus() if self.offscreen is None else self.offscreen.get_focus()
+        if not isinstance(focus, Gtk.TreeView):
+            return False
+        primary = self.primary_button()
+        # Never the destructive Install: that is chosen by itself.
+        if primary is None or not primary.get_sensitive() or \
+                getattr(primary, "is_destructive", False):
+            return False
+        primary.clicked()
+        return True
+
+    def alt_mnemonic(self, event):
+        """Alt and the underlined letter of a button of the action cluster
+        presses it, on every display (the toolkit's own mnemonics need a
+        display that reports the Alt key the usual way).  Whether it did."""
+        if not self.alt_held(event):
+            return False
+        letter = self.event_letter(event)
+        for button in getattr(self, "buttons", {}).values():
+            if getattr(button, "mnemonic_letter", "") == letter and button.get_sensitive():
+                button.clicked()
+                return True
         return False
+
+    def primary_button(self):
+        """The primary button of the action cluster: the rightmost one."""
+        for ident, button in getattr(self, "buttons", {}).items():
+            if getattr(button, "is_primary", False):
+                return button
+        return None
+
+    def focus_first(self, widget):
+        """The first control of a page has the focus, so the page works from
+        the keyboard alone."""
+        if widget is not None and widget.get_can_focus():
+            widget.grab_focus()
 
     def request_close(self):
         """The close button or the escape key: a running installation is
@@ -509,6 +771,11 @@ class InstallerWindow(Gtk.Window):
 
     def start(self):
         """The checks before the first page."""
+        # The focus is shown from the start: the installer is used from the
+        # keyboard as often as with a pointer.
+        self.set_focus_visible(True)
+        if self.offscreen is not None:
+            self.offscreen.set_focus_visible(True)
         self.failures = self.wiz.preflight()
         self.next_failure()
 
@@ -551,23 +818,133 @@ class InstallerWindow(Gtk.Window):
         self.pf_hint.set_text(hint)
 
     def page_welcome(self):
+        # The text and the languages side by side, or the languages under
+        # the text when the screen is narrow.
+        outer = not_a_list(Gtk.FlowBox(), "the two halves of the Welcome page")
+        outer.set_selection_mode(Gtk.SelectionMode.NONE)
+        outer.set_min_children_per_line(1)
+        outer.set_max_children_per_line(2)
+        outer.set_column_spacing(28)
+        outer.set_row_spacing(16)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         box.set_valign(Gtk.Align.CENTER)
+        self.welcome_ready = label("", "lead-big")
+        self.welcome_text = label("", "lead")
+        self.welcome_live = label("")
+        self.hardware_button = Gtk.Button(label="Hardware and drivers")
+        self.hardware_button.set_halign(Gtk.Align.START)
+        self.hardware_button.connect("clicked", lambda *_a: self.open_hardware())
+        for widget in (self.welcome_ready, self.welcome_text, self.welcome_live):
+            widget.set_max_width_chars(40)
+            box.pack_start(widget, False, False, 0)
+        box.pack_start(self.hardware_button, False, False, 0)
+        outer.add(box)
+        # The languages: one row each, the flags of its variants on the
+        # right; the choice sets the language of the installed system and
+        # of the installer when it has strings in it.
+        side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.welcome_language = label("", "field-label")
+        side.pack_start(self.welcome_language, False, False, 0)
+        self.lang_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        scroller = Gtk.ScrolledWindow()
+        # The list scrolls both ways: the page never grows wider than the
+        # screen, whatever the size of the text.
+        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_min_content_height(320)
+        scroller.set_min_content_width(280)
+        scroller.set_shadow_type(Gtk.ShadowType.IN)
+        scroller.add(self.lang_list)
+        side.pack_start(scroller, True, True, 0)
+        outer.add(side)
+        self.flag_buttons = {}
+        return outer
+
+    def enter_welcome(self):
+        if not self.flag_buttons:
+            self.fill_languages()
+        self.set_language(i18n.language_of(self.wiz.answers.locale))
+
+    def flag_widget(self, country):
+        """The flag of a region: an image shipped with the installer
+        (gui/flags), never a character a colour emoji font may not draw;
+        without an image the two letters of the region in a badge."""
+        scale = self.get_scale_factor() if hasattr(self, "get_scale_factor") else 1
+        path = i18n.flag_file(country, os.path.join(ROOT, "gui", "flags"), scale)
+        if path is not None:
+            try:
+                pix = GdkPixbuf.Pixbuf.new_from_file(path)
+                if scale >= 2 and pix.get_width() > 24 and Gdk is not None:
+                    surface = Gdk.cairo_surface_create_from_pixbuf(pix, scale, None)
+                    return Gtk.Image.new_from_surface(surface)
+                return Gtk.Image.new_from_pixbuf(pix)
+            except GLib.Error:
+                pass
+        badge = Gtk.Label(label=country.upper()[:2])
+        badge.get_style_context().add_class("flag-badge")
+        return badge
+
+    def fill_languages(self):
+        group = None
+        for lang, own, english, variants in i18n.languages_for(self.wiz.system_locales()):
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            row.set_border_width(4)
+            names = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            names.pack_start(label(own, "field-label", wrap=False), False, False, 0)
+            if own != english:
+                names.pack_start(label(english, "muted", wrap=False), False, False, 0)
+            row.pack_start(names, True, True, 0)
+            for locale, country, region in variants:
+                button = Gtk.RadioButton.new_from_widget(group)
+                group = group or button
+                button.set_mode(False)
+                button.add(self.flag_widget(country))
+                button.get_style_context().add_class("flag-button")
+                button.flag_country = country
+                button.set_tooltip_text(f"{own} ({region}) — {locale}")
+                button.connect("toggled", self.on_locale, locale)
+                self.flag_buttons[locale] = button
+                row.pack_start(button, False, False, 0)
+            self.lang_list.pack_start(row, False, False, 0)
+        self.lang_list.show_all()
+        current = self.flag_buttons.get(self.wiz.answers.locale)
+        if current is not None:
+            current.set_active(True)
+
+    def on_locale(self, button, locale):
+        if not button.get_active():
+            return
+        self.wiz.answers.locale = locale
+        self.set_language(i18n.language_of(locale))
+        if hasattr(self, "locale_combo"):
+            self.locale_combo.set_active_id(locale)
+
+    def set_language(self, lang):
+        """The installer speaks the language when it has strings in it."""
+        self.lang = lang if i18n.translated(lang) else "en"
         product = self.wiz.product
-        box.pack_start(label(f"{product} is ready to be installed.", "lead-big"), False, False, 0)
-        box.pack_start(label(
-            f"This installer will guide you through installing {product} on this "
-            "machine. It asks for the keyboard, the time zone, the disk, your "
-            "account and the network, shows a summary, and changes nothing "
-            "before you choose Install.", "lead"), False, False, 0)
-        box.pack_start(label(
-            "Choose Try the live desktop to use the system without installing it. "
-            f"The Install {product} icon on the desktop brings the installer back."),
-            False, False, 0)
-        return box
+        for ident, widget in self.step_labels.items():
+            widget.set_text(i18n.t(f"page.{ident}", self.lang))
+        if self.page in W.PAGE_IDS:
+            self.title_label.set_text(i18n.t(f"page.{self.page}", self.lang))
+        self.welcome_ready.set_text(i18n.t("welcome.ready", self.lang, product=product))
+        self.welcome_text.set_text(i18n.t("welcome.text", self.lang, product=product))
+        self.welcome_live.set_text(i18n.t("welcome.live", self.lang, product=product))
+        self.welcome_language.set_text(i18n.t("welcome.language", self.lang))
+        self.hardware_button.set_label(i18n.t("hardware.button", self.lang))
+        if hasattr(self, "inst_details"):
+            self.inst_details.set_label(i18n.t("installing.details", self.lang))
+        if hasattr(self, "buttons"):
+            self.set_actions()
 
     def page_keyboard(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        row.pack_start(label("Language of the installed system", "field-label", wrap=False),
+                       False, False, 0)
+        self.locale_combo = Gtk.ComboBoxText()
+        self.locale_combo.connect("changed", self.on_locale_combo)
+        row.pack_start(self.locale_combo, False, False, 0)
+        box.pack_start(row, False, False, 0)
         box.pack_start(label("Choose the keyboard layout of the installed system."), False, False, 0)
         self.kb_store, self.kb_view, scroller = item_list(("Layout", "Country"), self.act_next)
         self.kb_view.get_selection().connect("changed", self.on_keymap_changed)
@@ -585,11 +962,35 @@ class InstallerWindow(Gtk.Window):
         if name and name != self.wiz.applied_keymap:
             self.wiz.log(self.wiz.apply_keymap(name))
 
+    def fill_locales(self):
+        self.locale_combo.remove_all()
+        for lang, own, english, variants in i18n.languages_for(self.wiz.system_locales()):
+            for locale, country, region in variants:
+                # Text only: a flag character needs a colour emoji font.
+                self.locale_combo.append(locale, f"{own} ({region})")
+        self.locale_combo.set_active_id(self.wiz.answers.locale)
+
     def enter_keyboard(self):
         if not len(self.kb_store):
             for item in self.wiz.keymaps():
                 self.kb_store.append([item.name, item.descr])
+        self.fill_locales()
         select_name(self.kb_view, self.wiz.answers.keymap)
+        suggest = i18n.keymap_for(self.wiz.answers.locale, [row[0] for row in self.kb_store])
+        if suggest and self.wiz.answers.keymap in ("", "us") and suggest != "us":
+            select_name(self.kb_view, suggest)
+        self.focus_first(self.kb_view)
+
+    def on_locale_combo(self, combo):
+        locale = combo.get_active_id()
+        if not locale or locale == self.wiz.answers.locale and getattr(self, "_kb_suggested", False):
+            return
+        self.wiz.answers.locale = locale
+        # The layout follows the language until the user picks one.
+        suggest = i18n.keymap_for(locale, [row[0] for row in self.kb_store])
+        if suggest and not getattr(self, "_kb_touched", False):
+            select_name(self.kb_view, suggest)
+        self._kb_suggested = True
 
     def collect_keyboard(self):
         name = selected_name(self.kb_view)
@@ -611,6 +1012,16 @@ class InstallerWindow(Gtk.Window):
         self.tz_view.get_selection().connect("changed", lambda *_a: self.refresh_sensitivity())
         self.tz_search.connect("search-changed", lambda *_a: self.tz_filter.refilter())
         box.pack_start(scroller, True, True, 0)
+        self.tz_clock = label("", "lead")
+        box.pack_start(self.tz_clock, False, False, 0)
+        self.tz_view.get_selection().connect("changed", self.update_clock)
+        box.pack_start(label("The clock of this computer keeps", "field-label"), False, False, 0)
+        self.clock_utc = Gtk.RadioButton.new_with_label(
+            None, "UTC (recommended; the system shows the time of the zone above)")
+        self.clock_local = Gtk.RadioButton.new_with_label_from_widget(
+            self.clock_utc, "the local time (needed when Windows shares this computer)")
+        box.pack_start(self.clock_utc, False, False, 0)
+        box.pack_start(self.clock_local, False, False, 0)
         return box
 
     def tz_visible(self, model, it, _data):
@@ -622,53 +1033,98 @@ class InstallerWindow(Gtk.Window):
             for item in self.wiz.zones():
                 self.tz_store.append([item.name, item.descr])
         select_name(self.tz_view, self.wiz.answers.timezone)
+        (self.clock_local if self.wiz.answers.clock == "local" else self.clock_utc).set_active(True)
+        # Windows on a disk of this computer keeps the clock in local time.
+        detail = self.wiz.disk_detail if self.wiz.disk_detail.get("disks") else self.wiz.disk_report()[0]
+        if self.wiz.answers.clock == "utc" and any(
+                o.get("name") == "Windows" for d in detail.get("disks", []) for o in d.get("os", [])):
+            self.clock_local.set_active(True)
+        self.update_clock()
+        self.focus_first(self.tz_view)
 
     def collect_timezone(self):
         name = selected_name(self.tz_view)
         if not name:
             return "Choose a time zone."
         self.wiz.answers.timezone = name
+        self.wiz.answers.clock = "local" if self.clock_local.get_active() else "utc"
         return None
+
+    def update_clock(self, *_args):
+        """The time now in the zone that is picked."""
+        import datetime
+        name = selected_name(self.tz_view) or "UTC"
+        try:
+            import zoneinfo
+            now = datetime.datetime.now(zoneinfo.ZoneInfo(name))
+            self.tz_clock.set_text(f"Now in {name}: {now:%H:%M}, {now:%A %d %B %Y}")
+        except Exception:  # noqa: BLE001 - no zone data: no clock
+            self.tz_clock.set_text("")
+        return True
+
+    def page_type(self):
+        return self.disk_page.build_type()
+
+    def enter_type(self):
+        self.disk_page.load_type()
+        dp = self.disk_page
+        self.focus_first(dp.mode_buttons[dp.mode] if not dp.notice.get_visible() else None)
+
+    def collect_type(self):
+        return self.disk_page.collect_type()
+
+    def page_software(self):
+        return self.software_page.build()
+
+    def enter_software(self):
+        self.software_page.load()
+        sp = self.software_page
+        first = next(iter(sp.checks.values()), None)
+        self.focus_first(first)
+
+    def collect_software(self):
+        return self.software_page.collect()
 
     def page_disk(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.disk_text = label("")
-        box.pack_start(self.disk_text, False, False, 0)
-        self.disk_store, self.disk_view, scroller = item_list(("Disk", "Model", "Size"))
-        self.disk_view.get_selection().connect("changed", lambda *_a: self.refresh_sensitivity())
-        box.pack_start(scroller, True, True, 0)
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        rescan = Gtk.Button(label="Look for disks again")
-        rescan.connect("clicked", lambda *_a: self.enter_disk())
-        row.pack_start(rescan, False, False, 0)
-        box.pack_start(row, False, False, 0)
-        box.pack_start(label("Everything on the chosen disk will be erased.", "warning-text"),
-                       False, False, 0)
-        return box
+        return self.disk_page.build()
 
     def enter_disk(self):
-        self.disks, err = self.wiz.disks()
-        self.disk_store.clear()
-        for item in self.disks:
-            self.disk_store.append([item.name, item.descr, W.human_size(item.size_bytes)])
-        if self.disks:
-            self.disk_text.set_text(f"Choose the disk to install {self.wiz.product} to.")
-            select_name(self.disk_view, self.wiz.answers.disk)
-        else:
-            self.disk_text.set_text(
-                "No disks found. The installer looked for a disk to write to and did "
-                "not find one." + (f" ({err})" if err else ""))
-        self.refresh_sensitivity()
+        self.disk_page.load()
+        self.disk_page.apply_mode()
+        self.title_label.set_text(f"Disk — {self.disk_page.mode_title()}")
+        dp = self.disk_page
+        if dp.asks_usage() and dp.usage is None:
+            self.focus_first(dp.usage_buttons["together"])
+        elif dp.mode in ("erase", "manual"):
+            self.focus_first(dp.view)
 
     def collect_disk(self):
-        name = selected_name(self.disk_view)
-        if not name:
-            return "Choose a disk."
-        for item in self.disks:
-            if item.name == name:
-                a = self.wiz.answers
-                a.disk, a.disk_descr, a.disk_size = item.name, item.descr, item.size_bytes
-        return None
+        return self.disk_page.collect()
+
+    def message(self, primary, secondary):
+        dialog = Gtk.MessageDialog(transient_for=self, modal=True,
+                                   message_type=Gtk.MessageType.INFO,
+                                   buttons=Gtk.ButtonsType.OK, text=primary)
+        dialog.format_secondary_text(secondary)
+        dialog.run()
+        dialog.destroy()
+
+    def ask_text(self, primary, secondary):
+        """A question answered by typing: the text, or None for Cancel."""
+        dialog = Gtk.MessageDialog(transient_for=self, modal=True,
+                                   message_type=Gtk.MessageType.WARNING,
+                                   buttons=Gtk.ButtonsType.NONE, text=primary)
+        dialog.format_secondary_text(secondary)
+        entry = Gtk.Entry()
+        dialog.get_message_area().pack_start(entry, False, False, 0)
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Confirm", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.CANCEL)
+        dialog.show_all()
+        answer = dialog.run()
+        text = entry.get_text()
+        dialog.destroy()
+        return text if answer == Gtk.ResponseType.OK else None
 
     def page_users(self):
         grid = Gtk.Grid(column_spacing=16, row_spacing=6)
@@ -716,7 +1172,56 @@ class InstallerWindow(Gtk.Window):
         row += 3
         self.priv_check = Gtk.CheckButton(label="Passwordless sudo and doas for this account")
         grid.attach(self.priv_check, 1, row, 1, 1)
+        row += 1
+        self.autologin = Gtk.CheckButton(
+            label="Log in automatically (no password at the start of the computer)")
+        grid.attach(self.autologin, 1, row, 1, 1)
+        row += 1
+        # The strength of the password, under its field.
+        self.pw_strength = Gtk.LevelBar(min_value=0, max_value=4)
+        self.pw_strength.set_size_request(200, 8)
+        self.pw_strength_text = label("", "muted")
+        strength = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        strength.pack_start(self.pw_strength, False, False, 0)
+        strength.pack_start(self.pw_strength_text, False, False, 0)
+        grid.insert_row(6)
+        grid.attach(strength, 1, 6, 1, 1)
+        self.user_entries["password"].connect("changed", self.on_password_changed)
+        # The root account.
+        row += 2
+        grid.attach(label("The root account", "field-label"), 0, row, 1, 1)
+        self.root_locked = Gtk.RadioButton.new_with_label(
+            None, "Locked: administer the system with sudo or doas (recommended)")
+        self.root_own = Gtk.RadioButton.new_with_label_from_widget(
+            self.root_locked, "Give root a password of its own")
+        grid.attach(self.root_locked, 1, row, 1, 1)
+        grid.attach(self.root_own, 1, row + 1, 1, 1)
+        roots = Gtk.Grid(column_spacing=8, row_spacing=4)
+        self.root_pw = Gtk.Entry(visibility=False, placeholder_text="Root password")
+        self.root_pw2 = Gtk.Entry(visibility=False, placeholder_text="Confirm the root password")
+        for i, (entry, text) in enumerate(((self.root_pw, "R_oot password"),
+                                           (self.root_pw2, "Confirm the root pass_word"))):
+            entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+            entry.set_hexpand(True)
+            roots.attach(field_label(text, entry), 0, i, 1, 1)
+            roots.attach(entry, 1, i, 1, 1)
+        grid.attach(roots, 1, row + 2, 1, 1)
+        self.root_error = label("", "error-text")
+        grid.attach(self.root_error, 1, row + 3, 1, 1)
+
+        def gate(*_a):
+            # The root password is typeable only for a root with a password.
+            for entry in (self.root_pw, self.root_pw2):
+                entry.set_sensitive(self.root_own.get_active())
+        self.root_own.connect("toggled", gate)
+        gate()
         return grid
+
+    def on_password_changed(self, entry):
+        import diskplan
+        score, word = diskplan.passphrase_strength(entry.get_text())
+        self.pw_strength.set_value(score)
+        self.pw_strength_text.set_text(f"strength: {word}" if entry.get_text() else "")
 
     def enter_users(self):
         a = self.wiz.answers
@@ -725,6 +1230,8 @@ class InstallerWindow(Gtk.Window):
         self.user_entries["hostname"].set_text(a.hostname)
         self.ssh_view.get_buffer().set_text(a.ssh_key)
         self.priv_check.set_active(a.privilege_passwordless)
+        self.autologin.set_active(a.autologin)
+        (self.root_own if a.root_mode == "password" else self.root_locked).set_active(True)
         self.user_entries["full_name"].grab_focus()
 
     def collect_users(self):
@@ -736,11 +1243,26 @@ class InstallerWindow(Gtk.Window):
         for key, widget in self.user_errors.items():
             widget.set_text(errors.get(key, ""))
         if errors:
-            return "Some fields need attention."
+            return FIELDS_NEED_ATTENTION
         a = self.wiz.answers
         a.user_name, a.full_name, a.hostname = get["user_name"], get["full_name"], get["hostname"]
         a.ssh_key = ssh_key
         a.privilege_passwordless = self.priv_check.get_active()
+        a.autologin = self.autologin.get_active()
+        self.root_error.set_text("")
+        if self.root_own.get_active():
+            if not self.root_pw.get_text():
+                self.root_error.set_text("Type a password for root.")
+                return FIELDS_NEED_ATTENTION
+            if self.root_pw.get_text() != self.root_pw2.get_text():
+                self.root_error.set_text("The root passwords do not match.")
+                return FIELDS_NEED_ATTENTION
+            try:
+                self.wiz.set_root_password(self.root_pw.get_text())
+            except (W.passhash.HashError, OSError) as error:
+                return f"The root password cannot be stored: {error}"
+        else:
+            a.root_mode = "locked"
         try:
             # nosemgrep: python.django.security.audit.unvalidated-password.unvalidated-password -- not Django; checked by Wizard.check_users above (not empty, matches the confirmation) and refused again by passhash.make_hash before it is hashed
             self.wiz.set_password(get["password"])
@@ -749,113 +1271,166 @@ class InstallerWindow(Gtk.Window):
         return None
 
     def page_network(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.net_text = label("")
-        box.pack_start(self.net_text, False, False, 0)
-        self.net_store, self.net_view, scroller = item_list(("Adapter", "Description"))
-        scroller.set_size_request(-1, 140)
-        box.pack_start(scroller, True, True, 0)
-        rescan = Gtk.Button(label="Look for adapters again")
-        rescan.set_halign(Gtk.Align.START)
-        rescan.connect("clicked", lambda *_a: self.enter_network())
-        box.pack_start(rescan, False, False, 0)
-        self.mode_dhcp = Gtk.RadioButton.new_with_label(None, "Automatic address (DHCP)")
-        self.mode_static = Gtk.RadioButton.new_with_label_from_widget(self.mode_dhcp, "Manual address")
-        self.mode_offline = Gtk.RadioButton.new_with_label_from_widget(
-            self.mode_dhcp, "No network: install the system offline")
-        for radio in (self.mode_dhcp, self.mode_static, self.mode_offline):
-            radio.connect("toggled", lambda *_a: self.net_gate())
-            box.pack_start(radio, False, False, 0)
-        grid = Gtk.Grid(column_spacing=16, row_spacing=6)
-        grid.set_margin_start(28)
-        self.net_entries = {}
-        for row, (key, text) in enumerate((("ipv4_addr", "_Address"), ("ipv4_mask", "Net_mask"),
-                                           ("ipv4_gw", "_Gateway"))):
-            entry = Gtk.Entry()
-            grid.attach(field_label(text, entry), 0, row, 1, 1)
-            entry.set_activates_default(True)
-            entry.set_placeholder_text("for example 192.0.2.10" if key == "ipv4_addr" else "")
-            grid.attach(entry, 1, row, 1, 1)
-            self.net_entries[key] = entry
-        box.pack_start(grid, False, False, 0)
-        return box
-
-    def net_gate(self):
-        """A manual address is only typeable while Manual is chosen; what
-        was typed stays in the fields."""
-        static = self.mode_static.get_active()
-        for entry in self.net_entries.values():
-            entry.set_sensitive(static)
-        self.net_view.set_sensitive(not self.mode_offline.get_active())
+        return self.network_page.build()
 
     def enter_network(self):
-        self.nets, err = self.wiz.interfaces()
-        self.net_store.clear()
-        for item in self.nets:
-            self.net_store.append([item.name, item.descr])
-        a = self.wiz.answers
-        if self.nets:
-            self.net_text.set_text(f"Choose how {self.wiz.product} is connected.")
-            select_name(self.net_view, a.net_if)
-            self.mode_dhcp.set_sensitive(True)
-            self.mode_static.set_sensitive(True)
-        else:
-            self.net_text.set_text("No network adapters found. The installation can "
-                                   "continue without a network." + (f" ({err})" if err else ""))
-            a.network_mode = "offline"
-            self.mode_dhcp.set_sensitive(False)
-            self.mode_static.set_sensitive(False)
-        {"dhcp": self.mode_dhcp, "static": self.mode_static,
-         "offline": self.mode_offline}[a.network_mode].set_active(True)
-        for key, entry in self.net_entries.items():
-            entry.set_text(getattr(a, key))
-        self.net_gate()
+        self.network_page.load()
+        first = self.network_page.tabs[0].v4[0] if self.network_page.tabs else self.network_page.offline
+        self.focus_first(first)
 
     def collect_network(self):
-        a = self.wiz.answers
-        if self.mode_offline.get_active():
-            a.network_mode, a.net_if = "offline", ""
-            return None
-        name = selected_name(self.net_view)
-        if not name:
-            return "Choose a network adapter, or choose No network."
-        a.net_if = name
-        if self.mode_static.get_active():
-            values = {k: e.get_text().strip() for k, e in self.net_entries.items()}
-            for key, text in (("ipv4_addr", "address"), ("ipv4_mask", "netmask")):
-                if not W.ipv4_valid(values[key]):
-                    return f"The {text} is not an IPv4 address."
-            if values["ipv4_gw"] and not W.ipv4_valid(values["ipv4_gw"]):
-                return "The gateway is not an IPv4 address."
-            a.network_mode = "static"
-            a.ipv4_addr, a.ipv4_mask, a.ipv4_gw = (values["ipv4_addr"], values["ipv4_mask"],
-                                                   values["ipv4_gw"])
-        else:
-            a.network_mode = "dhcp"
-        return None
+        return self.network_page.collect()
 
     def page_summary(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.pack_start(label("The installation will use:"), False, False, 0)
-        self.sum_grid = Gtk.Grid(column_spacing=24, row_spacing=6)
+        # The answers in groups, two groups side by side where they fit,
+        # so the list of the disks starts on the first screen.
+        self.sum_grid = Gtk.Grid(column_spacing=28, row_spacing=10)
+        self.sum_grid.set_column_homogeneous(True)
         box.pack_start(self.sum_grid, False, False, 0)
         self.sum_warning = label("", "warning-text")
         box.pack_start(self.sum_warning, False, False, 0)
+        # What happens to every disk; the destructive actions in red.
+        self.sum_disks_title = label("What happens to the disks", "field-label")
+        box.pack_start(self.sum_disks_title, False, False, 0)
+        self.sum_disks = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        # One line a disk: many disks scroll, the confirmation stays.
+        box.pack_start(scrolled(self.sum_disks, 2, 6, name="summary-disks"), False, False, 0)
+        # Erasing a disk that holds another system: the word, typed.
+        self.sum_confirm_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.sum_confirm_text = label("", "error-text")
+        self.sum_confirm_box.pack_start(self.sum_confirm_text, False, False, 0)
+        self.sum_confirm = Gtk.Entry()
+        self.sum_confirm.set_placeholder_text(f"type {W.Wizard.CONFIRM_WORD}")
+        self.sum_confirm.set_max_width_chars(20)
+        self.sum_confirm.set_halign(Gtk.Align.START)
+        self.sum_confirm.connect("changed", lambda e: (self.wiz.confirm_erase(e.get_text()),
+                                                       self.refresh_sensitivity()))
+        self.sum_confirm_box.pack_start(self.sum_confirm, False, False, 0)
+        box.pack_start(self.sum_confirm_box, False, False, 0)
         box.pack_start(label(f"Choose Install to install {self.wiz.product} with these "
                              "settings."), False, False, 0)
         return box
 
     def enter_summary(self):
+        self.fill_summary_groups()
+        self.sum_disks_title.set_text(self.wiz.disk_row()[1] or "What happens to the disks")
+        problems = self.wiz.install_problems()
+        if problems:
+            text = "; ".join(problems)
+            self.sum_warning.set_text(f"Install is not possible yet: {text}.")
+        else:
+            self.sum_warning.set_text(self.wiz.erase_warning())
+        self.fill_summary_disks()
+        foreign = self.wiz.foreign_to_confirm()
+        self.sum_confirm_box.set_visible(bool(foreign))
+        self.sum_confirm.set_text("")
+        self.wiz.confirm_erase("")
+        if foreign:
+            self.sum_confirm_text.set_text(
+                f"{', '.join(foreign)} holds another system, and everything on it is deleted. "
+                f"Type {W.Wizard.CONFIRM_WORD} to confirm.")
+            self.sum_confirm.grab_focus()
+
+    def fill_summary_groups(self):
+        """The answers in groups, two groups side by side where they fit."""
         for child in self.sum_grid.get_children():
             self.sum_grid.remove(child)
-        for row, (name, value) in enumerate(self.wiz.summary_rows()):
-            self.sum_grid.attach(label(name, "field-label"), 0, row, 1, 1)
-            self.sum_grid.attach(label(value), 1, row, 1, 1)
+        columns = 2 if self.page_scroller.get_allocated_width() >= 640 or \
+            self.page_scroller.get_allocated_width() <= 1 else 1
+        for index, (title, rows) in enumerate(self.wiz.summary_sections()):
+            group = Gtk.Grid(column_spacing=12, row_spacing=3)
+            group.attach(label(title, "section-title"), 0, 0, 2, 1)
+            for row, (name, value) in enumerate(rows, start=1):
+                group.attach(label(name, "muted", wrap=False), 0, row, 1, 1)
+                text = label(value)
+                text.set_max_width_chars(28)
+                group.attach(text, 1, row, 1, 1)
+            self.sum_grid.attach(group, index % columns, index // columns, 1, 1)
         self.sum_grid.show_all()
-        self.sum_warning.set_text(self.wiz.erase_warning())
+
+    def fill_summary_disks(self):
+        """What happens to every disk, one line a disk."""
+        for child in self.sum_disks.get_children():
+            self.sum_disks.remove(child)
+        for disk, text, destructive in self.wiz.disk_actions():
+            line = label((f"{disk}: " if disk else "") + text,
+                         "error-text" if destructive else None)
+            self.sum_disks.pack_start(line, False, False, 0)
+        self.sum_disks.show_all()
+
+    # ---------------------------------------------------- hardware
+    def page_hardware(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.hw_intro = label("", "lead")
+        box.pack_start(self.hw_intro, False, False, 0)
+        self.hw_store = Gtk.ListStore(str, str, str, str, str)
+        view = Gtk.TreeView(model=self.hw_store)
+        for index, title in enumerate(("Part", "Device", "Driver", "Firmware", "Status")):
+            renderer = Gtk.CellRendererText()
+            column = Gtk.TreeViewColumn(title, renderer, markup=index)
+            column.set_expand(index == 1)
+            view.append_column(column)
+        self.hw_view = view
+        box.pack_start(scrolled(view, 4, 12, name="hardware"), False, False, 0)
+        box.pack_start(label("A part without a driver or without its firmware may not work in "
+                             "the installed system; the installer still installs it.", "muted"),
+                       False, False, 0)
+        self.hw_missing = label("", "muted")
+        box.pack_start(self.hw_missing, False, False, 0)
+        return box
+
+    def open_hardware(self):
+        self.return_page = self.page
+        self.show_page("hardware")
+
+    def enter_hardware(self):
+        self.title_label.set_text(i18n.t("hardware.title", self.lang))
+        self.hw_intro.set_text(i18n.t("hardware.intro", self.lang))
+        self.hw_store.clear()
+        esc = lambda t: t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")  # noqa: E731
+        for d in self.wiz.hardware():
+            firmware = esc(d["firmware"])
+            if d["firmware"] == "missing":
+                firmware = f'<span foreground="#c01c28">{firmware}</span>'
+            status = esc(d["status"])
+            status = (f'<span foreground="#26803a">{status}</span>' if d["status"] == "working"
+                      else f'<span foreground="#a05a00">{status}</span>')
+            self.hw_store.append([esc(d["class"]), esc(d["name"]), esc(d["driver"] or "none"),
+                                  firmware, status])
+        missing = getattr(self.wiz, "hardware_unavailable", [])
+        self.hw_missing.set_text("Not available on this system: " + "; ".join(missing) + "."
+                                 if missing else "")
+        self.focus_first(self.hw_view)
+
+    def act_close(self):
+        self.show_page(getattr(self, "return_page", "welcome"))
 
     def page_install(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        # The slides of the product, while the system is copied.
+        overlay = Gtk.Overlay()
+        self.slide_image = Gtk.Image()
+        self.slide_image.set_size_request(-1, 260)
+        overlay.add(self.slide_image)
+        words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        words.set_valign(Gtk.Align.END)
+        words.set_halign(Gtk.Align.START)
+        words.set_margin_start(28)
+        words.set_margin_bottom(22)
+        words.set_margin_end(28)
+        self.slide_title = label("", "slide-title")
+        self.slide_text = label("", "slide-text")
+        self.slide_text.set_max_width_chars(60)
+        words.pack_start(self.slide_title, False, False, 0)
+        words.pack_start(self.slide_text, False, False, 0)
+        overlay.add_overlay(words)
+        frame = Gtk.Box()
+        frame.get_style_context().add_class("slide")
+        frame.pack_start(overlay, True, True, 0)
+        box.pack_start(frame, False, False, 0)
+        self.slide_index = 0
         self.inst_step = label(f"Installing {self.wiz.product}.", "lead")
         box.pack_start(self.inst_step, False, False, 0)
         self.inst_bar = Gtk.ProgressBar()
@@ -864,6 +1439,7 @@ class InstallerWindow(Gtk.Window):
         self.inst_result = label("")
         box.pack_start(self.inst_result, False, False, 0)
         expander = Gtk.Expander(label="Details")
+        self.inst_details = expander
         expander.set_expanded(False)
         self.inst_log = Gtk.TextView()
         self.inst_log.set_editable(False)
@@ -877,6 +1453,32 @@ class InstallerWindow(Gtk.Window):
         box.pack_start(expander, True, True, 0)
         self.inst_expander = expander
         return box
+
+    def show_slide(self, index=None):
+        if hasattr(self, "inst_details"):
+            self.inst_details.set_label(i18n.t("installing.details", self.lang))
+        slides = self.brand.slides(self.wiz.product, self.lang)
+        if not slides:
+            return False
+        if index is not None:
+            self.slide_index = index
+        slide = slides[self.slide_index % len(slides)]
+        width = max(self.stack.get_allocated_width(), 680)
+        pix = svg_pixbuf(self.brand.svg(slide["image"]) if slide["image"] else None, width, 260, fill=True)
+        if pix is not None:
+            self.slide_image.set_from_pixbuf(pix)
+        else:
+            self.slide_image.clear()
+        self.slide_title.set_text(slide["title"])
+        self.slide_text.set_text(slide["text"])
+        return True
+
+    def next_slide(self):
+        if not self.running:
+            return False
+        self.slide_index += 1
+        self.show_slide()
+        return True
 
     def begin_install(self):
         self.wiz.install_failed = False
@@ -905,6 +1507,8 @@ class InstallerWindow(Gtk.Window):
             return
         self.running = True
         self.set_actions()
+        self.show_slide(0)
+        GLib.timeout_add_seconds(8, self.next_slide)
         # The output is read from the descriptor itself, without a buffer
         # in between, so every line shows the moment it is written.
         self.out_fd = self.run.proc.stdout.fileno()
@@ -973,6 +1577,82 @@ class InstallerWindow(Gtk.Window):
 
 # ---------------------------------------------------------------- smoke
 
+def scroller_of(widget):
+    """The scrolled window a widget is in, or None."""
+    parent = widget.get_parent()
+    while parent is not None:
+        if isinstance(parent, Gtk.ScrolledWindow):
+            return parent
+        parent = parent.get_parent()
+    return None
+
+
+def follower_of(sw, page):
+    """The next visible widget after the scroller in its box."""
+    child = sw
+    while child is not None and child is not page:
+        parent = child.get_parent()
+        if isinstance(parent, Gtk.Box):
+            kids = [k for k in parent.get_children() if k.get_visible()]
+            if child in kids and kids.index(child) + 1 < len(kids):
+                return kids[kids.index(child) + 1]
+        child = parent
+    return None
+
+
+def list_entry(win, page, widget):
+    """What lists_of reports of one list-like widget."""
+    sw = scroller_of(widget)
+    own = sw is not None and sw is not win.page_scroller
+    entry = {"kind": type(widget).__name__, "own_scroller": own,
+             "name": getattr(sw, "list_name", "") if own else "",
+             "height": sw.get_allocated_height() if own else widget.get_allocated_height(),
+             "max": sw.get_max_content_height() if own else -1}
+    nxt = follower_of(sw, page) if own else None
+    if own:
+        top = sw.translate_coordinates(win.page_scroller, 0, 0)
+        entry["top"] = top[1] if top else -1
+    if nxt is not None:
+        pos = nxt.translate_coordinates(win.page_scroller, 0, 0)
+        entry["follower"] = type(nxt).__name__
+        entry["follower_bottom"] = (pos[1] + nxt.get_allocated_height()) if pos else -1
+    return entry
+
+
+def is_list_like(widget):
+    return isinstance(widget, (Gtk.TreeView, Gtk.ListBox, Gtk.FlowBox)) or getattr(widget, "is_list", False)
+
+
+def walk_lists(win, page, widget, found):
+    """lists_of over a widget and its children."""
+    if not widget.get_visible():
+        return
+    if getattr(widget, "not_a_list", None):
+        found["exceptions"].append({"kind": type(widget).__name__, "reason": widget.not_a_list})
+    elif is_list_like(widget):
+        found["lists"].append(list_entry(win, page, widget))
+        if isinstance(widget, Gtk.TreeView):
+            return
+    if isinstance(widget, Gtk.Container):
+        for child in widget.get_children():
+            walk_lists(win, page, child, found)
+
+
+def lists_of(win):
+    """Every list-like widget of the page shown (a TreeView, a ListBox or a
+    FlowBox with rows, or a box marked as a list): whether it scrolls in a
+    window of its own, how high that is, and whether the control after it
+    is on the screen without scrolling the page.  The marked exceptions
+    with their reasons."""
+    page = win.stack.get_child_by_name(win.page)
+    view_h = win.page_scroller.get_allocated_height()
+    found = {"page": win.page, "page_height": page.get_allocated_height() if page else 0,
+             "viewport": view_h, "lists": [], "exceptions": []}
+    if page is not None:
+        walk_lists(win, page, page, found)
+    return found
+
+
 def fields_of(win):
     """Every text field of the page that is shown (Gtk.Entry and
     Gtk.TextView), with the labels it is labelled by."""
@@ -1036,6 +1716,7 @@ class Smoke:
         self.pages = {
             "preflight": self.page_preflight, "welcome": self.page_welcome,
             "keyboard": self.page_keyboard, "timezone": self.page_timezone,
+            "type": self.page_welcome, "software": self.page_welcome,
             "disk": self.page_disk, "users": self.page_users,
             "network": self.page_network, "summary": self.page_summary,
             "install": self.page_install, "finish": self.page_finish,
@@ -1097,7 +1778,15 @@ class Smoke:
         self.click("next")
 
     def page_disk(self):
-        select_name(self.win.disk_view, self.answers.get("disk", ""))
+        answers = self.answers
+        dp = self.win.disk_page
+        if dp.asks_usage():
+            dp.usage_buttons[answers.get("usage", "together")].set_active(True)
+        if answers.get("disk") in disk_index(dp.detail):
+            dp.selected = [answers["disk"]]
+            dp.fill_table()
+            dp.fill_data()
+            dp.refresh()
         self.click("next")
 
     def page_users(self):
@@ -1113,17 +1802,16 @@ class Smoke:
         self.click("next")
 
     def page_network(self):
-        win = self.win
         answers = self.answers
+        np = self.win.network_page
         mode = answers.get("network", "dhcp")
         if mode == "offline":
-            win.mode_offline.set_active(True)
-        else:
-            select_name(win.net_view, answers.get("net_if", ""))
-            (win.mode_static if mode == "static" else win.mode_dhcp).set_active(True)
-            for key in ("ipv4_addr", "ipv4_mask", "ipv4_gw"):
-                if key in answers:
-                    win.net_entries[key].set_text(answers[key])
+            np.offline.set_active(True)
+        for tab in np.tabs:
+            if tab.name == answers.get("net_if") and mode == "static":
+                tab.v4[0].set_active_id("static")
+                for key, entry in zip(("ipv4_addr", "ipv4_mask", "ipv4_gw"), tab.v4[1]):
+                    entry.set_text(answers.get(key, ""))
         self.click("next")
 
     def page_summary(self):
@@ -1177,56 +1865,498 @@ def smoke(win, answers, password, shots):
     return Smoke(win, answers, password, shots).run()
 
 
+def disk_index(detail):
+    import diskplan
+    return diskplan.disk_index(detail)
+
+
+def apply_disk_state(win, state):
+    """Set the disk page the way a person would: the mode, the disks, the
+    layout and the options."""
+    dp = win.disk_page
+    # Every shot starts from a page without the choices of the shot before.
+    dp.wipe = {}
+    dp.partitions = []
+    dp.data_disks = []
+    dp.fill_partitions()
+    dp.enc_check.set_active(False)
+    dp.swap_enc.set_active(False)
+    if "selected" in state:
+        dp.selected = list(state["selected"])
+    if "data_disks" in state:
+        dp.data_disks = list(state["data_disks"])
+    dp.fill_table()
+    dp.fill_data()
+    dp.mode_buttons[state.get("mode", "erase")].set_active(True)
+    dp.usage = None
+    dp.usage_none.set_active(True)
+    if state.get("usage"):
+        dp.usage_buttons[state["usage"]].set_active(True)
+    if "separate" in state:
+        dp.separate = dict(state["separate"])
+        dp.fill_separate()
+    if "layout" in state:
+        dp.layout = state["layout"]
+    if "filesystem" in state:
+        dp.fs_combo.set_active_id(state["filesystem"])
+    if state.get("encrypt"):
+        dp.enc_check.set_active(True)
+        dp.pass1.set_text(state.get("passphrase", ""))
+        dp.pass2.set_text(state.get("passphrase", ""))
+    if "swap_gb" in state:
+        dp.swap.set_value(state["swap_gb"])
+    if state.get("swap_encrypted"):
+        dp.swap_enc.set_active(True)
+    if "boot" in state:
+        dp.boot_combo.set_active_id(state["boot"])
+    for name, how in state.get("wipe", {}).items():
+        dp.wipe[name] = how
+    if "region_gb" in state:
+        dp.size_scale.set_value(state["region_gb"])
+    if "partitions" in state:
+        dp.partitions = [dict(p) for p in state["partitions"]]
+        dp.fill_partitions()
+    # Advanced is open only where the shot asks for it (or for data disks).
+    dp.advanced.set_expanded(bool(state.get("data_disks") or state.get("advanced")))
+    dp.data_expander.set_expanded(bool(state.get("data_disks")))
+    dp.refresh()
+
+
+def render_pump(times=8):
+    import time
+    for _ in range(times):
+        while Gtk.events_pending():
+            Gtk.main_iteration_do(False)
+        time.sleep(0.03)
+
+
+def render_save(win, outdir, name):
+    render_pump()
+    pixbuf = win.offscreen.get_pixbuf()
+    ok, data = pixbuf.save_to_bufferv("png", [], [])
+    if ok:
+        W.write_new_file(os.path.join(outdir, name + ".png"), data)
+
+
+def write_report(outdir, shot, kind, value, indent=None):
+    """The JSON report of a shot: NAME.KIND.json."""
+    import json
+    W.write_new_file(os.path.join(outdir, f"{shot['name']}.{kind}.json"),
+                     json.dumps(value, indent=indent).encode("utf-8"))
+
+
+def render_show(win, shot, page, state):
+    """Show the page of a shot, its disk page set first where it needs one."""
+    if page == "summary" and shot.get("disk_state"):
+        # The summary of a disk plan: set the disk page, take it.
+        win.disk_page.mode_buttons[shot["disk_state"].get("mode", "erase")].set_active(True)
+        win.show_page("disk")
+        apply_disk_state(win, shot["disk_state"])
+        win.disk_page.collect()
+        win.wiz.answers.user_name = "tester"
+        win.wiz.answers.full_name = "Test User"
+    mode = state.get("mode")
+    if mode and page in ("type", "disk"):
+        win.disk_page.mode_buttons[mode].set_active(True)
+    win.show_page(page)
+    if page == "type" and mode:
+        win.disk_page.mode_buttons[mode].set_active(True)
+    if page == "disk":
+        apply_disk_state(win, state)
+    if state.get("locale") and state["locale"] in win.flag_buttons:
+        win.flag_buttons[state["locale"]].set_active(True)
+
+
+def flag_kind(button):
+    """What a flag button shows: an image, a badge, or a text."""
+    child = button.get_child()
+    if isinstance(child, Gtk.Image):
+        return "image"
+    if child is not None and child.get_style_context().has_class("flag-badge"):
+        return "badge"
+    return "text"
+
+
+def render_reports(win, shot, page, state, outdir):
+    """The reports written before the page is laid out."""
+    report = state.get("report")
+    if report == "encryption":
+        dp = win.disk_page
+        write_report(outdir, shot, "encryption",
+                     {"layout": dp.layout, "active": dp.enc_check.get_active(),
+                      "sensitive": dp.enc_check.get_sensitive()})
+    if report == "busy":
+        # How the window lived through the slow probes of this shot.
+        write_report(outdir, shot, "busy", win.busy_stats)
+    if report == "flags":
+        # What each flag button shows: an image, a badge, or a text.
+        flags = [{"locale": locale, "country": button.flag_country, "kind": flag_kind(button)}
+                 for locale, button in win.flag_buttons.items()]
+        write_report(outdir, shot, "flags", flags, indent=1)
+        if page == "keyboard":
+            win.show_page("keyboard")
+
+
+def render_focus(win, state):
+    if state.get("zone"):
+        select_name(win.tz_view, state["zone"])
+    if state.get("focus") in getattr(win, "buttons", {}):
+        button = win.buttons[state["focus"]]
+        button.grab_focus()
+        # An offscreen window is never the active window, so the toolkit
+        # does not mark the focus itself: the picture marks it the way
+        # an active window does.
+        button.set_state_flags(Gtk.StateFlags.FOCUSED, False)
+
+
+def render_install(win, state):
+    win.show_slide(state["slide"])
+    win.inst_bar.set_fraction(state.get("progress", 0.4))
+    win.inst_bar.set_text(f"{int(state.get('progress', 0.4) * 100)}%")
+    win.inst_step.set_text(state.get("step", "Writing the system files"))
+    win.running = True
+    win.set_actions()
+    win.running = False
+
+
+def render_users(win, u):
+    win.user_entries["full_name"].set_text(u.get("full_name", ""))
+    win.user_entries["user_name"].set_text(u.get("user", ""))
+    win.user_entries["password"].set_text(u.get("password", ""))
+    win.user_entries["confirm"].set_text(u.get("password", ""))
+    if u.get("root") == "own":
+        win.root_own.set_active(True)
+        win.root_pw.set_text("r00t-pass")
+        win.root_pw2.set_text("r00t-pass")
+    win.autologin.set_active(bool(u.get("autologin")))
+
+
+def render_network(win, n):
+    import gui_network
+    np = win.network_page
+    np.notebook.set_current_page(n.get("tab", 0))
+    tab = np.tabs[n.get("tab", 0)]
+    if n.get("v4") == "static":
+        tab.v4[0].set_active_id("static")
+        for entry, value in zip(tab.v4[1], gui_network.EXAMPLE_IPV4):
+            entry.set_text(value)
+    if n.get("v6"):
+        tab.v6[0].set_active_id(n["v6"])
+    if n.get("dns"):
+        np.dns.set_text(n["dns"])
+    if "ssid_row" in n and tab.wifi:
+        tab.view.get_selection().select_path(Gtk.TreePath.new_from_indices([n["ssid_row"]]))
+        tab.psk.set_text("correct horse battery")
+    np.update.set_active(True)
+
+
+def render_software(win, state):
+    sp = win.software_page
+    if state.get("select_all"):
+        sp.all_check.set_active(not sp.all_check.get_active())
+    for ident in state.get("select", []):
+        sp.checks[ident].set_active(True)
+    if state.get("read"):
+        sp.open_viewer(state["read"])
+
+
+def render_page_state(win, page, state):
+    """The controls of the page set the way the shot asks."""
+    render_focus(win, state)
+    if page == "install" and "slide" in state:
+        render_install(win, state)
+    if page == "users" and state.get("users"):
+        render_users(win, state["users"])
+    if page == "network" and state.get("network"):
+        render_network(win, state["network"])
+    if page == "summary" and state.get("typed"):
+        win.sum_confirm.set_text(state["typed"])
+    if page == "software":
+        render_software(win, state)
+
+
+def render_shot(win, shot, outdir, size):
+    """Draw one shot; the names of the PNGs written."""
+    page = shot.get("page", "welcome")
+    state = shot.get("state", {})
+    render_show(win, shot, page, state)
+    render_reports(win, shot, page, state, outdir)
+    render_page_state(win, page, state)
+    win.offscreen.set_size_request(*size)
+    win.offscreen.resize(*size)
+    render_pump()
+    if state.get("report") == "lists":
+        # Measured once the page is laid out, before it is drawn.
+        write_report(outdir, shot, "lists", lists_of(win), indent=1)
+    render_save(win, outdir, shot["name"])
+    written = [shot["name"]]
+    if shot.get("full"):
+        # The whole page: as tall as its content.
+        child = win.stack.get_visible_child()
+        _minimum, natural = child.get_preferred_height_for_width(size[0] - 300)
+        chrome = size[1] - win.page_scroller.get_allocated_height()
+        win.offscreen.set_size_request(size[0], max(size[1], natural + chrome + 20))
+        render_pump()
+        render_save(win, outdir, shot["name"] + "-full")
+        written.append(shot["name"] + "-full")
+    return written
+
+
+def render(win, spec, outdir, size):
+    """Draw pages in given states and write a PNG of each: the screen as
+    it is, and the whole page when it scrolls."""
+    import json
+    with open(spec, encoding="utf-8") as stream:
+        shots = json.load(stream)
+    win.start()
+    written = []
+    for shot in shots:
+        written += render_shot(win, shot, outdir, size)
+    print("render: " + " ".join(written))
+    return W.EXIT_OK
+
+
+class KeyboardWalk:
+    """Go from Welcome to Installing with the keyboard alone: synthesised
+    key events (Tab, letters, Space, Alt and the underlined letter), never
+    a click."""
+
+    def __init__(self, win, answers, password):
+        self.win = win
+        self.answers = answers
+        self.password = password
+        self.top = win.offscreen or win
+        display = Gdk.Display.get_default()
+        self.keyboard = display.get_default_seat().get_keyboard()
+        self.keymap = Gdk.Keymap.get_for_display(display)
+        self.seen = []
+        press, release = Gdk.EventType.KEY_PRESS, Gdk.EventType.KEY_RELEASE
+        mod1, meta = Gdk.ModifierType.MOD1_MASK, Gdk.ModifierType.META_MASK
+        alt_l = Gdk.KEY_Alt_L
+        send, key = self.send, self.key
+        self.ways = [
+            # Alt+letter with the Mod1 modifier on the letter.
+            lambda k: key(k, mod1),
+            # The Alt key itself first, the letter without a modifier (servers
+            # that set no modifier on the next key), released in order.
+            lambda k: (send(press, alt_l), send(press, k), send(release, k, mod1),
+                       send(release, alt_l, mod1)),
+            # Alt reported as Meta.
+            lambda k: key(k, meta),
+            # Alt released before the letter.
+            lambda k: (send(press, alt_l), send(press, k, mod1), send(release, alt_l, mod1),
+                       send(release, k)),
+        ]
+        self.used_ways = []
+        self.pages = {
+            "welcome": self.page_welcome,
+            "keyboard": self.page_list, "timezone": self.page_list,
+            "type": self.page_next, "network": self.page_next, "software": self.page_next,
+            "disk": self.page_disk, "users": self.page_users,
+            "summary": self.page_summary,
+        }
+
+    @staticmethod
+    def pump():
+        import time
+        for _ in range(4):
+            while Gtk.events_pending():
+                Gtk.main_iteration_do(False)
+            time.sleep(0.02)
+
+    def send(self, etype, keyval, state=0):
+        ok, entries = self.keymap.get_entries_for_keyval(keyval)
+        event = Gdk.Event.new(etype)
+        event.key.window = self.top.get_window()
+        event.key.send_event = 1
+        event.key.keyval = keyval
+        event.key.state = state
+        event.key.time = Gdk.CURRENT_TIME
+        if ok:
+            event.key.hardware_keycode = entries[0].keycode
+        event.set_device(self.keyboard)
+        Gtk.main_do_event(event)
+
+    def key(self, keyval, state=0):
+        self.send(Gdk.EventType.KEY_PRESS, keyval, state)
+        self.send(Gdk.EventType.KEY_RELEASE, keyval, state)
+        self.pump()
+
+    def type_text(self, text):
+        for ch in text:
+            self.key(Gdk.unicode_to_keyval(ord(ch)))
+
+    def alt(self, letter):
+        way = self.ways[len(self.used_ways) % len(self.ways)]
+        self.used_ways.append(way)
+        way(Gdk.unicode_to_keyval(ord(letter)))
+        self.pump()
+
+    def focused(self):
+        return self.top.get_focus()
+
+    def page_welcome(self, _page):
+        self.alt("i")                       # _Install ExampleBSD
+
+    def page_list(self, page):
+        # The list has the focus; Return on its row goes on.
+        if not isinstance(self.focused(), Gtk.TreeView):
+            raise SystemExit(f"keyboard: the list of {page} does not have the focus")
+        self.key(Gdk.KEY_Return)
+
+    def page_next(self, _page):
+        self.alt("n")
+
+    def page_disk(self, _page):
+        dp = self.win.disk_page
+        if dp.asks_usage() and dp.usage is None:
+            if self.focused() is not dp.usage_buttons["together"]:
+                raise SystemExit("keyboard: the disk question does not have the focus")
+            self.key(Gdk.KEY_space)         # Use the disks together
+        # Return on the row of a disk goes on.
+        dp.view.grab_focus()
+        self.key(Gdk.KEY_Return)
+
+    def page_users(self, _page):
+        # The focus is on the full name; Tab goes from field to field.
+        if self.focused() is not self.win.user_entries["full_name"]:
+            raise SystemExit("keyboard: the full name does not have the focus")
+        self.type_text(self.answers.get("full_name", "Test User"))
+        self.key(Gdk.KEY_Tab)
+        self.type_text(self.answers.get("user", "tester"))
+        self.key(Gdk.KEY_Tab)
+        self.type_text(self.password)
+        self.key(Gdk.KEY_Tab)
+        self.type_text(self.password)
+        self.alt("n")
+
+    def page_summary(self, _page):
+        self.alt("i")                       # _Install
+
+    def run(self):
+        win = self.win
+        win.start()
+        self.pump()
+        for _ in range(30):
+            page = win.page
+            self.seen.append(page)
+            if page == "install":
+                break
+            handler = self.pages.get(page)
+            if handler is None:
+                raise SystemExit(f"keyboard: no way on from {page}")
+            handler(page)
+            if win.page == page:
+                raise SystemExit(f"keyboard: stuck on {page}: {win.error_label.get_text()}")
+        while win.running:
+            Gtk.main_iteration_do(True)
+        used, ways = self.used_ways, self.ways
+        print("keyboard: pages " + " ".join(self.seen))
+        print(f"keyboard: Alt and a letter, {len(used)} times, in {min(len(used), len(ways))} ways")
+        print(f"keyboard: full name {win.wiz.answers.full_name!r}")
+        return W.EXIT_OK if "install" in self.seen else W.EXIT_FAILED
+
+
+def keyboard_walk(win, answers, password):
+    """Go from Welcome to Installing with the keyboard alone: synthesised
+    key events (Tab, letters, Space, Alt and the underlined letter), never
+    a click.  For computers without a pointer (a virtual machine whose
+    tablet the system does not know)."""
+    return KeyboardWalk(win, answers, password).run()
+
+
+class UsageError(Exception):
+    """An option of the command line that cannot be read."""
+
+
+def option_value(name):
+    """The value after an option of the command line."""
+    return ARGS[ARGS.index(name) + 1]
+
+
+def option_size():
+    """--size WIDTHxHEIGHT, or None without it."""
+    if "--size" not in ARGS:
+        return None
+    try:
+        w, h = option_value("--size").lower().split("x")
+        return (int(w), int(h))
+    except (IndexError, ValueError):
+        raise UsageError("installer-gui: --size takes WIDTHxHEIGHT\n") from None
+
+
+def apply_text_scale():
+    """For the smoke run: larger text, the way a screen with more dots
+    per inch or a larger font shows it."""
+    if "--text-scale" not in ARGS or "--smoke" not in ARGS:
+        return
+    try:
+        factor = float(option_value("--text-scale"))
+    except (IndexError, ValueError):
+        raise UsageError("installer-gui: --text-scale takes a number\n") from None
+    Gtk.Settings.get_default().set_property("gtk-xft-dpi", int(96 * 1024 * factor))
+
+
+def read_answers(option):
+    import json
+    with open(option_value(option), encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+def run_interactive(win):
+    """The installer for a person, until it quits or a signal ends it."""
+    def on_signal():
+        # An interrupted run ends like the text front end: the
+        # installation is stopped, the state is removed, the log kept.
+        win.result = W.EXIT_FAILED
+        win.quit()
+        return False
+
+    import signal
+    import warnings
+    with warnings.catch_warnings():
+        # Newer PyGObject moved this to GLibUnix; the BSDs ship older ones.
+        warnings.simplefilter("ignore", DeprecationWarning)
+        for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            GLib.unix_signal_add(GLib.PRIORITY_HIGH, number, on_signal)
+    GLib.idle_add(lambda: (win.start(), False)[1])
+    Gtk.main()
+    return win.result
+
+
+def run_window(win, size):
+    """The run the command line asks for: a test walk, the shots, or the installer."""
+    if "--keyboard-walk" in ARGS:
+        answers = read_answers("--keyboard-walk")
+        return keyboard_walk(win, answers, sys.stdin.readline().rstrip("\n"))
+    if "--render" in ARGS:
+        spec = option_value("--render")
+        outdir = option_value("--screenshots") if "--screenshots" in ARGS else "."
+        return render(win, spec, outdir, size or (1024, 768))
+    if "--smoke" in ARGS:
+        answers = read_answers("--smoke")
+        password = sys.stdin.readline().rstrip("\n")
+        shots = option_value("--screenshots") if "--screenshots" in ARGS else ""
+        return smoke(win, answers, password, shots)
+    return run_interactive(win)
+
+
 def main():
-    windowed = "--windowed" in ARGS or "--smoke" in ARGS
+    windowed = "--windowed" in ARGS or "--smoke" in ARGS or "--render" in ARGS or "--keyboard-walk" in ARGS
     wiz = W.Wizard(ROOT)
-    size = None
-    if "--size" in ARGS:
-        try:
-            w, h = ARGS[ARGS.index("--size") + 1].lower().split("x")
-            size = (int(w), int(h))
-        except (IndexError, ValueError):
-            sys.stderr.write("installer-gui: --size takes WIDTHxHEIGHT\n")
-            return 2
-    if "--text-scale" in ARGS and "--smoke" in ARGS:
-        # For the smoke run: larger text, the way a screen with more dots
-        # per inch or a larger font shows it.
-        try:
-            factor = float(ARGS[ARGS.index("--text-scale") + 1])
-        except (IndexError, ValueError):
-            sys.stderr.write("installer-gui: --text-scale takes a number\n")
-            return 2
-        Gtk.Settings.get_default().set_property("gtk-xft-dpi", int(96 * 1024 * factor))
-    win = InstallerWindow(wiz, windowed=windowed, offscreen="--screenshots" in ARGS, size=size)
+    try:
+        size = option_size()
+        apply_text_scale()
+    except UsageError as error:
+        sys.stderr.write(str(error))
+        return 2
+    offscreen = "--screenshots" in ARGS or "--render" in ARGS or "--keyboard-walk" in ARGS
+    win = InstallerWindow(wiz, windowed=windowed, offscreen=offscreen, size=size)
     win.show_all()
     if win.offscreen is not None:
         win.offscreen.show_all()
     try:
-        if "--smoke" in ARGS:
-            import json
-            path = ARGS[ARGS.index("--smoke") + 1]
-            with open(path, encoding="utf-8") as stream:
-                answers = json.load(stream)
-            password = sys.stdin.readline().rstrip("\n")
-            shots = ARGS[ARGS.index("--screenshots") + 1] if "--screenshots" in ARGS else ""
-            return smoke(win, answers, password, shots)
-        def on_signal():
-            # An interrupted run ends like the text front end: the
-            # installation is stopped, the state is removed, the log kept.
-            win.result = W.EXIT_FAILED
-            win.quit()
-            return False
-
-        import signal
-        import warnings
-        with warnings.catch_warnings():
-            # Newer PyGObject moved this to GLibUnix; the BSDs ship older ones.
-            warnings.simplefilter("ignore", DeprecationWarning)
-            for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-                GLib.unix_signal_add(GLib.PRIORITY_HIGH, number, on_signal)
-        GLib.idle_add(lambda: (win.start(), False)[1])
-        Gtk.main()
-        return win.result
+        return run_window(win, size)
     finally:
         wiz.close()
 

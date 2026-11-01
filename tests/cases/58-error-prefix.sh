@@ -70,7 +70,8 @@ check_absent "the error of the front end does not name the backend" \
 # The backend keeps the name of the backend: its message goes to the log of
 # the run.
 rc=0
-out=$(INSTALLER_CONF="${root}/tests/fixtures/installer-illumos.conf" \
+# (Not a rehearsal: in a rehearsal the unproven illumos adapter answers.)
+out=$(env -u INSTALLER_ADAPTER_FIXTURE INSTALLER_CONF="${root}/tests/fixtures/installer-illumos.conf" \
 	INSTALLER_STATE_PARENT="${tmp}" \
 	BSDDIALOG_SCRIPT="${root}/tests/fixtures/answers-happy.txt" \
 	"${root}/bin/installer-tui" 2>&1) || rc=$?

@@ -1,0 +1,50 @@
+Geom name: vtbd4
+modified: false
+state: OK
+fwheads: 64
+fwsectors: 63
+last: 2097118
+first: 34
+entries: 128
+scheme: GPT
+Providers:
+1. Name: vtbd4p1
+   Mediasize: 272629760 (260M)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 32768
+   Mode: r0w0e0
+   efimedia: HD(1,GPT,a0a0a0a0-0000-4000-8000-00000000000f,0x40,0x82000)
+   rawuuid: a0a0a0a0-0000-4000-8000-00000000000f
+   rawtype: c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+   label: EFI System Area
+   length: 272629760
+   offset: 32768
+   type: efi
+   index: 1
+   end: 532543
+   start: 64
+2. Name: vtbd4p2
+   Mediasize: 801062400 (764M)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 32768
+   Mode: r0w0e0
+   efimedia: HD(2,GPT,a0a0a0a0-0000-4000-8000-000000000010,0x82040,0x17df9f)
+   rawuuid: a0a0a0a0-0000-4000-8000-000000000010
+   rawtype: 824cc7a0-36a8-11e3-890a-952519ad3f61
+   label: OpenBSD Area
+   length: 801062400
+   offset: 272662528
+   type: openbsd-data
+   index: 2
+   end: 2097118
+   start: 532544
+Consumers:
+1. Name: vtbd4
+   Mediasize: 1073741824 (1.0G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+

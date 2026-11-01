@@ -1,0 +1,17 @@
+EFI
+
+./EFI:
+BOOT
+debian
+
+./EFI/BOOT:
+BOOTX64.EFI
+fbx64.efi
+mmx64.efi
+
+./EFI/debian:
+BOOTX64.CSV
+grub.cfg
+grubx64.efi
+mmx64.efi
+shimx64.efi

@@ -1,0 +1,84 @@
+{
+ "boot_mode": "uefi",
+ "ram_mb": 32768,
+ "disks": [
+  {
+   "name": "ada0",
+   "model": "Example SSD 870 2TB",
+   "size_bytes": 2000000000000,
+   "serial": "EXS0002B",
+   "bus": "SATA",
+   "ssd": true,
+   "health": {
+    "status": "ok",
+    "summary": "healthy",
+    "temperature_c": 33,
+    "power_on_hours": 5400,
+    "reallocated": 0,
+    "pending": 0,
+    "wear_percent": 7
+   },
+   "scheme": "none",
+   "partitions": [],
+   "os": [],
+   "free": [
+    {
+     "start_mb": 1,
+     "size_mb": 1907346
+    }
+   ]
+  },
+  {
+   "name": "ada1",
+   "model": "Example SSD 870 2TB",
+   "size_bytes": 2000000000000,
+   "serial": "EXS0002C",
+   "bus": "SATA",
+   "ssd": true,
+   "health": {
+    "status": "ok",
+    "summary": "healthy",
+    "temperature_c": 34,
+    "power_on_hours": 5398,
+    "reallocated": 0,
+    "pending": 0,
+    "wear_percent": 7
+   },
+   "scheme": "none",
+   "partitions": [],
+   "os": [],
+   "free": [
+    {
+     "start_mb": 1,
+     "size_mb": 1907346
+    }
+   ]
+  },
+  {
+   "name": "ada2",
+   "model": "Example HDD 7200 2TB",
+   "size_bytes": 2000000000000,
+   "serial": "EXH0003D",
+   "bus": "SATA",
+   "ssd": false,
+   "health": {
+    "status": "warning",
+    "summary": "8 reallocated sectors",
+    "temperature_c": 41,
+    "power_on_hours": 31877,
+    "reallocated": 8,
+    "pending": 2,
+    "wear_percent": null
+   },
+   "scheme": "none",
+   "partitions": [],
+   "os": [],
+   "free": [
+    {
+     "start_mb": 1,
+     "size_mb": 1907346
+    }
+   ]
+  }
+ ]
+}

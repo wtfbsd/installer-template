@@ -20,6 +20,33 @@ The product is a variable.  The shipped configuration calls the product
 ExampleBSD; a site changes `installer.conf` and adds an adapter, and the
 installer core stays as it is.
 
+## What it looks like
+
+The graphical front end on FreeBSD 16.0, drawn from the test fixtures
+(sample data: made-up disks, documentation addresses, the placeholder
+product ExampleBSD of the artwork template).  The line in the lower left of
+every picture says what it shows: product, version, the BSD, the variant of
+the artwork and the architecture (`/usr/local/share/<slug>/identity` of the
+image).  `gui/README.md` shows every page.
+
+| | |
+| --- | --- |
+| ![Welcome, with the language picker](docs/screenshots/01-welcome.png) | ![Installation type](docs/screenshots/04-installation-type.png) |
+| ![Disk](docs/screenshots/05-disk.png) | ![Summary, the erase typed in](docs/screenshots/09-summary.png) |
+| ![Installing, with the slides of the product](docs/screenshots/10-installing.png) | ![Hardware and drivers](docs/screenshots/11-hardware-and-drivers.png) |
+
+At 1920x1080: ![Welcome at 1920x1080, FreeBSD 16.0](docs/screenshots/large-welcome.png)
+
+The cyberpunk variant of the artwork (FreeBSD 16.0, a test build):
+
+| | |
+| --- | --- |
+| ![Welcome, cyberpunk variant, FreeBSD 16.0](docs/screenshots/12-welcome-cyberpunk.png) | ![Installing, cyberpunk variant, FreeBSD 16.0](docs/screenshots/13-installing-cyberpunk.png) |
+
+`tools/render-screenshots.sh` renders the pictures again, headless (GTK on
+its Broadway backend, no X server): run it after a change to a page and
+commit `docs/screenshots/`.
+
 ## Layout
 
 | Path | What it is |
@@ -118,9 +145,12 @@ crypt scheme it accepts.
 | OpenBSD | `sysctl hw.disknames`, `disklabel`, the kernel messages | the `<name>: flags=` lines of `ifconfig` | the wscons encodings | `bcrypt` (`$2b$`) |
 | DragonFly | `sysctl kern.disks`, the kernel messages | `ifconfig -l` | `/usr/share/syscons/keymaps` | `sha512` (`$6$`) |
 
-The illumos adapter is not written: it reports `adapter not implemented for
-illumos` and exits 3, so an unfinished system is never mistaken for a
-working one.
+The illumos adapter is written against the documented formats of the
+illumos tools (`diskinfo -Hp`, `dladm show-phys`, the `kbd` layout table;
+ZFS single, mirror, RAID-Z1 and RAID-Z2; `$6$`) and is unproven: until
+outputs of a real illumos machine prove it, it answers in a rehearsal only,
+and on a machine it reports `adapter not implemented for illumos` and exits
+3, so an unfinished system is never mistaken for a working one.
 
 The time zones of every system are the zone table of zoneinfo
 (`zone1970.tab`, else `zone.tab`), with UTC first.  When an adapter has no
@@ -131,7 +161,56 @@ installation media (the file system mounted on `/mnt`, or on
 `INSTALLER_MEDIA_MOUNT`).  Optical drives, memory disks, wedges (NetBSD
 `dk`), RAM disks (OpenBSD `rd`) and vnode disks are never offered.  A root
 named by a NetBSD wedge, an OpenBSD DUID, a DragonFly `/dev/serno` path or a
-HAMMER2 label is followed to its disk.
+HAMMER2 label is followed to its disk.  An array the system assembled by
+itself from members it found on the disks (NetBSD RAIDframe `raidN`,
+OpenBSD softraid `sdN`, the hook `os_assembled_volumes`) is not offered
+either: its members are, shown as members of it.
+
+### What is on the disks now
+
+The verb `disks-detail` reports what each disk holds, for the disk page:
+the partition table, every partition with what it is and its file system,
+the systems found, the free space, the array a disk is a member of.  An
+adapter may bring its own hook `os_disks_detail`; without one,
+`lib/diskprobe.py` reads it, only reading, with the tools of the system by
+their absolute paths:
+
+| System | Tools |
+| --- | --- |
+| FreeBSD | `sysctl kern.disks`, `diskinfo -v`, `gpart list`, `fstyp`, `zpool import`, `zdb -l`, `geli dump` |
+| NetBSD | `sysctl hw.disknames`, `gpt show -a`, `dkctl listwedges`, `fdisk`, `fstyp`, `raidctl -s` |
+| OpenBSD | `sysctl hw.disknames`, `fdisk`, `disklabel -h`, `bioctl` |
+| DragonFly | `sysctl kern.disks`, `gpt show`, `fstyp` |
+
+and, on every system, the first MiB and the last sector of a disk or a
+partition (opened read only, for LUKS, BitLocker, GELI, a ZFS label and
+whether a disk without a table holds anything) and the file names of an EFI
+system partition, read from its FAT directories in userland
+(`lib/fatdir.py`; the partition is never mounted), to tell which systems
+boot from it.  It
+was written against the outputs of the real tools on ten disk layouts
+(`tests/fixtures/captures`, see its README): a disk of random data is never
+called empty, an encrypted partition is named as encrypted, a NetBSD wedge
+is matched to its partition by its start (the `dk` numbers change from boot
+to boot), the OpenBSD disklabel type of an NTFS partition (MSDOS) is not
+believed.  A rehearsal replays captured outputs with `DISKS_CAPTURE`
+(directories, `:` between them) and `DISKS_SNIFFS` (what the signature read
+finds), or reads a finished report from `DISKS_DETAIL`.
+
+### The hardware
+
+The verb `hardware` reports the graphics, Ethernet, Wi-Fi, audio, Bluetooth
+and input devices, the driver each is attached to, whether the firmware it
+needs is on the media and whether it works, for the Hardware and drivers
+window (`installer-apply --list hardware`).  Without a hook
+`os_hardware`, `lib/hwprobe.py` reads it, only reading, by absolute paths:
+`pciconf -lv`, `devinfo -v`, `usbconfig list` and the firmware directories
+on FreeBSD and DragonFly; `pcictl pci0 list -N`, `drvctl -lt`, `usbdevs -v`
+and `/libdata/firmware` on NetBSD; `pcidump -v` (the kernel messages when
+the kernel refuses it, as the installer's does), `usbdevs -v` and
+`/etc/firmware` on OpenBSD.  A source the system does not have is listed as
+not available, never an error.  A rehearsal replays captured outputs with
+`HARDWARE_CAPTURE` or reads a report from `HARDWARE`.
 
 ### The install command
 
@@ -140,14 +219,23 @@ The installation itself is done by the install command the template ships,
 `INSTALLER_INSTALL_COMMAND`).  The adapter calls it with the answers:
 
 ```
-<slug>-install -d DISK -u USER [-k PUBKEYFILE] -H HASHFILE [-n HOSTNAME]
-               [-z TIMEZONE] [-K KEYMAP] [-c FULLNAME] [-P]
-               [-N IF:ADDR/MASK:GW | -N IF:dhcp] -y --progress
+<slug>-install -p PLANFILE | -d DISK   -u USER -H HASHFILE [-k PUBKEYFILE]
+               [-n HOSTNAME] [-z TIMEZONE] [-Z utc|local] [-K KEYMAP] [-L LOCALE]
+               [-c FULLNAME] [-P] [-A] [-r locked|ROOTHASHFILE] [-E PASSPHRASEFILE]
+               [-N IF:dhcp|IF:ADDR/MASK:GW ...] [-6 IF:slaac|IF:ADDR6/PREFIX:GW6 ...]
+               [-D RESOLVER ...] [-W WIFIFILE] [-U] [-l ACCEPTFILE] -y --progress
 ```
 
 | Option | Answer | Notes |
 | --- | --- | --- |
-| `-d` | `DISK` | a bare disk name (`ada0`, `wd0`, `sd0`, `da0`), never a path |
+| `-p` | `PLAN_FILE` | the disk plan ("The disk plan" below), a 0600 JSON file the root helper wrote after checking it again; both front ends send one. The command acts on the disks of the plan only |
+| `-d` | `DISK` | a bare disk name (`ada0`, `wd0`, `sd0`, `da0`), never a path; the older form, without a plan |
+| `-E` | `PASSPHRASE_FILE` | the passphrase of an encrypted system, one line of 8 to 1024 bytes in a 0600 file; only with a plan that encrypts (the helper drops it otherwise) |
+| `-l` | `ACCEPT_FILE` | the record of the accepted licences (JSON: the ids and the sha256 of each licence text as shown) |
+| `-r` | `ROOT_MODE`, `ROOT_HASHFILE` | `locked`, or a 0600 file with root's crypt hash, checked by the helper itself |
+| `-W` | `WIFI_FILE` | a 0600 JSON file `{if, ssid, security, psk}`; never with an offline system |
+| `-Z`, `-L`, `-A`, `-U` | `CLOCK`, `LOCALE`, `AUTOLOGIN`, `UPDATE_AFTER` | the hardware clock, the locale, automatic login, the updates after the installation |
+| `-6`, `-D` | `NET_IPV6_LIST`, `DNS_SERVERS` | per adapter; a resolver's zone (`%em0`) is only an adapter name |
 | `-u` | `USER_NAME` | |
 | `-k` | `SSH_KEYFILE` | left out when there is no key |
 | `-H` | `USER_HASHFILE` | a file of mode 0600, in a directory of mode 0700, holding the crypt hash |
@@ -169,6 +257,50 @@ stops the installation with an `ERROR` line and the command never runs.
   when the command fails without an `ERROR` line the adapter adds one.  Its
   exit code is the exit code of the installation.
 - An account without a password is refused before the command runs.
+
+### The disk plan
+
+The disk page (both front ends) writes a plan, `plan.json`, that
+`lib/diskplan.py` checks; the root helper checks it again, against its own
+reading of the disks, before the install command gets it with `-p`:
+
+```json
+{"version": 1, "mode": "erase", "boot": "uefi", "disks": ["ada0"],
+ "layout": "single", "filesystem": "zfs",
+ "encryption": {"enabled": false, "swap": false}, "swap_mb": 4096,
+ "sector_4k": true, "trim": true, "wipe": {"ada0": "quick"},
+ "confirm_foreign": ["ada0"], "usage": "together",
+ "alongside": {"disk": "ada0", "region": {"start_mb": 1, "size_mb": 102400}},
+ "partitions": [{"disk": "ada0", "type": "root", "size_mb": 0, "mount": "/"}],
+ "data": [{"name": "home", "disks": ["ada1"], "layout": "single",
+           "filesystem": "zfs", "mount": "/home"}]}
+```
+
+- `mode`: `erase` (whole disks: `disks`, `layout`), `alongside` (the free
+  region of one disk: `alongside`) or `manual` (`partitions`); `disks` is
+  empty for the last two, `alongside` and `partitions` exist only in their
+  mode.
+- **The install command acts only on the disks the plan uses**: `disks`,
+  `partitions[].disk`, `alongside.disk` and `data[].disks`.  Every other disk
+  name in the plan has to be one of those: a `wipe` only of a disk the plan
+  erases, a `confirm_foreign` only of an offered disk the plan erases.  Every
+  disk has to be one the adapter offers (never the running system or the
+  installation media), and no disk twice.
+- A disk that holds another system is erased only with its name in
+  `confirm_foreign` (the word typed on the summary).
+- The smallest disk (Erase) or region (alongside) is the larger of
+  `MIN_DISK_GB` and the installed image plus 2 GB plus the swap of the plan.
+  The root partition of a Manual plan (size 0 is the rest of its disk) has
+  the same minimum without the swap: in a Manual plan the swap is a
+  partition of its own.
+- A layout that is an encryption (OpenBSD's `crypto` and `raid1c`) needs
+  `encryption.enabled`; the Disk page ticks and locks the box when such a
+  layout is chosen.
+- `layout` and `filesystem` are those the system offers (the adapter verb
+  `layouts`); `data` pools only where the system offers them; mount points
+  are absolute, without `..`, unique.
+- The file is parsed strictly: no duplicate key, no float, depth at most 8,
+  lists of at most 256, texts of at most 256 characters, 64 KiB at most.
 
 Set `INSTALLER_ADAPTER_FIXTURE` to a KEY=value file to read the hardware from
 that file instead of from the machine.  The keys are `DISKS`, `INTERFACES`,
@@ -241,6 +373,16 @@ anchored pattern before it is used.
 | `DEFAULT_KEYMAP` | `^[A-Za-z0-9._-]{1,32}$` | the layout the installer offers first |
 | `DEFAULT_TZ` | `^[A-Za-z][A-Za-z0-9+_-]*(/[A-Za-z0-9+_-]+)*$` | the time zone the installer offers first |
 | `PRODUCT_LOGO` (optional) | an absolute path of plain names | an image the graphical front end and the menu entry show |
+| `MIN_DISK_GB` (optional) | `^[1-9][0-9]{0,3}$` | the smallest disk the system is installed to, in GB (16 when not set) |
+
+The minimum is never below what the media needs.  The adapter verb
+`image-size` reports the bytes the installed system takes: the hook
+`os_image_size` (the image the install command writes), else the space the
+live root uses (`/bin/df -k /`), and in a rehearsal `IMAGE_SIZE`.  The
+effective minimum is the larger of `MIN_DISK_GB` and that size plus 2 GB to
+spare plus the swap of the plan.  A smaller disk is refused by the plan
+check, in both front ends and again in the root helper, with the minimum
+and the reason in the message.
 
 `bin/installer-config list`, `bin/installer-config get KEY` and
 `bin/installer-config validate` read it.
@@ -269,14 +411,22 @@ dialog(1) reads nothing after the box but its items.
 `bin/installer-tui` shows the pages in this order:
 
 1. welcome
-2. keyboard
-3. timezone
+2. keyboard: the language and region (when the system lists locales; the
+   layout of its country is then offered first), then the layout
+3. timezone: the zone, then the hardware clock (UTC or local time)
 4. disk
-5. users
-6. network
-7. summary
-8. install
-9. finish
+5. users: the account, its password twice, passwordless sudo and doas and
+   automatic login, then root: locked (the default) or a password of its
+   own, typed twice and kept as a crypt hash only
+6. network: the adapter and its IPv4, the Wi-Fi network and its passphrase
+   for a Wi-Fi adapter (a 0600 file, never an argument), IPv6, the DNS
+   servers and the update after the installation
+7. software (when the media has a catalogue)
+8. summary: when the disk holds another system it says so and the word
+   `erase` has to be typed, as on the graphical summary; the disk goes to
+   the root helper as a plan file (`-p`), like the graphical front end's
+9. install
+10. finish
 
 The rules the front end follows:
 

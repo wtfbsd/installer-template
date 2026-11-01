@@ -1,0 +1,6 @@
+=>     63  6291393    vtbd3  MBR  (3.0G)
+       63     1985           - free -  (993K)
+     2048  3072000  vtbd3s1  ntfs  [active]  (1.5G)
+  3074048  2867200  vtbd3s2  linux-data  (1.4G)
+  5941248   350208           - free -  (171M)
+

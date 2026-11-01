@@ -86,6 +86,47 @@ probe a-token-prefix-5 "$(printf '%s-%s' 'xoxb' '1234567890abcdefghij')"
 probe a-token-prefix-6 "$(printf 'sk-%s' 'abcdefghijklmnopqrstuvwxyz0123')"
 probe the-name-of-an-api-key "$(printf 'api%s' 'Key')"
 probe a-home-path "$(printf '/ho%s/example' 'me')"
+probe an-address-v6-of-digits "$(printf '2001%s470%s1%s%s5' : : : :)"
+probe an-address-v6-full "$(printf '1:2:3:4:5:6:%s' '7:8')"
+probe a-mac-address "$(printf 'lladdr 02%s63%sbf%s02%s31%sfa' : : : : :)"
+probe an-email-of-another-test-domain "$(printf 'root@build.%s' 'example.net')"
+
+# What is not an address: a time, a PCI selector, a MAC of the
+# documentation range (RFC 7042), a build line at example.test.
+nofind() { # nofind <name> <content>
+	file="${root}/probe-${1}.txt"
+	printf '%s\n' "$2" > "${file}"
+	rc=0
+	"${checker}" "${file}" >/dev/null 2>&1 || rc=$?
+	rm -f "${file}"
+	check "the check lets ${1} pass" 0 "${rc}"
+}
+nofind a-time "built at 23:24:34 UTC"
+nofind a-pci-selector "000:06:0: Example xHCI [xhci0]"
+nofind a-documentation-mac "$(printf 'lladdr 00%s00%s5e%s00%s53%s02' : : : : :)"
+nofind a-build-line "builder@buildhost1.example.test:/usr/src/sys/arch/amd64/compile/GENERIC"
+
+# A picture: its pixels are not read as text, its text chunks are found.
+pic="${tmp}/probe-picture.png"
+make_png='
+import struct, sys, zlib
+def chunk(kind, data):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 0, 0, 0, 0))
+if sys.argv[2] == "text":
+    png += chunk(b"tEXt", b"Comment\x00made here")
+png += chunk(b"IDAT", zlib.compress(b"\x00\x00")) + bytes.fromhex("3a3a313a323a3a") + chunk(b"IEND", b"")
+open(sys.argv[1], "wb").write(png)
+'
+python3 -I -c "${make_png}" "${pic}" plain
+rc=0
+"${checker}" "${pic}" >/dev/null 2>&1 || rc=$?
+check "the pixels of a picture are not read as text" 0 "${rc}"
+python3 -I -c "${make_png}" "${pic}" text
+rc=0
+"${checker}" "${pic}" >/dev/null 2>&1 || rc=$?
+check "the text chunk of a picture is found" 1 "${rc}"
+rm -f "${pic}"
 
 # The private list of a site: the environment names the file, the repository
 # ships no such file.

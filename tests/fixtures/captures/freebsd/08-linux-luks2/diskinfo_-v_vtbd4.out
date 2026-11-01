@@ -1,0 +1,12 @@
+vtbd4
+	512         	# sectorsize
+	2147483648  	# mediasize in bytes (2.0G)
+	4194304     	# mediasize in sectors
+	131072      	# stripesize
+	0           	# stripeoffset
+	            	# Disk descr.
+	BHYVE-0000-0000-000C	# Disk ident.
+	vtblk4      	# Attachment
+	Yes         	# TRIM/UNMAP support
+	Unknown     	# Rotation rate in RPM
+

@@ -1,0 +1,22 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+What the hardware tools of FreeBSD 16.0-CURRENT, NetBSD 11.0, OpenBSD 8.0
+and DragonFly 6.4.2 print on a virtual machine (bhyve, UEFI): a virtio
+disk, network adapter and random number generator, a framebuffer without a
+DRM driver, an xHCI controller with a USB tablet, the PS/2 keyboard and
+mouse.  No Wi-Fi, no sound, no Bluetooth.  Captured on 2026-11-01 for
+lib/hwprobe.py and tests/test_hwprobe.py.
+
+<os>/<command>.out is what the command printed, .rc its exit status
+(FreeBSD's `devmatch -p` and NetBSD's `drvctl -t` are usage errors, kept as
+captured).  On OpenBSD the kernel of the installer refuses pcidump(8), and
+usbdevs(8) lists only the root hub (the port of the tablet is disabled).
+
+Changed from what the tools printed: MAC addresses and the serial of the
+tablet are made up (the MAC addresses in the documentation range of RFC
+7042), the build hosts in the kernel version lines are example.test names;
+uname and the error outputs are not kept.
+
+Edited after capture: dragonfly/dmesg.out line 24 (the local APIC count)
+carries a trailing `# gitleaks:allow` note, because gitleaks reads
+"lapic_count=2" as an API key; the line plays no part in detection.

@@ -1,0 +1,7 @@
+/dev/rld2: 6 wedges:
+dk2: EFI system partition, 204800 blocks at 2048, type: msdos
+dk4: Microsoft reserved partition, 32768 blocks at 206848, type: 
+dk5: Basic data partition, 3686400 blocks at 239616, type: ntfs
+dk6: 5eed0002-0000-4000-8000-000000000004, 1228800 blocks at 3926016, type: 
+dk7: 5eed0002-0000-4000-8000-000000000005, 2048000 blocks at 5154816, type: ext2fs
+dk8: 5eed0002-0000-4000-8000-000000000006, 524288 blocks at 7202816, type: 

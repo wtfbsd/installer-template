@@ -22,6 +22,7 @@ process group of the installation, and a stopped installation always ends
 with a non-zero exit code.
 """
 
+import json
 import os
 
 # As root, the directory of the caller is left before anything else is
@@ -40,6 +41,14 @@ import sys
 import tempfile
 import time
 
+# The library of the installer, by the place of this file (root-owned), never
+# by the current directory or the environment.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import diskplan  # noqa: E402
+import licensed  # noqa: E402
+import netplan  # noqa: E402
+import hashes  # noqa: E402
+
 BASE = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BACKEND = os.path.join(BASE, "bin", "installer-backend")
 
@@ -55,7 +64,8 @@ try:
 except ValueError:
     INVOKER = -1
 
-LISTS = {"disks": "disk", "network": "network", "keymaps": "keyboard",
+LISTS = {"disks": "disk", "network": "network", "keymaps": "keyboard", "software": "software",
+         "hardware": "hardware",
          "timezones": "timezone", "users": "users", "welcome": "welcome"}
 
 # The answers the front ends write.  The paths of the hash and of the key
@@ -64,25 +74,32 @@ ANSWER_KEYS = {
     "KEYMAP", "TIMEZONE", "DISK", "USER_NAME", "USER_FULLNAME", "USER_AUTH",
     "USER_HASHFILE", "HOSTNAME", "SSH_KEYFILE", "PRIVILEGE_PASSWORDLESS",
     "NETWORK_MODE", "NET_IF", "NET_IPV4", "IPV4_ADDR", "IPV4_MASK", "IPV4_GW",
+    "PLAN_FILE", "PASSPHRASE_FILE", "ACCEPT_LICENSES", "ACCEPT_FILE", "LOCALE", "CLOCK",
+    "ROOT_MODE", "ROOT_HASHFILE", "AUTOLOGIN", "NET_IPV4_LIST", "NET_IPV6_LIST",
+    "DNS_SERVERS", "UPDATE_AFTER", "WIFI_FILE",
 }
-PATH_KEYS = {"USER_HASHFILE", "SSH_KEYFILE"}
-SECTIONS = ("keyboard", "timezone", "disk", "users", "network", "summary")
+PATH_KEYS = {"USER_HASHFILE", "SSH_KEYFILE", "PLAN_FILE", "PASSPHRASE_FILE", "ACCEPT_FILE",
+             "ROOT_HASHFILE", "WIFI_FILE"}
+SECTIONS = ("keyboard", "timezone", "disk", "users", "network", "software", "summary")
 
-HASH_PATTERNS = {
-    "sha512": re.compile(r"\$6\$(rounds=[0-9]{1,9}\$)?[./0-9A-Za-z]{1,16}\$[./0-9A-Za-z]{86}"),
-    "bcrypt": re.compile(r"\$2b\$[0-9]{2}\$[./A-Za-z0-9]{53}"),
-    "bcrypt-2a": re.compile(r"\$2a\$[0-9]{2}\$[./A-Za-z0-9]{53}"),
-}
+# One definition of the accepted crypt hashes (the users section uses it too).
+HASH_PATTERNS = hashes.HASH_PATTERNS
 # The files of the directory of the front end, and of the private copy.
 ANSWERS_NAME = "answers.conf"
 HASH_NAME = "user.hash"
 KEY_NAME = "ssh_key.pub"
+PLAN_NAME = "plan.json"
+PASSPHRASE_NAME = "passphrase"
+ROOT_HASH_NAME = "root.hash"
+WIFI_NAME = "wifi.json"
+ACCEPT_NAME = "accept.json"
 # As root the private copies live under this directory of root (mode 0700,
 # owned by 0, never a link), not under a directory everybody may write.
 ROOT_WORK_BASE = "/var/run/wtfbsd-installer"
 MAX_ANSWERS = 16 * 1024
 MAX_HASH = 512
 MAX_KEY = 16 * 1024
+MAX_PASSPHRASE = 1024
 
 
 class Refused(Exception):
@@ -102,6 +119,13 @@ def base_env():
     if ROOT_MODE:
         env = {"PATH": ROOT_PATH, "HOME": "/root", "LANG": "C"}
     return env
+
+
+def config_value(key, env):
+    proc = subprocess.run([os.path.join(BASE, "bin", "installer-config"), "get", key],
+                          env=env, capture_output=True, text=True, check=False,
+                          stdin=subprocess.DEVNULL)
+    return proc.stdout.strip() if proc.returncode == 0 else ""
 
 
 def run_section(section, verb, env):
@@ -254,37 +278,192 @@ def work_base():
     return user_work_base()
 
 
-def prepare(src, env):
-    """Copy and check the input of the front end; the private directory."""
+def check_root_hash(text, scheme):
+    """root's crypt hash, one line in the scheme of the system, checked by
+    the helper itself (not only by the users section)."""
+    crypt = (text or "").strip("\n")
+    if not crypt or "\n" in crypt or not HASH_PATTERNS[scheme].fullmatch(crypt):
+        raise Refused(f"{ROOT_HASH_NAME} is not a {scheme} crypt hash this system accepts")
+    return crypt
+
+
+def gate_secrets(answers, plan, passphrase, root_hash, wifi_text):
+    """The secrets whose gate is on, the others dropped: the passphrase only
+    with a plan that encrypts (and then one line of 8 to 1024 bytes), root's
+    hash only for root with a password, the Wi-Fi file only with a
+    network."""
+    kept = {"passphrase": None, "root_hash": None, "wifi": None}
+    enc = (plan or {}).get("encryption") or {}
+    if plan is not None and enc.get("enabled"):
+        if passphrase is None:
+            raise Refused("the plan encrypts the system and no passphrase was given")
+        line = passphrase.rstrip("\n")
+        if not 8 <= len(line.encode("utf-8")) <= MAX_PASSPHRASE or "\n" in line or "\0" in line:
+            raise Refused("the passphrase is not one line of 8 to 1024 bytes")
+        kept["passphrase"] = line
+    if answers.get("ROOT_MODE", "locked") == "password":
+        kept["root_hash"] = root_hash
+    if answers.get("NETWORK_MODE", "dhcp") != "offline" and wifi_text is not None and wifi_text.strip():
+        kept["wifi"] = wifi_text
+    return kept
+
+
+def read_input(src):
+    """The files of the directory of the front end, in this order: the
+    answers (parsed), the hash of the user, the key, the plan, the
+    passphrase, root's hash and the Wi-Fi file (None when not there)."""
     dirfd = open_input_dir(src)
     try:
         answers = parse_answers(read_private(dirfd, ANSWERS_NAME, MAX_ANSWERS, False))
         hash_text = read_private(dirfd, HASH_NAME, MAX_HASH, True)
         key_text = read_private(dirfd, KEY_NAME, MAX_KEY, False, required=False)
+        plan_text = read_private(dirfd, PLAN_NAME, diskplan.MAX_PLAN_BYTES, True, required=False)
+        passphrase = read_private(dirfd, PASSPHRASE_NAME, MAX_PASSPHRASE, True, required=False)
+        root_hash = read_private(dirfd, ROOT_HASH_NAME, MAX_HASH, True, required=False)
+        wifi_text = read_private(dirfd, WIFI_NAME, 4096, True, required=False)
     finally:
         os.close(dirfd)
-    if answers.get("USER_AUTH") != "password":
-        raise Refused("the account needs a password (USER_AUTH=password)")
+    return answers, hash_text, key_text, plan_text, (passphrase, root_hash, wifi_text)
+
+
+def hash_scheme(env):
+    """The crypt scheme the users section reports, sha512 when it names
+    none this helper knows."""
     code, out, _err = run_section("users", "probe", env)
     scheme = "sha512"
     match = re.search(r'"hash_scheme":"([a-z0-9-]+)"', out) if code == 0 else None
     if match and match.group(1) in HASH_PATTERNS:
         scheme = match.group(1)
-    crypt_string = hash_text.strip("\n")
-    if "\n" in crypt_string or not HASH_PATTERNS[scheme].fullmatch(crypt_string):
-        raise Refused(f"{HASH_NAME} is not a {scheme} crypt hash this system accepts")
+    return scheme
+
+
+def first_disk(plan):
+    """The disk of the answers: the first disk of the plan."""
+    first = plan.get("disks", [None])[0] if plan.get("disks") else None
+    if first is None and plan.get("mode") == "alongside":
+        first = (plan.get("alongside") or {}).get("disk")
+    if first is None and plan.get("partitions"):
+        first = plan["partitions"][0].get("disk")
+    return first
+
+
+def check_plan(plan_text, env, answers):
+    """The plan, read strictly and checked against the disks the helper
+    reads itself; DISK of the answers is set from it."""
     try:
-        # mkdtemp makes the directory with mode 0700 (less under a umask).
-        work = tempfile.mkdtemp(prefix="wtfbsd-apply.", dir=work_base())
-    except OSError as err:
-        raise Refused(f"the private directory cannot be made: {err.strerror}")
+        plan = diskplan.parse(plan_text.encode("utf-8"))
+    except diskplan.PlanError as error:
+        raise Refused(f"{PLAN_NAME}: {error}")
+    os_name = config_value("OS", env) or "freebsd"
+    code, out, _err = run_section("disk", "probe", env)
+    try:
+        detail = json.loads(out).get("detail", {}) if code == 0 else {}
+    except ValueError:
+        detail = {}
+    problems = diskplan.validate(plan, detail, os_name)
+    if problems:
+        raise Refused("the disk plan: " + "; ".join(problems[:5]))
+    first = first_disk(plan)
+    if first:
+        answers["DISK"] = first
+    return plan
+
+
+def write_root_hash(work, answers, root_hash, scheme):
+    """root's hash when root has a password; ROOT_MODE is locked else."""
+    if answers.get("ROOT_MODE", "locked") == "password":
+        root_crypt = check_root_hash(root_hash, scheme)
+        write_private(os.path.join(work, ROOT_HASH_NAME), root_crypt + "\n")
+        answers["ROOT_HASHFILE"] = os.path.join(work, ROOT_HASH_NAME)
+    elif answers.get("ROOT_MODE", "locked") != "locked":
+        raise Refused("ROOT_MODE is locked or password")
+
+
+def write_wifi(work, answers, wifi_text):
+    """The Wi-Fi file, copied and then checked on the copy."""
+    if wifi_text is not None and wifi_text.strip():
+        write_private(os.path.join(work, WIFI_NAME), wifi_text)
+        problems = netplan.check_wifi(os.path.join(work, WIFI_NAME))
+        if problems:
+            raise Refused("; ".join(problems))
+        answers["WIFI_FILE"] = os.path.join(work, WIFI_NAME)
+
+
+def write_accepted(work, answers, env):
+    """The record of the accepted licences, when there are any."""
+    accepted = answers.get("ACCEPT_LICENSES", "")
+    if not accepted:
+        return
+    # The ids are checked again against the catalogue on the media, and
+    # the record holds the sha256 of the licence text the user could
+    # read there.
+    code, out, _err = run_section("software", "probe", env)
+    try:
+        cat = json.loads(out)["catalogue"] if code == 0 else None
+        ids = licensed.parse_answer(accepted)
+    except (ValueError, KeyError):  # licensed.CatalogueError is a ValueError
+        cat, ids = None, []
+    if not cat:
+        raise Refused("licences were accepted and the catalogue cannot be read")
+    problems = licensed.check_accepted(cat, ids)
+    if problems:
+        raise Refused("; ".join(problems))
+    when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    write_private(os.path.join(work, ACCEPT_NAME),
+                  json.dumps(licensed.record(cat, ids, when), indent=1) + "\n")
+    answers["ACCEPT_FILE"] = os.path.join(work, ACCEPT_NAME)
+
+
+def write_copies(work, env, answers, inputs, scheme):
+    """The private copies in work, in this order: the hash of the user, the
+    key, root's hash, the Wi-Fi file, the plan, the passphrase, the record
+    of the licences and last the answers."""
+    crypt_string, key_text, plan, (passphrase, root_hash, wifi_text) = inputs
     write_private(os.path.join(work, HASH_NAME), crypt_string + "\n")
     answers["USER_HASHFILE"] = os.path.join(work, HASH_NAME)
     if key_text is not None and key_text.strip():
         write_private(os.path.join(work, KEY_NAME), key_text)
         answers["SSH_KEYFILE"] = os.path.join(work, KEY_NAME)
+    # Every secret whose gate is off is dropped here, whatever the front
+    # end sent.
+    kept = gate_secrets(answers, plan, passphrase, root_hash, wifi_text)
+    passphrase, root_hash, wifi_text = kept["passphrase"], kept["root_hash"], kept["wifi"]
+    write_root_hash(work, answers, root_hash, scheme)
+    write_wifi(work, answers, wifi_text)
+    if plan is not None:
+        write_private(os.path.join(work, PLAN_NAME), json.dumps(plan, indent=1) + "\n")
+        answers["PLAN_FILE"] = os.path.join(work, PLAN_NAME)
+    if passphrase is not None:
+        write_private(os.path.join(work, PASSPHRASE_NAME), passphrase.rstrip("\n") + "\n")
+        answers["PASSPHRASE_FILE"] = os.path.join(work, PASSPHRASE_NAME)
+    write_accepted(work, answers, env)
     write_private(os.path.join(work, ANSWERS_NAME),
                   "".join(f"{k}={v}\n" for k, v in answers.items()))
+
+
+def prepare(src, env):
+    """Copy and check the input of the front end; the private directory."""
+    answers, hash_text, key_text, plan_text, secrets = read_input(src)
+    if answers.get("USER_AUTH") != "password":
+        raise Refused("the account needs a password (USER_AUTH=password)")
+    scheme = hash_scheme(env)
+    crypt_string = hash_text.strip("\n")
+    if "\n" in crypt_string or not HASH_PATTERNS[scheme].fullmatch(crypt_string):
+        raise Refused(f"{HASH_NAME} is not a {scheme} crypt hash this system accepts")
+    plan = None
+    if plan_text is not None:
+        plan = check_plan(plan_text, env, answers)
+    try:
+        # mkdtemp makes the directory with mode 0700 (less under a umask).
+        work = tempfile.mkdtemp(prefix="wtfbsd-apply.", dir=work_base())
+    except OSError as err:
+        raise Refused(f"the private directory cannot be made: {err.strerror}")
+    # Nothing of a refused input stays behind: the private directory goes.
+    try:
+        write_copies(work, env, answers, (crypt_string, key_text, plan, secrets), scheme)
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
     return work
 
 
@@ -311,6 +490,10 @@ def do_install(src, env):
         env = dict(env, INSTALLER_ANSWERS=os.path.join(work, ANSWERS_NAME),
                    INSTALLER_STATE_DIR=state)
         for section in SECTIONS:
+            # The plan was checked in prepare() against the disks the
+            # helper read itself: the disk list is not read a second time.
+            if section == "disk" and os.path.exists(os.path.join(work, PLAN_NAME)):
+                continue
             code, _out, err = run_section(section, "validate", env)
             if code != 0:
                 reason = " ".join(err.split()).replace("installer-backend: ", "")

@@ -1,0 +1,19 @@
+# /dev/rsd2c:
+type: SCSI
+disk: SCSI disk
+label: Block Device    
+duid: 0000000000000000
+flags:
+bytes/sector: 512
+sectors/track: 63
+tracks/cylinder: 255
+sectors/cylinder: 16065
+cylinders: 456
+total sectors: 7340032 # total bytes: 3584.0M
+boundstart: 40
+boundend: 7339992
+
+16 partitions:
+#                size           offset  fstype [fsize bsize   cpg]
+  c:          3584.0M                0  unused                    
+  i:           260.0M             2048   MSDOS                    

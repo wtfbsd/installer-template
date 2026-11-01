@@ -21,10 +21,43 @@ OS=$(config_value OS) || exit 2
 
 cmd_probe() {
 	interfaces=$(adapter_cmd network) || exit $?
-	printf '{"section":"network","interfaces":%s}\n' "${interfaces}"
+	online=$(adapter_cmd online-check 2>/dev/null) || online=no
+	# The Wi-Fi adapters (by their drivers) and the networks each sees.
+	scans=$(printf '%s' "${interfaces}" | python3 -I -c '
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import netplan
+for item in json.load(sys.stdin):
+    if netplan.is_wifi(item.get("name", "")):
+        print(item["name"])
+' "${root}/lib" | while IFS= read -r ifname; do
+		printf '%s\t' "${ifname}"
+		adapter_cmd wifi-scan "${ifname}" 2>/dev/null | tr '\n' '\036'
+		printf '\n'
+	done)
+	printf '%s' "${scans}" | INTERFACES="${interfaces}" ONLINE="${online}" python3 -I -c '
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import netplan
+wifi = {}
+for line in sys.stdin.read().split("\n"):
+    if not line:
+        continue
+    name, _tab, rest = line.partition("\t")
+    wifi[name] = netplan.parse_scan(rest.replace("\036", "\n"))
+print(json.dumps({"section": "network", "interfaces": json.loads(os.environ["INTERFACES"]),
+                  "wifi": wifi, "online": os.environ["ONLINE"].strip() == "yes"},
+                 separators=(",", ":")))
+' "${root}/lib"
 }
 
 cmd_validate() {
+	# The adapters, the resolvers and the Wi-Fi network (lib/netplan.py).
+	if problems=$(python3 -I "${root}/lib/netplan.py" check "${INSTALLER_ANSWERS:-/dev/null}" 2>&1); then
+		:
+	else
+		die 2 "$(printf '%s' "${problems}" | tr '\n' ';')"
+	fi
 	mode=$(answers_get NETWORK_MODE) || die 2 'no network mode was given'
 	case "${mode}" in
 		dhcp) : ;;

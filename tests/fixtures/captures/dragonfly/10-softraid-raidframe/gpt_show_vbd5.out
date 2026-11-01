@@ -1,0 +1,9 @@
+    start     size  index  contents
+        0        1      -  PMBR
+        1        1      -  Pri GPT header
+        2       32      -  Pri GPT table
+       34       30      -  Unused
+       64   532480      0  GPT part - EFI System
+   532544  1564575      1  GPT part - 824cc7a0-36a8-11e3-890a-952519ad3f61
+  2097119       32      -  Sec GPT table
+  2097151        1      -  Sec GPT header

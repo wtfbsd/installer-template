@@ -1,0 +1,61 @@
+nexus0
+  cryptosoft0
+  acpi0
+    pcib0 pnpinfo _HID=PNP0A03 _UID=0 at handle=\_SB_.PC00
+      pci0
+        hostb0 pnpinfo vendor=0x1275 device=0x1275 subvendor=0x0000 subdevice=0x0000 class=0x060000 at slot=0 function=0
+        isab0 pnpinfo vendor=0x8086 device=0x7000 subvendor=0x0000 subdevice=0x0000 class=0x060100 at slot=1 function=0 handle=\_SB_.PC00.ISA_
+          isa0
+            adv0
+            atkbdc1
+            vga0
+            lm0
+            it0
+            it1
+            it2
+            it3
+            wbsio0
+            wbsio1
+            sio4
+            sio5
+        virtio_pci0 pnpinfo vendor=0x1af4 device=0x1001 subvendor=0x1af4 subdevice=0x0002 class=0x010000 at slot=2 function=0
+          vtblk0
+        virtio_pci1 pnpinfo vendor=0x1af4 device=0x1000 subvendor=0x1af4 subdevice=0x0001 class=0x020000 at slot=3 function=0
+          vtnet0
+        virtio_pci2 pnpinfo vendor=0x1af4 device=0x1005 subvendor=0x1af4 subdevice=0x0004 class=0x100000 at slot=4 function=0
+          unknown
+        vgapci0 pnpinfo vendor=0xfb5d device=0x40fb subvendor=0x0000 subdevice=0x0000 class=0x030000 at slot=5 function=0
+          drm0
+        xhci0 pnpinfo vendor=0x8086 device=0x1e31 subvendor=0x0000 subdevice=0x0000 class=0x0c0330 at slot=6 function=0
+          usbus0
+            uhub0
+    pci_link0 pnpinfo _HID=PNP0C0F _UID=1 at handle=\_SB_.PC00.ISA_.LNKA
+    pci_link1 pnpinfo _HID=PNP0C0F _UID=2 at handle=\_SB_.PC00.ISA_.LNKB
+    pci_link2 pnpinfo _HID=PNP0C0F _UID=3 at handle=\_SB_.PC00.ISA_.LNKC
+    pci_link3 pnpinfo _HID=PNP0C0F _UID=4 at handle=\_SB_.PC00.ISA_.LNKD
+    pci_link4 pnpinfo _HID=PNP0C0F _UID=5 at handle=\_SB_.PC00.ISA_.LNKE
+    pci_link5 pnpinfo _HID=PNP0C0F _UID=6 at handle=\_SB_.PC00.ISA_.LNKF
+    pci_link6 pnpinfo _HID=PNP0C0F _UID=7 at handle=\_SB_.PC00.ISA_.LNKG
+    pci_link7 pnpinfo _HID=PNP0C0F _UID=8 at handle=\_SB_.PC00.ISA_.LNKH
+    atkbdc0 pnpinfo _HID=PNP0303 _UID=0 at handle=\_SB_.PC00.ISA_.KBD_
+      atkbd0
+      psm0
+    unknown pnpinfo _HID=PNP0F13 _UID=0 at handle=\_SB_.PC00.ISA_.MOU_
+    acpi_sysresource0 pnpinfo _HID=PNP0C02 _UID=0 at handle=\_SB_.PC00.ISA_.SIO_
+    sio0 pnpinfo _HID=PNP0501 _UID=1 at handle=\_SB_.PC00.ISA_.COM1
+    sio1 pnpinfo _HID=PNP0501 _UID=2 at handle=\_SB_.PC00.ISA_.COM2
+    sio2 pnpinfo _HID=PNP0501 _UID=3 at handle=\_SB_.PC00.ISA_.COM3
+    sio3 pnpinfo _HID=PNP0501 _UID=4 at handle=\_SB_.PC00.ISA_.COM4
+    unknown pnpinfo _HID=PNP0B00 _UID=0 at handle=\_SB_.PC00.ISA_.RTC_
+    unknown pnpinfo _HID=PNP0000 _UID=0 at handle=\_SB_.PC00.ISA_.PIC_
+    unknown pnpinfo _HID=PNP0100 _UID=0 at handle=\_SB_.PC00.ISA_.TIMR
+    unknown pnpinfo _HID=PNP0103 _UID=0 at handle=\_SB_.PC00.HPET
+    unknown pnpinfo _HID=BHYVE_V_GEN_COUNTER_V1 _UID=0 at handle=\_SB_.GENC
+    acpi_hpet0 pnpinfo unknown at unknown
+    acpi_timer0 pnpinfo unknown at unknown
+  aesni0
+  padlock0
+  rdrand0
+  ram0
+  legacy0
+  sc0

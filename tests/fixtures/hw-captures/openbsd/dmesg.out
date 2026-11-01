@@ -1,0 +1,87 @@
+OpenBSD 8.0 (RAMDISK_CD) #79: Tue Oct  6 23:24:34 MDT 2026
+    deraadt@buildhost1.example.test:/usr/src/sys/arch/amd64/compile/RAMDISK_CD
+real mem = 4246781952 (4050MB)
+avail mem = 4117692416 (3926MB)
+random: good seed from bootblocks
+mainbus0 at root
+bios0 at mainbus0: SMBIOS rev. 2.8 @ 0xbfbcf000 (12 entries)
+bios0: vendor BHYVE version "14.0" date 10/17/2021
+bios0: FreeBSD BHYVE
+efi0 at bios0: UEFI 2.7
+efi0: BHYVE rev 0x10000
+acpi0 at bios0: ACPI 5.1
+acpi0: tables DSDT FACP APIC HPET MCFG SPCR SRAT BGRT
+acpitimer0 at acpi0: 3579545 Hz, 32 bits
+acpimadt0 at acpi0 addr 0xfee00000: PC-AT compat
+cpu0 at mainbus0: apid 0 (boot processor)
+cpu0: AMD Ryzen 7 5700G with Radeon Graphics, 3790.46 MHz, 19-50-00
+cpu0: cpuid 1 edx=178bfbff<FPU,VME,DE,PSE,TSC,MSR,PAE,MCE,CX8,APIC,SEP,MTRR,PGE,MCA,CMOV,PAT,PSE36,CFLUSH,MMX,FXSR,SSE,SSE2,HTT> ecx=f6d83203<SSE3,PCLMUL,SSSE3,FMA3,CX16,SSE4.1,SSE4.2,MOVBE,POPCNT,AES,XSAVE,AVX,F16C,RDRAND,HV>
+cpu0: cpuid 6 eax=4<ARAT>
+cpu0: cpuid 7.0 ebx=201403a9<FSGSBASE,BMI1,AVX2,SMEP,BMI2,ERMS,RDSEED,SMAP,SHA> ecx=600
+cpu0: cpuid d.1 eax=1<XSAVEOPT>
+cpu0: cpuid 80000001 edx=27d3fbff<NXE,MMXX,FFXSR,PAGE1GB,LONG> ecx=444231ff<LAHF,CMPLEG,SVM,EAPICSP,AMCR8,ABM,SSE4A,MASSE,3DNOWP,SKINIT,TCE,TOPEXT,DBKP>
+cpu0: cpuid 80000007 edx=100<ITSC>
+cpu0: cpuid 80000008 ebx=5
+cpu0: cpuid 8000001F eax=1780f<SME,SEV,PFLUSH_MSR,SEVES,REQ64BITHOST,RESTINJ,ALTINJ,DBGSTSW,VTE> edx=1
+cpu0: 0KB 64b/line 1-way D-cache, 0KB 64b/line 1-way L2 cache, 0KB 64b/line 1-way L3 cache
+cpu0: apic clock running at 134MHz
+cpu at mainbus0: not configured
+ioapic0 at mainbus0: apid 0 pa 0xfec00000, version 11, 32 pins
+acpihpet0 at acpi0: 16777216 Hz
+acpiprt0 at acpi0: bus 0 (PC00)
+acpipci0 at acpi0 PC00
+"PNP0303" at acpi0 not configured
+"PNP0F13" at acpi0 not configured
+com0 at acpi0 COM1 addr 0x3f8/0x8 irq 4: ns16550a, 16 byte fifo
+com0: console
+com1 at acpi0 COM2 addr 0x2f8/0x8 irq 3: ns16550a, 16 byte fifo
+com2 at acpi0 COM3 addr 0x3e8/0x8 irq 4: ns16550a, 16 byte fifo
+com3 at acpi0 COM4 addr 0x2e8/0x8 irq 3: ns16550a, 16 byte fifo
+acpicmos0 at acpi0
+"Bhyve_V_Gen_Counter_V1" at acpi0 not configured
+pvbus0 at mainbus0: bhyve
+pci0 at mainbus0 bus 0
+pchb0 at pci0 dev 0 function 0 unknown vendor 0x1275 product 0x1275 rev 0x00
+"Intel 82371SB ISA" rev 0x00 at pci0 dev 1 function 0 not configured
+virtio0 at pci0 dev 2 function 0 "Qumranet Virtio Storage" rev 0x00
+vioblk0 at virtio0
+virtio0: msix per-VQ
+scsibus0 at vioblk0: 1 targets
+sd0 at scsibus0 targ 0 lun 0: <VirtIO, Block Device, >
+sd0: 5MB, 512 bytes/sector, 11392 sectors
+virtio1 at pci0 dev 3 function 0 "Qumranet Virtio Storage" rev 0x00
+vioblk1 at virtio1
+virtio1: msix per-VQ
+scsibus1 at vioblk1: 1 targets
+sd1 at scsibus1 targ 0 lun 0: <VirtIO, Block Device, >
+sd1: 16MB, 512 bytes/sector, 32768 sectors
+virtio2 at pci0 dev 4 function 0 "Qumranet Virtio Storage" rev 0x00
+vioblk2 at virtio2
+virtio2: msix per-VQ
+scsibus2 at vioblk2: 1 targets
+sd2 at scsibus2 targ 0 lun 0: <VirtIO, Block Device, >
+sd2: 16MB, 512 bytes/sector, 32768 sectors
+virtio3 at pci0 dev 5 function 0 "Qumranet Virtio Network" rev 0x00
+vio0 at virtio3: 1 queue, address 00:00:5e:00:53:02
+virtio3: msix per-VQ
+virtio4 at pci0 dev 6 function 0 "Qumranet Virtio RNG" rev 0x00
+viornd0 at virtio4
+virtio4: msix per-VQ
+vga1 at pci0 dev 7 function 0 unknown vendor 0xfb5d product 0x40fb rev 0x00
+vga1: aperture needed
+wsdisplay at vga1 not configured
+xhci0 at pci0 dev 8 function 0 "Intel 7 Series xHCI" rev 0x00: msi, xHCI 1.0
+usb0 at xhci0: USB revision 3.0
+uhub0 at usb0 configuration 1 interface 0 "Intel xHCI root hub" rev 3.00/1.00 addr 1
+isa0 at mainbus0
+pckbc0 at isa0 port 0x60/5 irq 1 irq 12
+pckbd0 at pckbc0 (kbd slot)
+wskbd0 at pckbd0 mux 1
+efifb0 at mainbus0: 1280x1024, 32bpp
+wsdisplay at efifb0 not configured
+enable mbufs in high memory
+uhub0: device problem, disabling port 1
+softraid0 at root
+scsibus3 at softraid0: 256 targets
+root on rd0a swap on rd0b dump on rd0b
+WARNING: CHECK AND RESET THE DATE!

@@ -59,6 +59,16 @@ os_excluded_disks() {
 	done
 }
 
+# os_assembled_volumes <names> — the RAIDframe arrays (raidN) the kernel
+# configured by itself from components on the disks.
+os_assembled_volumes() {
+	for _d in $1; do
+		case "${_d}" in
+			raid[0-9]*) printf '%s\n' "${_d}" ;;
+		esac
+	done
+}
+
 os_interfaces() {
 	command -v ifconfig >/dev/null 2>&1 ||
 		die 3 'reading the network adapters needs the ifconfig tool'

@@ -1,0 +1,22 @@
+******* Working on device /dev/vbd7 *******
+parameters extracted from device are:
+cylinders=2048 heads=1 sectors/track=1024 (1024 blks/cyl)
+
+Figures below won't work with BIOS for partitions not in cyl 1
+parameters to be used for BIOS calculations are:
+cylinders=2048 heads=1 sectors/track=1024 (1024 blks/cyl)
+
+Media sector size is 512
+Warning: BIOS sector numbering starts with sector 1
+Information from DOS bootblock is:
+The data for partition 1 is:
+sysid 238,(EFI GPT)
+    start 1, size 2097151 (1023 Meg), flag 0
+	beg: cyl 0/ head 0/ sector 2;
+	end: cyl 1023/ head 254/ sector 63
+The data for partition 2 is:
+<UNUSED>
+The data for partition 3 is:
+<UNUSED>
+The data for partition 4 is:
+<UNUSED>

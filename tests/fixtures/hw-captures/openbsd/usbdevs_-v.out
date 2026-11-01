@@ -1,0 +1,4 @@
+Controller /dev/usb0:
+addr 01: 8086:0000 Intel, xHCI root hub
+	 super speed, self powered, config 1, rev 1.00
+	 driver: uhub0

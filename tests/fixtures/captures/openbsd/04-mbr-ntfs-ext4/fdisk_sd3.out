@@ -1,0 +1,9 @@
+Disk: sd3	geometry: 391/255/63 [6291456 Sectors]
+Offset: 0	Signature: 0xAA55
+            Starting         Ending         LBA Info:
+ #: id      C   H   S -      C   H   S [       start:        size ]
+-------------------------------------------------------------------------------
+*0: 07      0  32  33 -    191  89  26 [        2048:     3072000 ] NTFS
+ 1: 83    191  89  27 -    369 210  33 [     3074048:     2867200 ] Linux files*
+ 2: 00      0   0   0 -      0   0   0 [           0:           0 ] Unused
+ 3: 00      0   0   0 -      0   0   0 [           0:           0 ] Unused

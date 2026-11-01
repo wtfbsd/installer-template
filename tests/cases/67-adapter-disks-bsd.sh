@@ -114,6 +114,20 @@ out=$(probe openbsd network STUB_INTERFACES='em0 lo0 enc0 pflog0 iwm0')
 check "openbsd: the adapters from ifconfig without -l" "em0 iwm0" \
 	"$(names "${out}" interfaces)"
 
+# The kernel messages of a real NetBSD 11 (captured, with their time
+# stamps): a virtio disk has no model, only the feature flags of the
+# device; the model is "VirtIO disk", never the flags.
+cp "${root}/tests/fixtures/hw-captures/netbsd/dmesg.out" "${tmp}/dmesg.boot"
+: > "${tmp}/mounts"
+out=$(probe netbsd disk STUB_HW_DISKNAMES='ld0 dk0 dk1' STUB_DISK_INFO=/nonexistent)
+check "netbsd: a virtio disk is a VirtIO disk" "VirtIO disk" "$(field "${out}" ld0 descr)"
+check "netbsd: its size comes from the time stamped messages" "5368709120" \
+	"$(field "${out}" ld0 size_bytes)"
+# The same messages without the time stamps (the copy of an older boot).
+sed 's/^\[ *[0-9.]*\] //' "${root}/tests/fixtures/hw-captures/netbsd/dmesg.out" > "${tmp}/dmesg.boot"
+out=$(probe netbsd disk STUB_HW_DISKNAMES='ld0' STUB_DISK_INFO=/nonexistent)
+check "netbsd: never the feature flags as the model" "VirtIO disk" "$(field "${out}" ld0 descr)"
+
 # ---------------------------------------------------------------- DragonFly
 cat > "${tmp}/dmesg.boot" <<'DMESG'
 da0 at ahci0 bus 0 target 0 lun 0
@@ -140,5 +154,28 @@ check "dragonfly: the root disk and the media are left out" "da10" \
 printf '/dev/da1s1a / ufs rw 0 0\n' > "${tmp}/mounts"
 out=$(probe dragonfly disk STUB_DISKS='da1 da10')
 check "dragonfly: da10 is not taken for a part of da1" "da10" "$(names "${out}" disks)"
+
+# The live system of DragonFly mounts its root by label (and devfs has
+# serno and part-by-uuid links too): the link is followed to its disk.
+# Without size lines in the kernel messages (virtio disks print none), the
+# size comes from gpt show, here the captured output of real disks.
+: > "${tmp}/dmesg.boot"
+cap="${root}/tests/fixtures/captures/dragonfly"
+mkdir -p "${tmp}/gpt"
+cp "${cap}/02-windows-linux-gpt/gpt_show_vbd2.out" "${cap}/01-blank/gpt_show_vbd1.out" "${tmp}/gpt/"
+printf '/dev/part-by-label/DragonFly_LIVE@ROOT / hammer2 rw 0 0\n' > "${tmp}/mounts"
+printf '/dev/part-by-label/DragonFly_LIVE\t../vbd0s2a\n' > "${tmp}/links"
+out=$(probe dragonfly disk STUB_DISKS='vbd0 vbd1 vbd2' STUB_LINKS="${tmp}/links" \
+	STUB_GPT_DIR="${tmp}/gpt")
+check "dragonfly: a root by label is the live disk" "vbd1 vbd2" "$(names "${out}" disks)"
+check "dragonfly: the size of a blank disk from gpt show" "1073741824" \
+	"$(field "${out}" vbd1 size_bytes)"
+check "dragonfly: the size of a GPT disk from gpt show" "4294967296" \
+	"$(field "${out}" vbd2 size_bytes)"
+printf '/dev/part-by-uuid/a0a0a0a0-0000-4000-8000-000000000001 / hammer2 rw 0 0\n' > "${tmp}/mounts"
+printf '/dev/part-by-uuid/a0a0a0a0-0000-4000-8000-000000000001\t/dev/vbd2s1\n' > "${tmp}/links"
+out=$(probe dragonfly disk STUB_DISKS='vbd0 vbd1 vbd2' STUB_LINKS="${tmp}/links" \
+	STUB_GPT_DIR="${tmp}/gpt")
+check "dragonfly: a root by partition uuid is followed too" "vbd0 vbd1" "$(names "${out}" disks)"
 
 finish

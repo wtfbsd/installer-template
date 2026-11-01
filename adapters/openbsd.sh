@@ -57,6 +57,12 @@ os_excluded_disks() {
 	done
 }
 
+# os_assembled_volumes <names> — the softraid volumes (sdN) the kernel
+# assembled by itself from chunks on the disks, as bioctl lists them.
+os_assembled_volumes() {
+	python3 -I "${root}/lib/diskprobe.py" --assembled openbsd 2>/dev/null || :
+}
+
 os_interfaces() {
 	command -v ifconfig >/dev/null 2>&1 ||
 		die 3 'reading the network adapters needs the ifconfig tool'
@@ -65,6 +71,22 @@ os_interfaces() {
 
 os_keymaps() {
 	keymap_rows us uk de fr es it pt br sg sf be nl dk fi no sv pl hu ru ua jp gr is la tr
+}
+
+# os_layouts — what the install command of OpenBSD takes: whole disks,
+# single, softraid RAID 1, CRYPTO and RAID 1C; OpenBSD cannot start from a
+# softraid RAID 5.  Install alongside, manual partitions and data pools are
+# not offered yet.
+os_layouts() {
+	cat <<'JSON'
+{"modes": ["erase"], "data_pools": false, "not_offered": "not offered on OpenBSD yet",
+ "encryption": "softraid CRYPTO", "filesystems": [["ffs", "FFS"]],
+ "layouts": [
+  {"ident": "single", "title": "Single disk", "min_disks": 1, "max_disks": 1},
+  {"ident": "raid1", "title": "RAID 1 (softraid)", "min_disks": 2},
+  {"ident": "crypto", "title": "Encrypted (softraid CRYPTO)", "min_disks": 1, "max_disks": 1, "encrypted": true},
+  {"ident": "raid1c", "title": "RAID 1C (mirrored and encrypted)", "min_disks": 2, "encrypted": true}]}
+JSON
 }
 
 os_hash_scheme() {

@@ -1,0 +1,17 @@
+    start     size  index  contents
+        0        1         PMBR
+        1        1         Pri GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000004
+        2       32         Pri GPT table
+       34     2014         Unused
+     2048  2093056      1  GPT part - NetBSD RAIDFrame component
+                                 Type: raid
+                                 TypeID: 49f48daa-b10e-11dc-b99b-0019d1879648
+                                 GUID: a0a0a0a0-0000-4000-8000-00000000000e
+                                 Size: 1022 M
+                                 Label: raidcomp-ld1
+                                 Attributes: None
+  2095104     2015         Unused
+  2097119       32         Sec GPT table
+  2097151        1         Sec GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000004

@@ -1,0 +1,32 @@
+hostb0@pci0:0:0:0:	class=0x060000 card=0x00000000 chip=0x12751275 rev=0x00 hdr=0x00
+    vendor     = 'Network Appliance Corporation'
+    class      = bridge
+    subclass   = HOST-PCI
+isab0@pci0:0:1:0:	class=0x060100 card=0x00000000 chip=0x70008086 rev=0x00 hdr=0x00
+    vendor     = 'Intel Corporation'
+    device     = '82371SB PIIX3 ISA [Natoma/Triton II]'
+    class      = bridge
+    subclass   = PCI-ISA
+virtio_pci0@pci0:0:2:0:	class=0x010000 card=0x00021af4 chip=0x10011af4 rev=0x00 hdr=0x00
+    vendor     = 'Red Hat, Inc.'
+    device     = 'Virtio block device'
+    class      = mass storage
+    subclass   = SCSI
+virtio_pci1@pci0:0:3:0:	class=0x020000 card=0x00011af4 chip=0x10001af4 rev=0x00 hdr=0x00
+    vendor     = 'Red Hat, Inc.'
+    device     = 'Virtio network device'
+    class      = network
+    subclass   = ethernet
+virtio_pci2@pci0:0:4:0:	class=0x100000 card=0x00041af4 chip=0x10051af4 rev=0x00 hdr=0x00
+    vendor     = 'Red Hat, Inc.'
+    device     = 'Virtio RNG'
+    class      = encrypt/decrypt
+    subclass   = network/computer crypto
+vgapci0@pci0:0:5:0:	class=0x030000 card=0x00000000 chip=0x40fbfb5d rev=0x00 hdr=0x00
+    class      = display
+    subclass   = VGA
+xhci0@pci0:0:6:0:	class=0x0c0330 card=0x00000000 chip=0x1e318086 rev=0x00 hdr=0x00
+    vendor     = 'Intel Corporation'
+    device     = '7 Series/C210 Series Chipset Family USB xHCI Host Controller'
+    class      = serial bus
+    subclass   = USB

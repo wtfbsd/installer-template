@@ -20,19 +20,39 @@ Xvfb or on the Broadway backend of GTK (`tests/cases/71-gui.sh`).
 
 ## The pages
 
-A sidebar lists the nine pages and marks the current one.
+A sidebar lists the pages and marks the current one; above them the logo,
+the name and the tagline of the product.
 
 | # | Page | What it does | Checked by |
 | --- | --- | --- | --- |
-| 1 | Welcome | says what the installer does; "Try the live desktop" or "Install <product>" | - |
-| 2 | Keyboard | the layouts of the adapter, with a field to test the keyboard; the layout picked is applied to the live X session at once (`setxkbmap`), so the password is typed in it | `keyboard validate` |
-| 3 | Time zone | the zone table of the system, with a search field | `timezone validate` |
-| 4 | Disk | the disks the adapter offers, with model and size; "Look for disks again"; says that the disk is erased | `disk validate` |
-| 5 | Users | full name, user name, password and its confirmation, host name, an optional SSH public key, passwordless sudo and doas | the rules of `lib/accounts.sh`, then `users validate` |
-| 6 | Network | the adapters; automatic address, manual address (address, netmask, gateway) or no network | `network validate` |
-| 7 | Summary | every answer, and which disk is erased; Install | every section's `validate` |
-| 8 | Installing | a progress bar from the `PROGRESS n msg` lines, the step, a Details log; "Stop the installation" | - |
-| 9 | Finished | "Reboot" or "Stay in the live system" | - |
+| 1 | Welcome | says what the installer does; the languages with a flag for every country (the UI switches at once); "Hardware and drivers"; "Try the live desktop" or "Install <product>" | - |
+| 2 | Keyboard | the locale, the layouts of the adapter (the locale suggests one), a field to test the keyboard; the layout picked is applied to the live X session at once (`setxkbmap`), so the password is typed in it | `keyboard validate` |
+| 3 | Time zone | the zone table of the system with a search field and a clock; the hardware clock in UTC or local time (local when Windows is found) | `timezone validate` |
+| 4 | Installation type | erase, alongside or manual, with what the disks hold now and a picture before and after; one blank disk only says that the whole disk is used | `disk validate` |
+| 5 | Disk | the disks with model, size and what is on them; together or separately when there are several; the layout, the file system, encryption, swap and data pools; the plan file | `disk validate` (the plan again as root) |
+| 6 | Users | full name, user name, password with its strength, host name, an optional SSH key, the root account (locked or its own password), automatic login | the rules of `lib/accounts.sh`, then `users validate` |
+| 7 | Network | a tab per adapter: IPv4 and IPv6 automatic, manual or off; Wi-Fi networks and their key; DNS servers; "Check the connection"; update after the install | `network validate` |
+| 8 | Additional software | drivers, firmware and programs under their own licence, each read before it is accepted; Select all; the open-source licences | `software validate` |
+| 9 | Summary | every answer, what happens to every disk (in red when it is erased); "erase" must be typed before Install | every section's `validate` |
+| 10 | Installing | the slides of the product, a progress bar from the `PROGRESS n msg` lines, the step, a Details log; "Stop the installation" | - |
+| 11 | Finished | "Reboot" or "Stay in the live system" | - |
+
+"Hardware and drivers" (from the Welcome page) lists the graphics, Wi-Fi,
+Ethernet, audio, input and Bluetooth parts, the driver of each, whether its
+firmware is on the media and whether it works (`installer-apply --list
+hardware`, the adapter verb `hardware`).
+
+The pictures show FreeBSD 16.0 (sample data); the line in the lower left of
+each says so.
+
+| | |
+| --- | --- |
+| ![Welcome](../docs/screenshots/01-welcome.png) | ![Keyboard](../docs/screenshots/02-keyboard.png) |
+| ![Time zone](../docs/screenshots/03-timezone.png) | ![Installation type](../docs/screenshots/04-installation-type.png) |
+| ![Disk](../docs/screenshots/05-disk.png) | ![Users](../docs/screenshots/06-users.png) |
+| ![Network](../docs/screenshots/07-network.png) | ![Additional software](../docs/screenshots/08-additional-software.png) |
+| ![Summary](../docs/screenshots/09-summary.png) | ![Installing](../docs/screenshots/10-installing.png) |
+| ![Hardware and drivers](../docs/screenshots/11-hardware-and-drivers.png) | ![Disk at 1920x1080](../docs/screenshots/large-disk.png) |
 
 Before the first page the checks of the text front end run.  A machine
 without a disk, or without a network adapter, gets the "Unfortunately"
@@ -78,6 +98,47 @@ question whose default is to continue.
 The name comes from `PRODUCT_NAME` of `installer.conf`.  `PRODUCT_LOGO`, an
 optional absolute path of an image, is shown above the name in the sidebar
 and is the icon of the menu entry.
+
+The look comes from the artwork template of the product:
+`install-into-stage.sh --artwork DIR` puts its `palette.env`, the SVG
+sources of `src/` (logo, wallpapers) and `slides/slides.txt` next to the
+installer.  The palette is parsed, never sourced; the colours style the
+sidebar, the buttons and the progress bar, the logo and the tagline go
+above the steps, the wallpapers are the backgrounds of the slides.  The
+tokens of the SVG are filled in memory, so the live system needs no
+renderer.  `slides/slides.txt` holds one slide a line, `title|text|image`
+(image: `wallpaper-1` to `wallpaper-3`, or empty); without it the installer
+shows its own slides, in the language picked.  Without artwork, or with a
+palette it cannot use (it says why), the installer keeps its built-in look.
+
+## The identity line
+
+The lower left of the sidebar names what is running, small and
+understated: `<Product> <version> · <base BSD and version> · <variant> ·
+<arch>`, and the build date on a test build.  It comes from
+`/usr/local/share/<slug>/identity` (KEY=value: PRODUCT, VERSION, BASE,
+VARIANT, ARCH, BUILD), written by the build of the image and parsed, never
+sourced.  Without the file the line still names the product, the BSD
+(uname) and the architecture.  The variant also picks the palette of the
+artwork (`variants/<name>/palette.env` of the artwork template, and its own
+art in `variants/<name>/src` when it has some).  The colour of the line and
+of the tagline is the palette's muted colour when it reads at 4.5:1 or more
+on the sidebar, else its light colour or white.
+
+## Languages
+
+The flags of the language picker are images shipped with the installer
+(`gui/flags/<cc>.png` and `<cc>-2x.png`, rendered by `tools/render-flags.sh`
+from flag-icons, MIT: see `THIRD-PARTY`), only the regions of the language
+table; never characters a colour emoji font has to draw, which a live image
+may not have.  A region without an image shows its two letters in a badge.
+
+The languages of the Welcome page come from the locales of the system.
+English, German and French translate every string of `lib/i18n.py`: the
+page titles, the buttons, the Welcome page, the slides and the Hardware and
+drivers window.  The rest of the text of the pages is English for now, and
+any other language falls back to English string by string.  A test fails when a
+shipped language misses a string English has.
 
 ## Running it
 

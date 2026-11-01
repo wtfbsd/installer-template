@@ -1,0 +1,4 @@
+Volume      Status               Size Device  
+softraid0 0 Online          800792064 sd8     RAID1 
+          0 Online          800792064 0:0.0   noencl <sd4a>
+          1 Online          800792064 0:1.0   noencl <sd5a>

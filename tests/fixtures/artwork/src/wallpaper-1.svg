@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- @NAME@ wallpaper 1: gradient with a large soft mark. Tokens are
+     substituted by scripts/render.sh. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" preserveAspectRatio="xMidYMid slice">
+  <title>@NAME@ wallpaper 1</title>
+  <defs>
+    <linearGradient id="wall1-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#@DARK2@"/>
+      <stop offset="1" stop-color="#@DARK@"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1920" height="1080" fill="url(#wall1-bg)"/>
+  <circle cx="1560" cy="180" r="420" fill="#@PRIMARY@" opacity="0.22"/>
+  <circle cx="240" cy="960" r="340" fill="#@ACCENT@" opacity="0.14"/>
+  <g transform="translate(680,260) scale(1.25)">
+    <rect x="0" y="0" width="448" height="448" rx="104" ry="104" fill="#@LIGHT@" fill-opacity="0.06"/>
+    <rect x="80" y="104" width="288" height="48" rx="24" ry="24" fill="#@DARK@" fill-opacity="0.45"/>
+    <rect x="80" y="200" width="208" height="48" rx="24" ry="24" fill="#@ACCENT@" fill-opacity="0.35"/>
+    <rect x="80" y="296" width="288" height="48" rx="24" ry="24" fill="#@DARK@" fill-opacity="0.45"/>
+  </g>
+</svg>

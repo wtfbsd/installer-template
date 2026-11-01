@@ -1,0 +1,5 @@
+/dev/rld2: 4 wedges:
+dk9: efiboot0, 532480 blocks at 2048, type: msdos
+dk10: a0a0a0a0-0000-4000-8000-00000000000a, 1024 blocks at 534528, type: 
+dk11: swap0, 1048576 blocks at 536576, type: swap
+dk12: zfs0, 5752832 blocks at 1585152, type: zfs

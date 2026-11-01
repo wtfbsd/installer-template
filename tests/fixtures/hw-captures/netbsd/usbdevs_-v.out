@@ -1,0 +1,12 @@
+Controller /dev/usb0:
+addr 0: super speed, self powered, config 1, xHCI root hub(0x0000), NetBSD(0x0000), rev 1.00(0x0100)
+ port 1 enabled
+ port 2 disabled
+ port 3 disabled
+ port 4 disabled
+Controller /dev/usb1:
+addr 0: high speed, self powered, config 1, xHCI root hub(0x0000), NetBSD(0x0000), rev 1.00(0x0100)
+ port 1 powered
+ port 2 powered
+ port 3 powered
+ port 4 powered

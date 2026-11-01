@@ -25,6 +25,17 @@ ANSWER_KEYS = {
     "USER_FULLNAME",
     "HOSTNAME",
     "SSH_KEYFILE",
+    "ACCEPT_LICENSES",
+    "LOCALE",
+    "CLOCK",
+    "ROOT_MODE",
+    "ROOT_HASHFILE",
+    "AUTOLOGIN",
+    "NET_IPV4_LIST",
+    "NET_IPV6_LIST",
+    "DNS_SERVERS",
+    "UPDATE_AFTER",
+    "WIFI_FILE",
     "PRIVILEGE_PASSWORDLESS",
     "NETWORK_MODE",
     "NET_IF",
@@ -167,4 +178,4 @@ class NoPasswordFileTest(unittest.TestCase):
         # that holds the password itself has no place in the gates.
         self.assertNotIn("USER_PASSFILE", gating.GATES)
         self.assertNotIn("USER_PASSFILE", gating.SECRET_GATES)
-        self.assertEqual(set(gating.SECRET_GATES), {"USER_HASHFILE"})
+        self.assertEqual(set(gating.SECRET_GATES), {"USER_HASHFILE", "ROOT_HASHFILE"})

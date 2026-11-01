@@ -1,0 +1,10 @@
+=>     34  8388541    vtbd2  GPT  (4.0G)
+       34     2014           - free -  (1007K)
+     2048   204800  vtbd2p1  efi  (100M)
+   206848    32768  vtbd2p2  ms-reserved  (16M)
+   239616  3686400  vtbd2p3  ms-basic-data  (1.8G)
+  3926016  1228800  vtbd2p4  ms-recovery  (600M)
+  5154816  2048000  vtbd2p5  linux-data  (1000M)
+  7202816   524288  vtbd2p6  linux-swap  (256M)
+  7727104   661471           - free -  (323M)
+

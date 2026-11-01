@@ -181,6 +181,61 @@ install_from "${dir}"; refused "a hash of another scheme than the one of the sys
 submit "${dir}"; printf 'not a hash\n' > "${dir}/user.hash"; chmod 600 "${dir}/user.hash"
 install_from "${dir}"; refused "a hash file that holds no hash"
 
+# Root's password and the Wi-Fi network are checked like the user's hash.
+submit "${dir}"
+printf 'ROOT_MODE=password\n' >> "${dir}/answers.conf"
+install_from "${dir}"; refused "root with a password and no root hash"
+submit "${dir}"
+printf 'ROOT_MODE=password\n' >> "${dir}/answers.conf"
+printf 'plain-text\n' > "${dir}/root.hash"; chmod 600 "${dir}/root.hash"
+install_from "${dir}"; refused "a root hash file that holds no hash"
+# A root hash that only starts like one, and a second line after a short
+# first one: the helper checks the whole file itself, one line, the full
+# pattern of the scheme (the users section checks the same).
+submit "${dir}"
+printf 'ROOT_MODE=password\n' >> "${dir}/answers.conf"
+printf '$6$notahash\n' > "${dir}/root.hash"; chmod 600 "${dir}/root.hash"
+install_from "${dir}"; refused "a root hash that only starts with \$6\$"
+submit "${dir}"
+printf 'ROOT_MODE=password\n' >> "${dir}/answers.conf"
+printf '$6$x\nsecond line\n' > "${dir}/root.hash"; chmod 600 "${dir}/root.hash"
+install_from "${dir}"; refused "a root hash file of two lines"
+# The users section on its own checks the same: the whole file, one line,
+# the full pattern of the scheme (for the account and for root).
+for bad in '$6$notahash' "$(printf '$6$x\nsecond line')"; do
+	printf '%s\n' "${bad}" > "${tmp}/bad.hash"; chmod 600 "${tmp}/bad.hash"
+	submit "${dir}"
+	sed "s|^USER_HASHFILE=.*|USER_HASHFILE=${dir}/user.hash|" "${dir}/answers.conf" > "${tmp}/u.conf"
+	printf 'ROOT_MODE=password\nROOT_HASHFILE=%s\n' "${tmp}/bad.hash" >> "${tmp}/u.conf"
+	rc=0
+	INSTALLER_ANSWERS="${tmp}/u.conf" INSTALLER_ADAPTER_FIXTURE="${fixture}" \
+		"${root}/sections.d/users.sh" validate >/dev/null 2>&1 || rc=$?
+	check_rc "the users section refuses root's hash $(printf '%s' "${bad}" | head -n 1)$(printf '%s' "${bad}" | sed -n '2s/.*/ and a second line/p')" 2 "${rc}"
+	sed "s|^USER_HASHFILE=.*|USER_HASHFILE=${tmp}/bad.hash|" "${dir}/answers.conf" > "${tmp}/u.conf"
+	rc=0
+	INSTALLER_ANSWERS="${tmp}/u.conf" INSTALLER_ADAPTER_FIXTURE="${fixture}" \
+		"${root}/sections.d/users.sh" validate >/dev/null 2>&1 || rc=$?
+	check_rc "the users section refuses the account's hash $(printf '%s' "${bad}" | head -n 1)" 2 "${rc}"
+done
+submit "${dir}"
+printf 'ROOT_MODE=sometimes\n' >> "${dir}/answers.conf"
+install_from "${dir}"; refused "a root mode that is not one"
+submit "${dir}"
+printf '{"if":"iwm0","ssid":"Net","security":"wep","psk":"12345678"}' > "${dir}/wifi.json"
+chmod 600 "${dir}/wifi.json"
+install_from "${dir}"; refused "a Wi-Fi network with a security that is not offered"
+submit "${dir}"
+printf 'r00t\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${dir}/root.hash"
+printf 'ROOT_MODE=password\nAUTOLOGIN=yes\n' >> "${dir}/answers.conf"
+printf '{"if":"iwm0","ssid":"Example Home","security":"wpa2","psk":"correct horse"}' > "${dir}/wifi.json"
+chmod 600 "${dir}/wifi.json"
+install_from "${dir}"
+check_rc "root with a password, autologin and Wi-Fi are installed" 0 "${rc}"
+args=$(tr '\n' ' ' < "${tmp}/args" 2>/dev/null || true)
+check_contains "the install command gets root's hash" "-r /" "${args}"
+check_contains "the install command gets the automatic login" " -A " "${args}"
+check_contains "the install command gets the Wi-Fi file" " -W /" "${args}"
+
 # ------------------------------------------------------------- stopping
 # An install command that ignores SIGTERM, ends with 0 and says it is done
 # when it is told to stop: the run still ends with a failure.

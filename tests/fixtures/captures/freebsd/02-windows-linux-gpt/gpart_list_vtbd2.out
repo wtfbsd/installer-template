@@ -1,0 +1,114 @@
+Geom name: vtbd2
+modified: false
+state: OK
+fwheads: 255
+fwsectors: 63
+last: 8388574
+first: 34
+entries: 128
+scheme: GPT
+Providers:
+1. Name: vtbd2p1
+   Mediasize: 104857600 (100M)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(1,GPT,5eed0002-0000-4000-8000-000000000001,0x800,0x32000)
+   rawuuid: 5eed0002-0000-4000-8000-000000000001
+   rawtype: c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+   label: EFI system partition
+   length: 104857600
+   offset: 1048576
+   type: efi
+   index: 1
+   end: 206847
+   start: 2048
+2. Name: vtbd2p2
+   Mediasize: 16777216 (16M)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(2,GPT,5eed0002-0000-4000-8000-000000000002,0x32800,0x8000)
+   rawuuid: 5eed0002-0000-4000-8000-000000000002
+   rawtype: e3c9e316-0b5c-4db8-817d-f92df00215ae
+   label: Microsoft reserved partition
+   length: 16777216
+   offset: 105906176
+   type: ms-reserved
+   index: 2
+   end: 239615
+   start: 206848
+3. Name: vtbd2p3
+   Mediasize: 1887436800 (1.8G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(3,GPT,5eed0002-0000-4000-8000-000000000003,0x3a800,0x384000)
+   rawuuid: 5eed0002-0000-4000-8000-000000000003
+   rawtype: ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+   label: Basic data partition
+   length: 1887436800
+   offset: 122683392
+   type: ms-basic-data
+   index: 3
+   end: 3926015
+   start: 239616
+4. Name: vtbd2p4
+   Mediasize: 629145600 (600M)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(4,GPT,5eed0002-0000-4000-8000-000000000004,0x3be800,0x12c000)
+   rawuuid: 5eed0002-0000-4000-8000-000000000004
+   rawtype: de94bba4-06d1-4d40-a16a-bfd50179d6ac
+   label: Basic data partition
+   length: 629145600
+   offset: 2010120192
+   type: ms-recovery
+   index: 4
+   end: 5154815
+   start: 3926016
+5. Name: vtbd2p5
+   Mediasize: 1048576000 (1.0G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(5,GPT,5eed0002-0000-4000-8000-000000000005,0x4ea800,0x1f4000)
+   rawuuid: 5eed0002-0000-4000-8000-000000000005
+   rawtype: 0fc63daf-8483-4772-8e79-3d69d8477de4
+   label: 
+   length: 1048576000
+   offset: 2639265792
+   type: linux-data
+   index: 5
+   end: 7202815
+   start: 5154816
+6. Name: vtbd2p6
+   Mediasize: 268435456 (256M)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+   efimedia: HD(6,GPT,5eed0002-0000-4000-8000-000000000006,0x6de800,0x80000)
+   rawuuid: 5eed0002-0000-4000-8000-000000000006
+   rawtype: 0657fd6d-a4ab-43c4-84e5-0933c84b4f4f
+   label: 
+   length: 268435456
+   offset: 3687841792
+   type: linux-swap
+   index: 6
+   end: 7727103
+   start: 7202816
+Consumers:
+1. Name: vtbd2
+   Mediasize: 4294967296 (4.0G)
+   Sectorsize: 512
+   Stripesize: 131072
+   Stripeoffset: 0
+   Mode: r0w0e0
+

@@ -1,0 +1,6 @@
+OPEN-SOURCE LICENCES
+
+The open-source parts of this system and their licences (made-up list for the tests):
+
+- example-libc: BSD-2-Clause
+- example-desktop: GPL-2.0

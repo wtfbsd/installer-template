@@ -11,7 +11,7 @@
 #
 # Verbs (nothing else is accepted):
 #
-#   --list disks|network|keymaps|timezones|users|welcome
+#   --list disks|network|keymaps|timezones|users|welcome|software|hardware
 #                    print the JSON of the probe of that section; read only
 #   --install DIR    install from the directory the front end wrote: the
 #                    answers (answers.conf), the hash of the password
@@ -72,9 +72,9 @@ refuse() {
 
 case "${1:-}" in
 	--list)
-		[ $# -eq 2 ] || refuse 'usage: installer-apply --list disks|network|keymaps|timezones|users|welcome'
+		[ $# -eq 2 ] || refuse 'usage: installer-apply --list disks|network|keymaps|timezones|users|welcome|software|hardware'
 		case "$2" in
-			disks|network|keymaps|timezones|users|welcome) : ;;
+			disks|network|keymaps|timezones|users|welcome|software|hardware) : ;;
 			*) refuse "'$2' is not a list of the installer" ;;
 		esac
 		;;

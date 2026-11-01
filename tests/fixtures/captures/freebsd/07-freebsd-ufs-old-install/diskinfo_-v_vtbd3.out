@@ -1,0 +1,12 @@
+vtbd3
+	512         	# sectorsize
+	2684354560  	# mediasize in bytes (2.5G)
+	5242880     	# mediasize in sectors
+	131072      	# stripesize
+	0           	# stripeoffset
+	            	# Disk descr.
+	BHYVE-0000-0000-0003	# Disk ident.
+	vtblk3      	# Attachment
+	Yes         	# TRIM/UNMAP support
+	Unknown     	# Rotation rate in RPM
+

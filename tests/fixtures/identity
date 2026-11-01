@@ -1,0 +1,7 @@
+# The identity of an image, as the build writes it.
+PRODUCT=ExampleBSD
+BASE=FreeBSD 16.0
+VERSION=1.2
+VARIANT=cyberpunk
+ARCH=amd64
+BUILD=2026-11-01

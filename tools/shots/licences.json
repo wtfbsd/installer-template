@@ -1,0 +1,5 @@
+[
+ {"name": "licences-none", "page": "software", "full": true, "state": {}},
+ {"name": "licences-select-all", "page": "software", "full": true, "state": {"select_all": true}},
+ {"name": "licences-read", "page": "software", "full": false, "state": {"select_all": true, "read": "example-gpu-driver"}}
+]

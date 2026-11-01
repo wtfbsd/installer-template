@@ -1,0 +1,21 @@
+Disk: /dev/rld3
+NetBSD disklabel disk geometry:
+cylinders: 1560, heads: 64, sectors/track: 63 (4032 sectors/cylinder)
+total sectors: 6291456, bytes/sector: 512
+
+BIOS disk geometry:
+cylinders: 392, heads: 255, sectors/track: 63 (16065 sectors/cylinder)
+total sectors: 6291456
+
+Partitions aligned to 2048 sector boundaries, offset 2048
+
+Partition table:
+0: NTFS, OS/2 HPFS, QNX2 or Advanced UNIX (sysid 7)
+    start 2048, size 3072000 (1500 MB, Cyls 0-191/89/26), Active
+1: Linux native (sysid 131)
+    start 3074048, size 2867200 (1400 MB, Cyls 191/89/27-369/210/33)
+        PBR is not bootable: All bytes are identical (0x00)
+2: <UNUSED>
+3: <UNUSED>
+First active partition: 0
+Drive serial number: 1592590340 (0x5eed0004)

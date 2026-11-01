@@ -32,6 +32,7 @@ import ctypes
 import ctypes.util
 import hashlib
 import os
+import re
 import secrets
 import stat
 import sys

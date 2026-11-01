@@ -66,10 +66,32 @@ cmd_probe() {
 			"$(json_escape "$(sanitize_text "${name}")")" \
 			"$(json_escape "$(sanitize_text "${descr:-${name}}")")"
 	done
+	printf '],"locales":['
+	first=1
+	for l in $(locale_rows); do
+		printf '%s\n' "${l}" | grep -Eq '^[a-z]{2,3}_[A-Z]{2}\.UTF-8$' || continue
+		[ "${first}" -eq 1 ] || printf ','
+		first=0
+		printf '"%s"' "${l}"
+	done
 	printf ']}\n'
 }
 
+# locale_rows — the locales of the system (UTF-8 only), one per line, from
+# the adapter; nothing when it has no list.
+locale_rows() {
+	adapter_cmd locales 2>/dev/null || :
+}
+
 cmd_validate() {
+	if locale=$(answers_get LOCALE) && [ -n "${locale}" ]; then
+		printf '%s\n' "${locale}" | grep -Eq '^[a-z]{2,3}_[A-Z]{2}\.UTF-8$' ||
+			die 2 "the locale '${locale}' is not one of the form ll_CC.UTF-8"
+		known=$(locale_rows)
+		if [ -n "${known}" ] && ! printf '%s\n' "${known}" | grep -Fxq -- "${locale}"; then
+			die 2 "the locale '${locale}' is not one this system has"
+		fi
+	fi
 	layout=$(answers_get KEYMAP) || die 2 'no keyboard layout was chosen'
 	default=$(config_value DEFAULT_KEYMAP) || exit 2
 	[ "${layout}" = "${default}" ] && return 0

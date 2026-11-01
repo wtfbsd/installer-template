@@ -22,6 +22,7 @@ from typing import Callable, Dict, List, Mapping, Optional, Set, Tuple
 
 GATES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
     "USER_HASHFILE": ("USER_AUTH", ("password",)),
+    "ROOT_HASHFILE": ("ROOT_MODE", ("password",)),
     "NET_IF": ("NETWORK_MODE", ("dhcp", "static")),
     "NET_IPV4": ("NETWORK_MODE", ("static",)),
     "IPV4_ADDR": ("NET_IPV4", ("static",)),
@@ -33,6 +34,7 @@ GATES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
 # and to the value that option must have.
 SECRET_GATES: Dict[str, Tuple[str, str]] = {
     "USER_HASHFILE": ("USER_AUTH", "password"),
+    "ROOT_HASHFILE": ("ROOT_MODE", "password"),
 }
 
 USAGE = "usage: gating.py <gate|secrets|gates> [file]"

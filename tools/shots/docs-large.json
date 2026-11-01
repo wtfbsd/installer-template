@@ -1,0 +1,5 @@
+[
+ {"name": "large-welcome", "page": "welcome", "full": false, "state": {"locale": "en_US.UTF-8"}},
+ {"name": "large-disk", "page": "disk", "full": false, "state": {"mode": "erase", "selected": ["nda0"]}},
+ {"name": "large-installing", "page": "install", "full": false, "state": {"slide": 0, "progress": 0.2, "step": "Writing the image"}}
+]

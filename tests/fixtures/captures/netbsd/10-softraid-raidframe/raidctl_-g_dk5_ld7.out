@@ -1,0 +1,10 @@
+Component label for /dev/dk5:
+   Row: 0, Column: 1, Num Rows: 1, Num Columns: 2
+   Version: 2, Serial Number: 2026110101, Mod Counter: 132
+   Clean: No, Status: 0
+   sectPerSU: 128, SUsPerPU: 1, SUsPerRU: 1
+   Queue size: 100, blocksize: 512, numBlocks: 2092928
+   RAID Level: 1
+   Autoconfig: Yes
+   Root partition: No
+   Last configured as: raid0

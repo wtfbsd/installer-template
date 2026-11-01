@@ -1,0 +1,38 @@
+mainbus0
+  ioapic0
+  cpu0
+  cpu1
+  acpi0
+    hpet0
+    pckbc1
+      pckbd0
+        wskbd0
+      pms0
+        wsmouse0
+    pckbc2
+    com0
+    com1
+    com2
+    com3
+    attimer1
+    acpivmgenid0
+  pci0
+    pchb0
+    pcib0
+      isa0
+    virtio0
+      ld0
+    virtio1
+      vioif0
+    virtio2
+      viornd0
+    vga0
+      wsdisplay0
+    xhci0
+      usb0
+        uhub0
+      usb1
+        uhub1
+dk0
+dk1
+swwdog0

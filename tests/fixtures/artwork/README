@@ -1,0 +1,5 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+A copy of a part of the public artwork template of wtfbsd (palette.env and
+some SVG sources, placeholder ExampleBSD), for the tests and the screenshots
+of the installer.

@@ -1,0 +1,14 @@
+    start     size  index  contents
+        0        1      -  PMBR
+        1        1      -  Pri GPT header
+        2       32      -  Pri GPT table
+       34     2014      -  Unused
+     2048   204800      0  GPT part - EFI System
+   206848    32768      1  GPT part - MS Reserved
+   239616  3686400      2  GPT part - MS/Linux Basic Data
+  3926016  1228800      3  GPT part - de94bba4-06d1-4d40-a16a-bfd50179d6ac
+  5154816  2048000      4  GPT part - 0fc63daf-8483-4772-8e79-3d69d8477de4
+  7202816   524288      5  GPT part - Linux Swap
+  7727104   661471      -  Unused
+  8388575       32      -  Sec GPT table
+  8388607        1      -  Sec GPT header

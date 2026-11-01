@@ -2,12 +2,19 @@
 # Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
 #
 # install-into-stage.sh DESTDIR [--prefix /usr/local] [--conf FILE] [--metalog FILE]
+#                       [--artwork DIR]
 #
 # Installs the installer into the tree of a live image that is being built
 # (the stage), and nothing else:
 #
 #   PREFIX/libexec/wtfbsd-installer/      bin, lib, sections.d, adapters,
 #                                         gui and installer.conf (--conf)
+#   PREFIX/libexec/wtfbsd-installer/artwork/
+#                                         --artwork DIR: palette.env, the
+#                                         SVG sources (src/) and the slides
+#                                         (slides/slides.txt) of the artwork
+#                                         template of the product: the look
+#                                         of the installer
 #   PREFIX/libexec/wtfbsd-installer/installer-apply
 #                                         the root helper, root:wheel 0555:
 #                                         the only file the doas or sudo rule
@@ -54,7 +61,7 @@ die() {
 }
 
 usage() {
-	printf 'usage: install-into-stage.sh DESTDIR [--prefix /usr/local] [--conf FILE] [--metalog FILE]\n' >&2
+	printf 'usage: install-into-stage.sh DESTDIR [--prefix /usr/local] [--conf FILE] [--metalog FILE] [--artwork DIR]\n' >&2
 	exit 2
 }
 
@@ -64,11 +71,13 @@ shift
 prefix=/usr/local
 conf=${here}/installer.conf
 metalog=
+artwork=
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--prefix) [ $# -ge 2 ] || usage; prefix=$2; shift 2 ;;
 		--conf) [ $# -ge 2 ] || usage; conf=$2; shift 2 ;;
 		--metalog) [ $# -ge 2 ] || usage; metalog=$2; shift 2 ;;
+		--artwork) [ $# -ge 2 ] || usage; artwork=$2; shift 2 ;;
 		*) usage ;;
 	esac
 done
@@ -96,6 +105,11 @@ if [ -n "${metalog}" ]; then
 fi
 
 [ -f "${conf}" ] || die "no configuration file: ${conf}"
+if [ -n "${artwork}" ]; then
+	[ -f "${artwork}/palette.env" ] || die "the artwork has no palette.env: ${artwork}"
+	python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import branding; branding.load(sys.argv[2])' \
+		"${here}/lib" "${artwork}" || die "the artwork cannot be used: ${artwork}"
+fi
 INSTALLER_CONF=${conf} "${here}/bin/installer-config" validate ||
 	die "the configuration is not valid: ${conf}"
 conf_get() {
@@ -223,8 +237,38 @@ for f in "${here}"/gui/*; do
 	[ -f "${f}" ] || continue
 	stage_file "${f}" "${libexec}/gui/${f##*/}" 644
 done
+# The flags of the language picker (PNG, from flag-icons: THIRD-PARTY).
+for f in "${here}"/gui/flags/*.png; do
+	[ -f "${f}" ] || continue
+	stage_file "${f}" "${libexec}/gui/flags/${f##*/}" 644
+done
 stage_file "${conf}" "${libexec}/installer.conf" 644
+if [ -n "${artwork}" ]; then
+	stage_file "${artwork}/palette.env" "${libexec}/artwork/palette.env" 644
+	for f in logo wordmark-light installer-sidebar wallpaper-1 wallpaper-2 wallpaper-3; do
+		[ -f "${artwork}/src/${f}.svg" ] || continue
+		stage_file "${artwork}/src/${f}.svg" "${libexec}/artwork/src/${f}.svg" 644
+	done
+	if [ -f "${artwork}/slides/slides.txt" ]; then
+		stage_file "${artwork}/slides/slides.txt" "${libexec}/artwork/slides/slides.txt" 644
+	fi
+	# The variants of the template (variants/<name>/palette.env and their
+	# own art), each checked like the default.
+	for vdir in "${artwork}"/variants/*; do
+		[ -f "${vdir}/palette.env" ] || continue
+		vname=${vdir##*/}
+		printf '%s\n' "${vname}" | grep -Eq '^[a-z][a-z0-9-]{0,31}$' || continue
+		python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import branding; branding.parse_palette(sys.argv[2])' \
+			"${here}/lib" "${vdir}/palette.env" || die "the variant ${vname} cannot be used"
+		stage_file "${vdir}/palette.env" "${libexec}/artwork/variants/${vname}/palette.env" 644
+		for f in logo wordmark-light installer-sidebar wallpaper-1 wallpaper-2 wallpaper-3; do
+			[ -f "${vdir}/src/${f}.svg" ] || continue
+			stage_file "${vdir}/src/${f}.svg" "${libexec}/artwork/variants/${vname}/src/${f}.svg" 644
+		done
+	done
+fi
 stage_file "${here}/LICENSE" "${libexec}/LICENSE" 644
+stage_file "${here}/THIRD-PARTY" "${libexec}/THIRD-PARTY" 644
 stage_template "${here}/stage/wtfbsd-installer.in" "${bindir}/wtfbsd-installer" 755
 stage_template "${here}/stage/install.desktop.in" "${appdir}/wtfbsd-installer.desktop" 644
 stage_template "${here}/stage/install.desktop.in" \

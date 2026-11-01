@@ -66,10 +66,17 @@ class WizardCase(unittest.TestCase):
 
 class PagesTest(WizardCase):
     def test_the_pages_are_the_pages_of_the_text_front_end(self):
+        # The graphical front end has the pages of the text one, in the same
+        # order, and one more: "Installation type", right before Disk.  Both
+        # have "Additional software" before Summary.
         tui = (ROOT / "bin" / "installer-tui").read_text(encoding="utf-8")
         tui_pages = re.search(r"^PAGES='([^']*)'", tui, re.M).group(1).split()
-        self.assertEqual(wizard.PAGE_IDS, tui_pages)
-        self.assertEqual(len(wizard.PAGES), 9)
+        self.assertEqual([p for p in wizard.PAGE_IDS if p != "type"], tui_pages)
+        self.assertEqual(wizard.PAGE_IDS[wizard.PAGE_IDS.index("summary") - 1], "software")
+        self.assertEqual(dict(wizard.PAGES)["software"], "Additional software")
+        self.assertEqual(wizard.PAGE_IDS[wizard.PAGE_IDS.index("disk") - 1], "type")
+        self.assertEqual(dict(wizard.PAGES)["type"], "Installation type")
+        self.assertEqual(len(wizard.PAGES), 11)
 
     def test_every_page_has_one_cluster_with_the_primary_last(self):
         for page in wizard.PAGE_IDS + ["preflight"]:
@@ -99,16 +106,213 @@ class PagesTest(WizardCase):
                          ["stop"])
 
     def test_next_and_back_walk_the_order(self):
-        self.assertEqual(wizard.Wizard.next_page("disk"), "users")
-        self.assertEqual(wizard.Wizard.prev_page("disk"), "timezone")
-        self.assertEqual(wizard.Wizard.prev_page("welcome"), "welcome")
-        self.assertEqual(wizard.Wizard.next_page("finish"), "finish")
+        self.assertEqual(self.wiz.next_page("disk"), "users")
+        self.assertEqual(self.wiz.prev_page("disk"), "type")
+        self.assertEqual(self.wiz.prev_page("type"), "timezone")
+        self.assertEqual(self.wiz.prev_page("welcome"), "welcome")
+        self.assertEqual(self.wiz.next_page("finish"), "finish")
 
     def test_the_product_and_the_defaults_come_from_the_configuration(self):
         self.assertEqual(self.wiz.product, "ExampleBSD")
         self.assertEqual(self.wiz.answers.keymap, "us")
         self.assertEqual(self.wiz.answers.timezone, "UTC")
         self.assertEqual(self.wiz.logo, "")
+
+
+class BlankDiskTest(WizardCase):
+    """One installable disk that is blank: "Installation type" stays in the
+    sidebar and becomes a notice; anything else shows the three cards."""
+
+    def use(self, fixture):
+        path = str(FIXTURES / "disks" / f"{fixture}.conf")
+        self.wiz.env["INSTALLER_ADAPTER_FIXTURE"] = path
+        self.wiz.backend.env["INSTALLER_ADAPTER_FIXTURE"] = path
+        self.wiz.disk_report()
+
+    def test_one_blank_disk_is_a_notice_and_no_step_is_skipped(self):
+        self.use("one-disk")
+        self.assertTrue(self.wiz.single_blank)
+        self.assertEqual(self.wiz.next_page("timezone"), "type")
+        self.assertEqual(self.wiz.prev_page("disk"), "type")
+        self.assertIn("type", wizard.PAGE_IDS)
+
+    def test_several_disks_or_something_on_the_disk_show_the_cards(self):
+        for fixture in ("three-disks", "dual-os", "dual-os-full"):
+            with self.subTest(fixture):
+                self.use(fixture)
+                self.assertFalse(self.wiz.single_blank)
+
+
+class SummaryDisksTest(WizardCase):
+    """The summary says what happens to every disk, the destructive actions
+    marked, and erasing a disk that holds another system needs the word
+    typed."""
+
+    def setUp(self):
+        super().setUp()
+        path = str(FIXTURES / "disks" / "dual-os.conf")
+        self.wiz.env["INSTALLER_ADAPTER_FIXTURE"] = path
+        self.wiz.backend.env["INSTALLER_ADAPTER_FIXTURE"] = path
+        self.detail, _err = self.wiz.disk_report()
+
+    def plan(self, mode="erase"):
+        if mode == "erase":
+            return {"version": 1, "mode": "erase", "disks": ["nda0"], "layout": "single",
+                    "filesystem": "zfs", "swap_mb": 8192}
+        free = self.detail["disks"][0]["free"][0]
+        return {"version": 1, "mode": "alongside", "disks": [], "filesystem": "zfs",
+                "alongside": {"disk": "nda0", "region": {"start_mb": free["start_mb"],
+                                                          "size_mb": 102400}}}
+
+    def test_erasing_another_system_needs_the_word(self):
+        self.wiz.set_disk_plan(self.plan(), self.detail)
+        self.assertEqual(self.wiz.foreign_to_confirm(), ["nda0"])
+        actions = self.wiz.disk_actions()
+        self.assertTrue(any(d and "this deletes Windows 11, Debian 13" in t for _n, t, d in actions),
+                        actions)
+        self.assertFalse(self.wiz.confirm_erase("yes"))
+        self.assertEqual(self.wiz.confirm_foreign, [])
+        self.assertTrue(self.wiz.confirm_erase(" ERASE "))
+        self.assertEqual(self.wiz.confirm_foreign, ["nda0"])
+        self.assertFalse(self.wiz.confirm_erase(""))
+        self.assertEqual(self.wiz.confirm_foreign, [])
+
+    def counted(self):
+        """Count the runs of the root helper's disk list."""
+        calls = []
+        run = self.wiz.backend._run_now
+
+        def counting(argv, stdin=None):
+            if argv[-2:] == ["--list", "disks"] or argv[-2:] == ["disk", "validate"]:
+                calls.append(argv[-1])
+            return run(argv, stdin)
+        self.wiz.backend.runner = lambda func, *args: counting(*args)
+        return calls
+
+    def test_the_disks_are_read_once_per_visit(self):
+        calls = self.counted()
+        self.wiz.forget_disks()
+        self.wiz.disk_report()
+        self.wiz.disk_report()
+        self.assertEqual(calls, ["disks"])
+        self.wiz.forget_disks()
+        self.wiz.disk_report()
+        self.assertEqual(calls, ["disks", "disks"])
+
+    def test_install_does_not_read_the_disks_again_for_a_plan(self):
+        self.fill()
+        self.wiz.set_disk_plan(self.plan(), self.detail)
+        self.wiz.confirm_erase("erase")
+        calls = self.counted()
+        self.wiz.leave("summary")
+        self.wiz.leave("disk")
+        self.assertEqual(calls, [])
+
+    def test_the_summary_in_groups(self):
+        self.fill()
+        sections = self.wiz.summary_sections()
+        self.assertEqual([t for t, _r in sections][:4], ["System", "Account", "Network", "Software"])
+        flat = [name for _t, rows in sections for name, _v in rows]
+        expected = [name for name, _v in self.wiz.summary_rows() if name not in ("Disk", "Disks")]
+        self.assertEqual(sorted(flat), sorted(expected))
+
+    def test_install_waits_for_a_plan_that_passes_and_the_word(self):
+        # No plan from the Disk page: nothing to install.
+        self.assertFalse(self.wiz.install_allowed())
+        self.assertTrue(self.wiz.install_problems())
+        self.wiz.set_disk_plan(self.plan(), self.detail)
+        self.assertEqual(self.wiz.install_problems(), [])
+        self.assertFalse(self.wiz.install_allowed())
+        self.wiz.confirm_erase("erase")
+        self.assertTrue(self.wiz.install_allowed())
+        # A plan the rules refuse (a disk the installer may not write to).
+        bad = dict(self.plan(), disks=["ada9"])
+        self.wiz.set_disk_plan(bad, self.detail)
+        self.wiz.confirm_erase("erase")
+        self.assertTrue(self.wiz.install_problems())
+        self.assertFalse(self.wiz.install_allowed())
+
+    def test_install_alongside_keeps_everything_and_asks_nothing(self):
+        self.wiz.set_disk_plan(self.plan("alongside"), self.detail)
+        self.assertEqual(self.wiz.foreign_to_confirm(), [])
+        actions = self.wiz.disk_actions()
+        self.assertEqual([d for _n, _t, d in actions], [False])
+        self.assertIn("keep everything", actions[0][1])
+
+    def test_the_plan_file_carries_the_confirmation(self):
+        self.fill()
+        self.wiz.set_disk_plan(self.plan(), self.detail)
+        self.wiz.confirm_erase("erase")
+        import json as _json
+        directory = self.wiz.submit_dir()
+        with open(os.path.join(directory, "plan.json"), encoding="utf-8") as stream:
+            self.assertEqual(_json.load(stream)["confirm_foreign"], ["nda0"])
+
+
+class LocaleClockTest(WizardCase):
+    """The language of the system and the hardware clock reach the answers
+    and are checked by the backend."""
+
+    def test_the_answers_carry_locale_and_clock(self):
+        self.fill()
+        self.wiz.answers.locale = "de_CH.UTF-8"
+        self.wiz.answers.clock = "local"
+        raw = dict(self.wiz.answers_raw())
+        self.assertEqual(raw["LOCALE"], "de_CH.UTF-8")
+        self.assertEqual(raw["CLOCK"], "local")
+        self.assertIsNone(self.wiz.leave("keyboard"))
+        self.assertIsNone(self.wiz.leave("timezone"))
+
+    def test_the_backend_refuses_what_it_cannot_use(self):
+        self.fill()
+        self.wiz.answers.locale = "xx_XX;rm"
+        self.assertIsNotNone(self.wiz.leave("keyboard"))
+        self.wiz.answers.locale = "en_US.UTF-8"
+        self.wiz.answers.clock = "sundial"
+        self.assertIsNotNone(self.wiz.leave("timezone"))
+
+
+class RootAutologinTest(WizardCase):
+    """The root account (locked or its own password) and the automatic
+    login reach the answers; root's password is only ever a hash."""
+
+    def test_locked_root_by_default(self):
+        self.fill()
+        raw = dict(self.wiz.answers_raw())
+        self.assertEqual(raw["ROOT_MODE"], "locked")
+        self.assertEqual(raw["AUTOLOGIN"], "no")
+        self.assertNotIn("ROOT_HASHFILE", raw)
+
+    def test_root_with_a_password(self):
+        self.fill()
+        self.wiz.set_root_password("r00t-Secret!")
+        self.wiz.answers.autologin = True
+        raw = dict(self.wiz.answers_raw())
+        self.assertEqual(raw["ROOT_MODE"], "password")
+        self.assertEqual(raw["AUTOLOGIN"], "yes")
+        with open(raw["ROOT_HASHFILE"], encoding="ascii") as stream:
+            self.assertTrue(stream.read().startswith("$6$"))
+        self.assertIsNone(self.wiz.leave("users"))
+
+    def test_the_backend_refuses_what_it_cannot_use(self):
+        self.fill()
+        self.wiz.answers.root_mode = "password"   # no hash
+        self.assertIsNotNone(self.wiz.leave("users"))
+
+
+class NetworkListsTest(WizardCase):
+    def test_every_adapter_reaches_the_answers(self):
+        self.fill()
+        self.wiz.answers.net_ipv4 = {"em0": "dhcp", "em1": "192.0.2.10/255.255.255.0:192.0.2.1"}
+        self.wiz.answers.net_ipv6 = {"em0": "slaac"}
+        self.wiz.answers.dns = ["192.0.2.53"]
+        raw = dict(self.wiz.answers_raw())
+        self.assertEqual(raw["NET_IPV4_LIST"], "em0:dhcp;em1:192.0.2.10/255.255.255.0:192.0.2.1")
+        self.assertEqual(raw["NET_IPV6_LIST"], "em0:slaac")
+        self.assertEqual(raw["DNS_SERVERS"], "192.0.2.53")
+        self.assertIsNone(self.wiz.leave("network"))
+        self.wiz.answers.dns = ["192.0.2.300"]
+        self.assertIsNotNone(self.wiz.leave("network"))
 
 
 class PreflightTest(WizardCase):
@@ -192,19 +396,27 @@ class AnswersTest(WizardCase):
         self.wiz.answers.ssh_key = KEY
         self.wiz.answers.network_mode = "static"
         keys = {k for k, _v in self.wiz.answers_raw()}
-        self.assertTrue(keys <= ANSWER_KEYS, keys - ANSWER_KEYS)
+        self.assertLessEqual(keys, ANSWER_KEYS, keys - ANSWER_KEYS)
 
     def test_the_answers_share_their_keys_with_the_text_front_end(self):
         tui = (ROOT / "bin" / "installer-tui").read_text(encoding="utf-8")
         tui_keys = set(re.findall(r"printf '([A-Z_0-9]+)=%s", tui))
-        tui_keys |= set(re.findall(r"printf '([A-Z_0-9]+)=static", tui))
+        tui_keys |= set(re.findall(r"printf '([A-Z_0-9]+)=(?:static|yes)", tui))
         self.fill()
         self.wiz.answers.network_mode = "static"
+        self.wiz.answers.accept_licenses = ["example-gpu-driver"]
+        self.wiz.set_root_password("r00t-Secret!")
+        self.wiz.answers.net_ipv4 = {"em0": "dhcp"}
+        self.wiz.answers.net_ipv6 = {"em0": "slaac"}
+        self.wiz.answers.dns = ["192.0.2.53"]
+        self.wiz.answers.update_after = True
+        self.wiz.answers.wifi = {"if": "iwm0", "ssid": "Example", "security": "open", "psk": ""}
         gui_keys = {k for k, _v in self.wiz.answers_raw()}
         # Neither front end writes the password itself.
         self.assertEqual(tui_keys - gui_keys, set())
         self.assertNotIn("USER_PASSFILE", tui_keys)
-        # The graphical front end asks for more; every extra key is optional.
+        # The graphical front end also asks for the full name and the host
+        # name (optional keys); everything else both front ends ask.
         self.assertEqual(gui_keys - tui_keys, {"USER_FULLNAME", "HOSTNAME"})
 
     def test_the_answers_go_through_the_gate(self):
@@ -316,8 +528,14 @@ class ProgressTest(unittest.TestCase):
 
     def test_ipv4(self):
         self.assertTrue(wizard.ipv4_valid("192.0.2.1"))
-        for bad in ("192.0.2", "192.0.2.256", "a.b.c.d", "192.0.2.1.5", ""):
+        for bad in ("192.0.2", "192.0.2.256", "a.b.c.d", "192.0.2.1.5", "",
+                    "192.0.2.\u0663"):
             self.assertFalse(wizard.ipv4_valid(bad), bad)
+
+    def test_a_progress_line_takes_ascii_digits_only(self):
+        self.assertEqual(wizard.parse_line("PROGRESS 42 disk"), ("progress", 42, "disk"))
+        line = "PROGRESS 4\u0663 disk"
+        self.assertEqual(wizard.parse_line(line), ("log", None, line))
 
 
 class InstallTest(WizardCase):

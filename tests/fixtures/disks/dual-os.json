@@ -1,0 +1,105 @@
+{
+ "boot_mode": "uefi",
+ "ram_mb": 16384,
+ "disks": [
+  {
+   "name": "nda0",
+   "model": "Example NVMe 980 1TB",
+   "size_bytes": 1000000000000,
+   "serial": "EXN0004E",
+   "bus": "NVMe",
+   "ssd": true,
+   "health": {
+    "status": "ok",
+    "summary": "healthy",
+    "temperature_c": 41,
+    "power_on_hours": 8800,
+    "reallocated": 0,
+    "pending": 0,
+    "wear_percent": 12
+   },
+   "scheme": "GPT",
+   "partitions": [
+    {
+     "kind": "efi",
+     "label": "EFI",
+     "size_bytes": 272629760,
+     "type": "efi",
+     "fs": "FAT32"
+    },
+    {
+     "kind": "msr",
+     "label": "Microsoft reserved",
+     "size_bytes": 16777216,
+     "type": "msr",
+     "fs": ""
+    },
+    {
+     "kind": "windows",
+     "label": "Windows",
+     "size_bytes": 429496729600,
+     "type": "windows",
+     "fs": "NTFS"
+    },
+    {
+     "kind": "recovery",
+     "label": "Recovery",
+     "size_bytes": 734003200,
+     "type": "recovery",
+     "fs": "NTFS"
+    },
+    {
+     "kind": "linux",
+     "label": "Linux",
+     "size_bytes": 322122547200,
+     "type": "linux",
+     "fs": "ext4"
+    },
+    {
+     "kind": "swap",
+     "label": "Linux swap",
+     "size_bytes": 8589934592,
+     "type": "swap",
+     "fs": "swap"
+    }
+   ],
+   "os": [
+    {
+     "name": "Windows",
+     "detail": "Windows 11"
+    },
+    {
+     "name": "Linux",
+     "detail": "Debian 13"
+    }
+   ],
+   "free": [
+    {
+     "start_mb": 725969,
+     "size_mb": 227704
+    }
+   ]
+  },
+  {
+   "name": "da0",
+   "model": "Example USB 3.2 Flash 64GB",
+   "size_bytes": 64000000000,
+   "serial": "EXU0005F",
+   "bus": "USB",
+   "ssd": true,
+   "health": {
+    "status": "unknown",
+    "summary": "no health data over USB"
+   },
+   "scheme": "none",
+   "partitions": [],
+   "os": [],
+   "free": [
+    {
+     "start_mb": 1,
+     "size_mb": 61033
+    }
+   ]
+  }
+ ]
+}

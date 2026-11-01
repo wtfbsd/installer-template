@@ -1,0 +1,9 @@
+Disk: sd1	geometry: 130/255/63 [2097152 Sectors]
+Offset: 0	Signature: 0x0
+            Starting         Ending         LBA Info:
+ #: id      C   H   S -      C   H   S [       start:        size ]
+-------------------------------------------------------------------------------
+ 0: 00      0   0   0 -      0   0   0 [           0:           0 ] Unused
+ 1: 00      0   0   0 -      0   0   0 [           0:           0 ] Unused
+ 2: 00      0   0   0 -      0   0   0 [           0:           0 ] Unused
+ 3: 00      0   0   0 -      0   0   0 [           0:           0 ] Unused

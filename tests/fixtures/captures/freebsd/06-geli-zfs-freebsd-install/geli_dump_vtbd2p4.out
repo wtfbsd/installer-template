@@ -1,0 +1,11 @@
+Metadata on /dev/vtbd2p4:
+     magic: GEOM::ELI
+   version: 7
+     flags: 0x282
+     ealgo: AES-XTS
+    keylen: 256
+  provsize: 2945449984
+sectorsize: 4096
+      keys: 0x01
+iterations: 3919137
+

@@ -1,0 +1,20 @@
+Disk: /dev/rraid0
+NetBSD disklabel disk geometry:
+cylinders: 2043, heads: 8, sectors/track: 128 (1024 sectors/cylinder)
+total sectors: 2092928, bytes/sector: 512
+
+BIOS disk geometry:
+cylinders: 130, heads: 255, sectors/track: 63 (16065 sectors/cylinder)
+total sectors: 2092928
+
+Partitions aligned to 16065 sector boundaries, offset 63
+
+Partition table:
+0: GPT Protective MBR (sysid 238)
+    start 1, size 2092927 (1022 MB, Cyls 0/0/2-130/71/5)
+        PBR is not bootable: Bad magic number (0x0000)
+1: <UNUSED>
+2: <UNUSED>
+3: <UNUSED>
+No active partition.
+Drive serial number: 0 (0x00000000)

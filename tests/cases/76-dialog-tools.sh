@@ -123,13 +123,15 @@ check_contains "and treats its escape key as the escape key" "Quit the installer
 # Neither tool: the questions are plain prompts, answered on standard
 # input.  Enter takes the default; < is the second button; ! is escape.
 # welcome (Enter), keyboard (! then Continue with <, then Enter takes the
-# default), time zone (Enter), disk (1), user name, an empty password and
-# the message about it, the password twice, privileges (Enter), adapter,
-# DHCP (Enter), summary (Enter), finished (Enter).
+# default), time zone and hardware clock (Enter, Enter), disk (1), user
+# name, an empty password and the message about it, the password twice,
+# privileges and root (Enter, Enter), adapter, DHCP, IPv6, DNS servers and
+# update (Enter each), summary (Enter), finished (Enter).
 cat > "${tmp}/prompt-answers" <<'ANSWERS'
 
 !
 <
+
 
 
 1
@@ -139,7 +141,11 @@ tester
 s3cret-pass
 s3cret-pass
 
+
 em0
+
+
+
 
 
 
@@ -225,5 +231,32 @@ check_rc "a yes or no box: Enter is yes" 0 "${rc}"
 rc=0
 "${prompt}" --nosuchbox x < /dev/null > /dev/null 2>&1 || rc=$?
 check_rc "an unknown box is an error" 255 "${rc}"
+
+
+# A list longer than the screen is shown a page at a time (LINES rows):
+# + and - turn the pages, a number or a tag of any page picks.
+set -- --menu 'Pick a zone' 0 0 0
+n=1
+while [ "${n}" -le 60 ]; do
+	set -- "$@" "z${n}" "Zone number ${n}"
+	n=$((n + 1))
+done
+screen=$(printf '+\n45\n' | LINES=20 "${prompt}" --output-fd 3 "$@" 3>/dev/null) || :
+first=$(printf '%s\n' "${screen}" | sed -n '1,/Number or tag/p')
+check_contains "the first page shows the first zones" "z1  Zone number 1" "${first}"
+check_absent "the first page does not dump the whole list" "z40  Zone number 40" "${first}"
+check_contains "the page says how to turn it" "+: next page" "${first}"
+check_contains "+ turns to the next page" "z15  Zone number 15" "${screen}"
+choice=$(printf '45\n' | LINES=20 "${prompt}" --output-fd 3 "$@" 3>&1 1>/dev/null) || :
+check "a number of another page picks" "z45" "${choice}"
+lines=$(printf '\n' | LINES=20 "${prompt}" --output-fd 3 "$@" 3>/dev/null | grep -c 'Zone number') || :
+[ "${lines}" -le 20 ] && fits=yes || fits=no
+check "a page fits the screen (${lines} rows)" yes "${fits}"
+# A long text: a page, then Enter shows the next one.
+seq 1 100 | sed 's/^/line /' > "${tmp}/long.txt"
+screen=$(printf '\n\n\n\n\n\n\n\n' | LINES=20 "${prompt}" --title T --textbox "${tmp}/long.txt" 0 0) || :
+first=$(printf '%s\n' "${screen}" | sed -n '1,/Enter/p')
+check_absent "a long text is not dumped at once" "line 60" "${first}"
+check_contains "Enter shows the rest" "line 100" "${screen}"
 
 finish

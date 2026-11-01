@@ -1,0 +1,11 @@
+efi
+
+./efi:
+boot
+freebsd
+
+./efi/boot:
+bootx64.efi
+
+./efi/freebsd:
+loader.efi

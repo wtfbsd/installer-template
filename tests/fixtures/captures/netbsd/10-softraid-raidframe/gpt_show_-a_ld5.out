@@ -1,0 +1,23 @@
+    start     size  index  contents
+        0        1         PMBR
+        1        1         Pri GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000005
+        2       32         Pri GPT table
+       34       30         Unused
+       64   532480      1  GPT part - EFI System
+                                 Type: efi
+                                 TypeID: c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000007
+                                 Size: 260 M
+                                 Label: EFI System Area
+                                 Attributes: None
+   532544  1564575      2  GPT part - OpenBSD data
+                                 Type: obsd
+                                 TypeID: 824cc7a0-36a8-11e3-890a-952519ad3f61
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000008
+                                 Size: 764 M
+                                 Label: OpenBSD Area
+                                 Attributes: None
+  2097119       32         Sec GPT table
+  2097151        1         Sec GPT header
+                                 GUID: a0a0a0a0-0000-4000-8000-000000000005

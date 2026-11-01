@@ -1,0 +1,30 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+
+# Answers for the happy path with the optional licensed software: after the
+# network, Select all, read the licence of the GPU driver, then change the
+# choice in the check list (the GPU driver and the font), then Next.
+0
+0 us
+0 UTC
+0
+0 ada0
+0 tester
+0 s3cret-pass
+0 s3cret-pass
+0
+0
+0 em0
+0 dhcp
+0
+0
+0
+0 All
+0 Read
+0 example-gpu-driver
+0
+0 Choose
+0 example-gpu-driver example-display-font
+0 Next
+0
+0
+0

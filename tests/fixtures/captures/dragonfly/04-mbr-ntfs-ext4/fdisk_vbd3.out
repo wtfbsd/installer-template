@@ -1,0 +1,24 @@
+******* Working on device /dev/vbd3 *******
+parameters extracted from device are:
+cylinders=903 heads=211 sectors/track=33 (6963 blks/cyl)
+
+parameters to be used for BIOS calculations are:
+cylinders=903 heads=211 sectors/track=33 (6963 blks/cyl)
+
+Media sector size is 512
+Warning: BIOS sector numbering starts with sector 1
+Information from DOS bootblock is:
+The data for partition 1 is:
+sysid 7,(OS/2 HPFS, NTFS, QNX-2 (16 bit) or Advanced UNIX)
+    start 2048, size 3072000 (1500 Meg), flag 80 (active)
+	beg: cyl 0/ head 32/ sector 33;
+	end: cyl 191/ head 89/ sector 26
+The data for partition 2 is:
+sysid 131,(Linux filesystem)
+    start 3074048, size 2867200 (1400 Meg), flag 0
+	beg: cyl 191/ head 89/ sector 27;
+	end: cyl 369/ head 210/ sector 33
+The data for partition 3 is:
+<UNUSED>
+The data for partition 4 is:
+<UNUSED>

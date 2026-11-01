@@ -1,0 +1,23 @@
+******* Working on device /dev/vbd1 *******
+parameters extracted from device are:
+cylinders=3072 heads=1 sectors/track=1024 (1024 blks/cyl)
+
+Figures below won't work with BIOS for partitions not in cyl 1
+parameters to be used for BIOS calculations are:
+cylinders=3072 heads=1 sectors/track=1024 (1024 blks/cyl)
+
+Warning: ending cylinder wraps, using all 1's
+Media sector size is 512
+Warning: BIOS sector numbering starts with sector 1
+Information from DOS bootblock is:
+The data for partition 1 is:
+<UNUSED>
+The data for partition 2 is:
+<UNUSED>
+The data for partition 3 is:
+<UNUSED>
+The data for partition 4 is:
+sysid 108,(DragonFly BSD)
+    start 1024, size 3144704 (1535 Meg), flag 80 (active)
+	beg: cyl 1/ head 0/ sector 1;
+	end: cyl 1023/ head 255/ sector 63

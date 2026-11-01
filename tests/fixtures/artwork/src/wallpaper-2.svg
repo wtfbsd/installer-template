@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- @NAME@ wallpaper 2: geometric diagonal bands. Tokens are substituted by
+     scripts/render.sh. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" preserveAspectRatio="xMidYMid slice">
+  <title>@NAME@ wallpaper 2</title>
+  <rect x="0" y="0" width="1920" height="1080" fill="#@DARK@"/>
+  <g transform="rotate(-18 960 540)">
+    <rect x="-400" y="-560" width="2800" height="380" fill="#@PRIMARY@" opacity="0.9"/>
+    <rect x="-400" y="-140" width="2800" height="104" fill="#@ACCENT@" opacity="0.85"/>
+    <rect x="-400" y="4" width="2800" height="270" fill="#@DARK2@"/>
+    <rect x="-400" y="314" width="2800" height="88" fill="#@MUTED@" opacity="0.35"/>
+    <rect x="-400" y="442" width="2800" height="250" fill="#@PRIMARY@" opacity="0.25"/>
+    <rect x="-400" y="732" width="2800" height="150" fill="#@ACCENT@" opacity="0.18"/>
+    <rect x="-400" y="922" width="2800" height="140" fill="#@DARK2@" opacity="0.9"/>
+  </g>
+</svg>

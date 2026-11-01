@@ -1,0 +1,35 @@
+[
+ {
+  "name": "welcome-english",
+  "page": "welcome",
+  "full": false,
+  "state": {
+   "locale": "en_US.UTF-8"
+  }
+ },
+ {
+  "name": "welcome-german",
+  "page": "welcome",
+  "full": false,
+  "state": {
+   "locale": "de_CH.UTF-8"
+  }
+ },
+ {
+  "name": "keyboard-language",
+  "page": "keyboard",
+  "full": false,
+  "state": {
+   "locale": "de_CH.UTF-8"
+  }
+ },
+ {
+  "name": "timezone-clock",
+  "page": "timezone",
+  "full": true,
+  "state": {
+   "zone": "Europe/Berlin",
+   "locale": "en_US.UTF-8"
+  }
+ }
+]

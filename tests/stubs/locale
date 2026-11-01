@@ -1,0 +1,12 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# A stand-in for locale(1): `locale -a` lists the locales of STUB_LOCALES
+# (separated by spaces); nothing when it is not set.
+
+set -eu
+
+[ "${1:-}" = -a ] || exit 1
+for l in ${STUB_LOCALES:-}; do
+	printf '%s\n' "${l}"
+done

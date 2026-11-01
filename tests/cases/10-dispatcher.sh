@@ -75,6 +75,21 @@ for system in freebsd netbsd openbsd dragonfly; do
 	done
 done
 
+# illumos is written against the documented formats and is unproven: on a
+# machine it reports the gap (above); in a rehearsal it answers every
+# operation that only reads.
+for section in disk network keyboard timezone users; do
+	rc=0
+	out=$(INSTALLER_CONF="${root}/tests/fixtures/installer-illumos.conf" \
+		INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/adapter-fixture.conf" \
+		"${backend}" "${section}" probe 2>&1) || rc=$?
+	check_rc "the illumos adapter answers the ${section} probe in a rehearsal" 0 "${rc}"
+done
+out=$(INSTALLER_CONF="${root}/tests/fixtures/installer-illumos.conf" \
+	INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/adapter-fixture.conf" \
+	"${backend}" disk probe 2>&1) || :
+check_contains "illumos offers the ZFS layouts" '"ident":"raidz2"' "$(printf '%s' "${out}" | tr -d ' ')"
+
 rc=0
 out=$("${backend}" welcome probe 2>&1) || rc=$?
 check_rc "the welcome section probes" 0 "${rc}"

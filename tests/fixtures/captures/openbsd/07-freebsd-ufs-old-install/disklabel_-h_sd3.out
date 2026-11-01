@@ -1,0 +1,18 @@
+# /dev/rsd3c:
+type: SCSI
+disk: SCSI disk
+label: Block Device    
+duid: 0000000000000000
+flags:
+bytes/sector: 512
+sectors/track: 63
+tracks/cylinder: 255
+sectors/cylinder: 16065
+cylinders: 326
+total sectors: 5242880 # total bytes: 2.5G
+boundstart: 40
+boundend: 5242840
+
+16 partitions:
+#                size           offset  fstype [fsize bsize   cpg]
+  c:             2.5G                0  unused                    

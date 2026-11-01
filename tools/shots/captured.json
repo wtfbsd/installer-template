@@ -1,0 +1,5 @@
+[
+ {"name": "captured-type", "page": "type", "full": true, "state": {"mode": "erase"}},
+ {"name": "captured-disk-erase", "page": "disk", "full": true, "disk_state": {"mode": "erase", "selected": ["vtbd4"], "usage": "separate"}, "state": {"mode": "erase", "selected": ["vtbd4"], "usage": "separate"}},
+ {"name": "captured-summary", "page": "summary", "full": true, "disk_state": {"mode": "erase", "selected": ["vtbd4"], "usage": "separate"}, "state": {}}
+]

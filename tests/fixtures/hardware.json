@@ -1,0 +1,8 @@
+{"devices": [
+ {"class": "GPU", "name": "Example Graphics 620", "driver": "i915kms", "firmware": "present", "status": "working"},
+ {"class": "Wi-Fi", "name": "Example Wireless AC 9260", "driver": "iwm", "firmware": "present", "status": "working"},
+ {"class": "Ethernet", "name": "Example Gigabit Ethernet", "driver": "em", "firmware": "not needed", "status": "working"},
+ {"class": "Audio", "name": "Example High Definition Audio", "driver": "snd_hda", "firmware": "not needed", "status": "working"},
+ {"class": "Input", "name": "Example Touchpad", "driver": "psm", "firmware": "not needed", "status": "working"},
+ {"class": "Bluetooth", "name": "Example Bluetooth 5.1", "driver": "", "firmware": "missing", "status": "no driver"}
+]}

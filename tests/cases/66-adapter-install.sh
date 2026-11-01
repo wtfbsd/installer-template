@@ -59,7 +59,7 @@ for os in freebsd netbsd openbsd dragonfly; do
 	install "${os}"
 	check_rc "${os}: the installation succeeds" 0 "${rc}"
 	check "${os}: the install command gets the options of the contract" \
-		"-d${NL}ada1${NL}-u${NL}wtfuser${NL}-k${NL}${tmp}/key.pub${NL}-H${NL}${tmp}/secrets/user.hash${NL}-n${NL}box1${NL}-z${NL}Europe/Berlin${NL}-K${NL}de${NL}-y${NL}--progress" \
+		"-d${NL}ada1${NL}-u${NL}wtfuser${NL}-k${NL}${tmp}/key.pub${NL}-H${NL}${tmp}/secrets/user.hash${NL}-n${NL}box1${NL}-z${NL}Europe/Berlin${NL}-K${NL}de${NL}-r${NL}locked${NL}-y${NL}--progress" \
 		"$(cat "${tmp}/args" 2>/dev/null || true)"
 	check "${os}: the progress lines are passed on unchanged" \
 		"PROGRESS 5 Writing the image to ada1${NL}PROGRESS 60 Growing the file system${NL}PROGRESS 90 Writing the first boot configuration${NL}PROGRESS 100 Done" \
@@ -182,6 +182,24 @@ refused "a gateway with a suffix" 'NETWORK_MODE=static' 'NET_IF=em0' \
 	'IPV4_ADDR=192.0.2.10' "IPV4_MASK=${mask}" 'IPV4_GW=192.0.2.1:x'
 refused "a manual address without an adapter" 'NETWORK_MODE=static' \
 	'IPV4_ADDR=192.0.2.10' "IPV4_MASK=${mask}"
+cp "${tmp}/answers.keep" "${tmp}/answers"
+
+# Root's password, the automatic login, every adapter, IPv6, the resolvers
+# and the update after the installation reach the install command.
+printf 'r00t\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${tmp}/secrets/root.hash"
+with_answers 'ROOT_MODE=password' "ROOT_HASHFILE=${tmp}/secrets/root.hash" 'AUTOLOGIN=yes' \
+	'NET_IPV4_LIST=em0:dhcp;em1:192.0.2.10/255.255.255.0:192.0.2.1' 'NET_IPV6_LIST=em0:slaac' \
+	'DNS_SERVERS=192.0.2.53,2001:db8::53' 'UPDATE_AFTER=yes'
+install freebsd
+check_rc "root, autologin and every adapter: the installation succeeds" 0 "${rc}"
+args=$(cat "${tmp}/args")
+for want in "-r${NL}${tmp}/secrets/root.hash" "${NL}-A${NL}" "-N${NL}em0:dhcp${NL}" \
+	"-N${NL}em1:192.0.2.10/255.255.255.0:192.0.2.1${NL}" "-6${NL}em0:slaac${NL}" \
+	"-D${NL}192.0.2.53${NL}" "-D${NL}2001:db8::53${NL}" "${NL}-U${NL}"; do
+	check_contains "the install command gets ${want}" "${want}" "${args}"
+done
+refused "a resolver that is not an address" 'DNS_SERVERS=192.0.2.53;id'
+refused "an IPv6 list that is not one" 'NET_IPV6_LIST=em0:2001:db8::1/200:'
 cp "${tmp}/answers.keep" "${tmp}/answers"
 
 finish

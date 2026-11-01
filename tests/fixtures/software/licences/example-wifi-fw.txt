@@ -1,0 +1,3 @@
+EXAMPLE WIRELESS FIRMWARE LICENCE
+
+A made-up licence. The firmware may be used with Example wireless cards only and may not be passed on.

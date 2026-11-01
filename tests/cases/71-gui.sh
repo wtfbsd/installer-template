@@ -169,7 +169,7 @@ JSON
 		timeout 120 "${gui}" --smoke "${tmp}/answers.json" --screenshots "${tmp}/shots" 2>&1) || rc=$?
 	check_rc "the smoke run installs" 0 "${rc}"
 	check_contains "the smoke run saw every page in order" \
-		"smoke: pages welcome keyboard timezone disk users network summary install finish" "${out}"
+		"smoke: pages welcome keyboard timezone type disk users network software summary install finish" "${out}"
 	check "picking a keymap applies it to the live X session" "de" \
 		"$(tail -n 1 "${tmp}/setxkbmap.log" 2>/dev/null || true)"
 	check_absent "no password in the log of the run" "s3cret-pass" \
@@ -191,7 +191,7 @@ for path in sorted(glob.glob(sys.argv[1] + "/*.png")):
 print(len(glob.glob(sys.argv[1] + "/*.png")), len(bad))
 PY
 )
-	check "nine drawn pages and no empty picture" "9 0" "${pictures}"
+	check "eleven drawn pages and no empty picture" "11 0" "${pictures}"
 
 	# The one action cluster at the bottom right, the primary action on
 	# the right and the default, and the title at the top left in a large
@@ -223,6 +223,8 @@ for page in json.load(open(sys.argv[1])):
     for b in page["buttons"]:
         if b["x"] < 0 or b["y"] < 0 or b["x"] + b["w"] > w or b["y"] + b["h"] > h:
             problems.append(f"{name}: the button {b['label']} is not inside the window")
+        if "_" not in (b["label"] or ""):
+            problems.append(f"{name}: the button {b['label']} has no mnemonic")
     buttons = page["buttons"]
     if not buttons:
         problems.append(f"{name}: no buttons")
@@ -264,7 +266,7 @@ PY
 	check "1024x768: every page fits, the buttons and the title are where the rules put them" "ok" "${layout}"
 	# The names a screen reader says for the fields of the two pages.
 	check "every text field of the users and network pages is labelled by its label" \
-		"users: Confirm the password, Full name, Host name, Password, SSH public key, User name | network: Address, Gateway, Netmask" \
+		"users: Confirm the password, Confirm the root password, Full name, Host name, Password, Root password, SSH public key, User name | network: IPv4 Address, IPv4 Address, IPv4 Gateway, IPv4 Gateway, IPv4 Netmask, IPv4 Netmask, IPv6 Address, IPv6 Address, IPv6 Gateway, IPv6 Gateway, IPv6 Prefix length, IPv6 Prefix length, Resolvers (DNS)" \
 		"$(fields_named "${tmp}/shots/layout.json")"
 
 	# The same at 1280x1024.
@@ -291,6 +293,23 @@ PY
 	check "large text at 1024x768: every page fits and the buttons are on the screen" "ok" \
 		"$(layout_problems "${tmp}/shots-large/layout.json" 1024 768)"
 
+
+	# Without a pointer: the keyboard alone (Tab, letters, Space, Alt and
+	# the underlined letter) goes from Welcome to Installing.
+	rc=0
+	out=$(printf 's3cret-pass\n' | "$@" STUB_MOUNTS="${tmp}/mounts" INSTALLER_STATE_PARENT="${tmp}" \
+		INSTALLER_ADAPTER_FIXTURE="${fixtures}/adapter-fixture.conf" \
+		timeout 120 "${gui}" --keyboard-walk "${tmp}/answers.json" 2>&1) || rc=$?
+	check_rc "the keyboard alone installs" 0 "${rc}"
+	check_contains "the keyboard alone goes through every page" \
+		"keyboard: pages welcome keyboard timezone type disk users network software summary install" "${out}"
+	# Alt and the letter work however the X server reports Alt: on the
+	# letter (Mod1, or Meta), only by the Alt key before it, or released
+	# first; every way advanced a page.
+	check_contains "Alt and a letter work in every way a server sends them" "in 4 ways" "${out}"
+	# A full name with a space, typed key by key, is kept whole.
+	check_contains "a full name typed with a space is kept whole" \
+		"keyboard: full name 'Test User'" "${out}"
 
 	# A failed installation stays on the installing page.
 	rc=0
