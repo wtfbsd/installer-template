@@ -1,0 +1,3 @@
+/devices/ramdisk:a	/	ufs	rw,intr,largefiles,logging,xattr,onerror=panic,dev=1640000	1761955200
+/dev/dsk/c1t0d0s2	/.cdrom	hsfs	ro,nosuid,noglobal,maplcase,rr,traildot,dev=1a00002	1761955200
+swap	/tmp	tmpfs	xattr,dev=8b40001	1761955200

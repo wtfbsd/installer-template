@@ -1,0 +1,11 @@
+The settings lines (comments left out) of /etc/security/policy.conf and
+/etc/security/crypt.conf, /usr/share/lib/keytables/type_6/kbd_layouts and
+the listing of /usr/share/lib/zoneinfo of OpenIndiana Hipster 2026.10,
+captured on 2026-11-01; capabilities.json is the answer of the illumos
+template's `<slug>-install --capabilities` with "home_encryption",
+"swap_encryption" and "usages", the keys the installer reads from it that
+the command does not print yet (case 91).
+
+mnttab-live and mnttab-installed are written after mnttab(5), not
+captured: a live medium (the root a ramdisk, the medium on /.cdrom) and a
+system started from a pool (the root in rpool).

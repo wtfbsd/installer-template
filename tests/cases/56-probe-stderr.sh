@@ -25,7 +25,8 @@ INSTALLER_LOG="${tmp}/installer.log"
 export BSDDIALOG BSDDIALOG_LOG BSDDIALOG_STATE
 export INSTALLER_STATE_PARENT INSTALLER_ANSWERS INSTALLER_LOG
 
-# The adapter of this system is not written yet, so the backend says so.
+# The tools of this system are not here (illumos on another system), so
+# the backend says so.
 INSTALLER_CONF="${root}/tests/fixtures/installer-illumos.conf"
 export INSTALLER_CONF
 
@@ -33,12 +34,12 @@ tui_run "${root}/tests/fixtures/answers-nodisk.txt"
 
 dialog_log=$(cat "${BSDDIALOG_LOG}" 2>/dev/null || true)
 check_contains "the screen says why the hardware could not be read" \
-	"adapter not implemented for illumos" "${dialog_log}"
+	"reading the disks needs diskinfo" "${dialog_log}"
 check_contains "the screen still says what was detected" \
 	"Detected:" "${dialog_log}"
 
 log_text=$(cat "${INSTALLER_LOG}" 2>/dev/null || true)
 check_contains "the log holds the message of the backend" \
-	"adapter not implemented for illumos" "${log_text}"
+	"reading the disks needs diskinfo" "${log_text}"
 
 finish

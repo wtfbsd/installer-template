@@ -20,3 +20,6 @@ uname and the error outputs are not kept.
 Edited after capture: dragonfly/dmesg.out line 24 (the local APIC count)
 carries a trailing `# gitleaks:allow` note, because gitleaks reads
 "lapic_count=2" as an API key; the line plays no part in detection.
+
+illumos holds `prtconf -D`, `scanpci` and `dladm show-phys` of the same
+OpenIndiana 2026.10 guest (pcieadm is not shipped on OpenIndiana).

@@ -38,26 +38,21 @@ check_rc "a bad verb on a real section exits 2" 2 "${rc}"
 rc=0
 out=$(INSTALLER_CONF="${root}/tests/fixtures/installer-illumos.conf" \
 	"${backend}" disk probe 2>&1) || rc=$?
-check_rc "an adapter that is not implemented exits 3" 3 "${rc}"
-check_contains "the missing adapter names the system" \
-	"adapter not implemented for illumos" "${out}"
+check_rc "an adapter without the tools of its system exits 3" 3 "${rc}"
+check_contains "the adapter names the tool it misses" \
+	"reading the disks needs diskinfo" "${out}"
 
-# Every adapter that is not written yet has to report the gap and exit 3.
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/installer-adapters.XXXXXX")
 tmp_root=$(dirname "${tmp}")
 trap 'rmrf "${tmp}" "${tmp_root}" || :' EXIT INT TERM HUP
 
-for system in illumos; do
-	conf="${tmp}/${system}.conf"
-	printf 'PRODUCT_NAME=ExampleBSD\nPRODUCT_SLUG=examplebsd\nOS=%s\n' \
-		"${system}" > "${conf}"
-	printf 'DEFAULT_KEYMAP=us\nDEFAULT_TZ=UTC\n' >> "${conf}"
-	rc=0
-	out=$(INSTALLER_CONF="${conf}" "${backend}" disk probe 2>&1) || rc=$?
-	check_rc "the ${system} adapter that is not written exits 3" 3 "${rc}"
-	check_contains "the ${system} adapter names the system" \
-		"adapter not implemented for ${system}" "${out}"
-done
+# No adapter reports a gap any more: illumos is written too (it ran on the
+# captures of OpenIndiana, case 91).
+conf="${tmp}/illumos.conf"
+printf 'PRODUCT_NAME=ExampleBSD\nPRODUCT_SLUG=examplebsd\nOS=illumos\n' > "${conf}"
+printf 'DEFAULT_KEYMAP=us\nDEFAULT_TZ=UTC\n' >> "${conf}"
+out=$(INSTALLER_CONF="${conf}" "${backend}" keyboard probe 2>&1) || :
+check_absent "the illumos adapter is written" "not implemented" "${out}"
 
 # The adapters that are written answer every operation of the contract
 # that only reads, and never report a gap.
@@ -75,9 +70,7 @@ for system in freebsd netbsd openbsd dragonfly; do
 	done
 done
 
-# illumos is written against the documented formats and is unproven: on a
-# machine it reports the gap (above); in a rehearsal it answers every
-# operation that only reads.
+# In a rehearsal illumos answers every operation that only reads.
 for section in disk network keyboard timezone users; do
 	rc=0
 	out=$(INSTALLER_CONF="${root}/tests/fixtures/installer-illumos.conf" \

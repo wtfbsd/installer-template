@@ -37,9 +37,10 @@ TOOLS = {
     "usbconfig": ["/usr/sbin/usbconfig"], "ifconfig": ["/sbin/ifconfig"],
     "sysctl": ["/sbin/sysctl"], "pcictl": ["/usr/sbin/pcictl"], "drvctl": ["/sbin/drvctl"],
     "usbdevs": ["/usr/sbin/usbdevs"], "pcidump": ["/usr/sbin/pcidump"], "dmesg": ["/sbin/dmesg"],
+    "prtconf": ["/usr/sbin/prtconf"], "scanpci": ["/usr/bin/scanpci"],
 }
 SYSNAMES = {"freebsd": "freebsd", "netbsd": "netbsd", "openbsd": "openbsd",
-            "dragonfly": "dragonfly"}
+            "dragonfly": "dragonfly", "illumos": "sunos"}
 
 # The drivers of Wi-Fi adapters, and the prefix of the firmware files each
 # needs ("" when it needs none).
@@ -60,6 +61,7 @@ INPUT = {"hms": "mouse", "hkbd": "keyboard", "ukbd": "keyboard", "ums": "mouse",
 AUDIO = ("hdac", "hdaa", "pcm", "snd_hda", "hdaudio", "azalia", "auich", "uaudio", "emu")
 BLUETOOTH = ("ng_ubt", "ubt", "ubtbcmfw", "iwmbtfw", "ugen_bt")
 NO_DRM = "basic display (no DRM driver)"
+NOT_NEEDED = "not needed"
 
 
 class Runner:
@@ -124,7 +126,7 @@ class System(Runner):
         return names
 
 
-def device(cls, name, driver, firmware="not needed", status=None):
+def device(cls, name, driver, firmware=NOT_NEEDED, status=None):
     return {"class": cls, "name": name[:80], "driver": driver or "",
             "firmware": firmware, "status": status or ("working" if driver else "no driver")}
 
@@ -157,7 +159,7 @@ def firmware_state(driver: str, cls: str, files: Optional[List[str]]) -> str:
     else:
         prefix = None
     if not prefix:
-        return "not needed"
+        return NOT_NEEDED
     if files is None:
         return "unknown"
     low = [f.lower() for f in files]
@@ -594,6 +596,139 @@ def probe_openbsd(runner: Runner) -> dict:
     return {"devices": devices, "unavailable": unavailable}
 
 
+# ----------------------------------------------------------------- illumos
+
+# The drivers of illumos by the class of what they drive.  Its Wi-Fi
+# drivers carry their firmware: an attached one needs nothing more.
+ILLUMOS_CLASS = {
+    "Ethernet": ("vioif", "e1000g", "igb", "ixgbe", "bge", "rge", "rtls", "i40e", "mlxcx",
+                 "vmxnet3s", "bnx", "bnxe", "nge", "elxl", "iprb", "afe", "dmfe", "hme",
+                 "urtw", "axf", "udmf", "upf", "urf", "cdce"),
+    "Wi-Fi": ("iwn", "iwh", "iwk", "iwi", "ipw", "wpi", "ath", "arn", "rwn", "rwd", "rtw",
+              "ral", "ural", "uath", "zyd", "rum", "run", "mwl", "pcwl", "pcan", "atu", "urtwn"),
+    "GPU": ("vgatext", "i915", "radeon", "nvidia", "gfxp_fb", "efifb", "bochs_drm"),
+    "Audio": ("audiohd", "audio1575", "audioens", "audioixp", "audiovia823x", "audioemu10k",
+              "audiocmi", "audiosolo", "audiols", "audiop16x", "audiopci", "usb_ac"),
+    "Input": ("kb8042", "mouse8042", "usbkbm", "usbms", "hid", "usbwcm"),
+}
+ILLUMOS_INPUT = {"kb8042": "keyboard", "usbkbm": "keyboard", "mouse8042": "mouse",
+                 "usbms": "mouse", "hid": "input device", "usbwcm": "tablet"}
+# A class of a device by the words of scanpci, for its name.
+SCANPCI_WORDS = {"Ethernet": ("network device", "network controller", "ethernet"), "Wi-Fi": ("wireless", "wi-fi", "802.11"),
+                 "GPU": ("vga", "display", "graphics"), "Audio": ("audio",)}
+INSTANCE = ", instance #"
+DRIVER = " (driver name: "
+
+
+def _word(ch: str) -> bool:
+    """What \\w matches in a str pattern: a letter, a digit, a number or _."""
+    return ch.isalnum() or ch == "_"
+
+
+def _run(text: str, start: int, test) -> int:
+    """The end of the run of characters from start that pass test."""
+    end = start
+    while end < len(text) and test(text[end]):
+        end += 1
+    return end
+
+
+def _driver_tail(tail: str) -> Optional[Tuple[Optional[str]]]:
+    """( \\(driver name: (\\w+)\\))?\\s*$ on tail: (driver or None,), or None
+    when it does not match; the group is tried first."""
+    if tail.startswith(DRIVER):
+        end = _run(tail, len(DRIVER), _word)
+        rest = tail[end + 1:]
+        if end > len(DRIVER) and tail[end:end + 1] == ")" and _blank(rest):
+            return (tail[len(DRIVER):end],)
+    return (None,) if _blank(tail) else None
+
+
+def _blank(text: str) -> bool:
+    """What \\s*$ matches: nothing, or whitespace only."""
+    return text == "" or text.isspace()
+
+
+def _node_tail(tail: str) -> Optional[Tuple[Optional[str], Optional[str]]]:
+    """(?:, instance #(\\d+))?(?: \\(driver name: (\\w+)\\))?\\s*$ on tail:
+    (instance, driver), each None when absent, or None; the instance is
+    tried first."""
+    if tail.startswith(INSTANCE):
+        end = _run(tail, len(INSTANCE), str.isdecimal)
+        if end > len(INSTANCE):
+            drv = _driver_tail(tail[end:])
+            if drv is not None:
+                return tail[len(INSTANCE):end], drv[0]
+    drv = _driver_tail(tail)
+    return (None, drv[0]) if drv is not None else None
+
+
+def prtconf_line(line: str) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
+    """(node, instance, driver) of a line of `prtconf -D`, or None: what
+    ^(\\s*)(\\S.*?)(?:, instance #(\\d+))?(?: \\(driver name: (\\w+)\\))?\\s*$
+    matched (no line break in the line), without its backtracking."""
+    start = _run(line, 0, str.isspace)
+    if start == len(line):
+        return None
+    for k in range(start + 1, len(line) + 1):
+        tail = _node_tail(line[k:])
+        if tail is not None:
+            return line[start:k], tail[0], tail[1]
+    return None
+
+
+def prtconf_nodes(text: str) -> List[Tuple[str, str, str]]:
+    """(node, driver, instance) of `prtconf -D`, for the nodes a driver is
+    bound to."""
+    out = []
+    for line in text.split("\n"):
+        found = prtconf_line(line)
+        if found and found[2] and line.startswith(" "):
+            out.append((found[0].strip(), found[2], found[1] or ""))
+    return out
+
+
+def scanpci_names(text: str) -> List[str]:
+    """The description lines of `scanpci`, one per PCI function."""
+    out = []
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if line.startswith("pci bus ") and i + 1 < len(lines) and lines[i + 1].startswith(" "):
+            out.append(lines[i + 1].strip())
+    return out
+
+
+def _illumos_name(cls: str, node: str, drv: str, pci: List[str]) -> str:
+    if cls == "Input":
+        return f"{ILLUMOS_INPUT.get(drv, 'input device')} ({drv})"
+    named = [n for n in pci if any(w in n.lower() for w in SCANPCI_WORDS.get(cls, ()))]
+    # A name only when it can be only that device.
+    if len(named) == 1:
+        return named[0]
+    return f"{node} ({drv})"
+
+
+def probe_illumos(runner: Runner) -> dict:
+    unavailable = []
+    rc, out = runner.run("prtconf_-D", ["prtconf", "-D"])
+    nodes = prtconf_nodes(out) if rc == 0 else []
+    if rc != 0:
+        unavailable.append("the device tree (prtconf -D)")
+    rc, out = runner.run("scanpci", ["scanpci"])
+    pci = scanpci_names(out) if rc == 0 else []
+    if rc != 0:
+        unavailable.append("the names of the PCI devices (scanpci)")
+    devices = []
+    for node, drv, _unit in nodes:
+        cls = next((c for c, drivers in ILLUMOS_CLASS.items() if drv in drivers), None)
+        if cls is None:
+            continue
+        status = NO_DRM if drv == "vgatext" else None
+        devices.append(device(cls, _illumos_name(cls, node, drv, pci), drv,
+                              NOT_NEEDED, status))
+    return {"devices": devices, "unavailable": unavailable}
+
+
 def probe(os_name: str, runner: Optional[Runner] = None) -> dict:
     if runner is None:
         if os.uname().sysname.lower() != SYSNAMES.get(os_name):
@@ -605,6 +740,8 @@ def probe(os_name: str, runner: Optional[Runner] = None) -> dict:
         return probe_netbsd(runner)
     if os_name == "openbsd":
         return probe_openbsd(runner)
+    if os_name == "illumos":
+        return probe_illumos(runner)
     raise ValueError(f"no hardware probe for {os_name}")
 
 
@@ -618,7 +755,7 @@ def main(argv: List[str]) -> int:
         runner = Replay(args[1])
         args = args[2:]
     if len(args) != 1:
-        sys.stderr.write("usage: hwprobe.py [--replay DIR] freebsd|netbsd|openbsd|dragonfly\n")
+        sys.stderr.write("usage: hwprobe.py [--replay DIR] freebsd|netbsd|openbsd|dragonfly|illumos\n")
         return 2
     try:
         report = probe(args[0], runner)

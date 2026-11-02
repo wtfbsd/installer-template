@@ -89,6 +89,8 @@ def bar(segments, width=BAR_WIDTH, captions=True):
     return box
 
 
+# The height of one disk of the Before and after box (three lines).
+BAR_DISK_PX = 76
 BOOT_TITLES = {"uefi": "UEFI", "bios": "Legacy BIOS"}
 
 
@@ -211,9 +213,13 @@ class DiskPage:
 
         # Before and after: one pair of bars a disk; many disks scroll.
         self.bars_area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        self.bars_area.pack_start(lbl("Before and after", "section-title"), False, False, 0)
+        self.bars_title = lbl("Before and after", "section-title")
+        self.bars_area.pack_start(self.bars_title, False, False, 0)
         self.bars = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        self.bars_area.pack_start(scrolled(self.bars, 2, 5, name="bars"), False, False, 0)
+        # A disk takes three lines (its name, now, after): the box shows
+        # whole disks, at least one, and scrolls from three on.
+        self.bars_sw = scrolled(self.bars, 1, 2, row_px=BAR_DISK_PX, name="bars")
+        self.bars_area.pack_start(self.bars_sw, False, False, 0)
         page.pack_start(self.bars_area, False, False, 0)
 
         # Data disks.
@@ -370,7 +376,7 @@ class DiskPage:
                 "manual": "Manual"}[self.mode]
 
     def asks_usage(self):
-        return self.mode == "erase" and D.needs_usage_question(self.detail)
+        return self.mode == "erase" and D.needs_usage_question(self.detail, self.os)
 
     def apply_mode(self):
         """The Disk page shows what fits the chosen type only; with two
@@ -388,8 +394,20 @@ class DiskPage:
         separate = asks and self.usage == "separate"
         pools = D.data_pools_offered(self.os, self.detail)
         self.data_expander.set_visible(self.mode == "erase" and answered and not separate and pools)
-        # Separately is always possible: the other disks can be left as
-        # they are; formatting them needs data disks (see fill_separate).
+        # Only the ways the install command takes ("usages"); with one
+        # way the question is not asked at all (asks_usage).  Separately
+        # leaves the other disks as they are when there are no data disks
+        # (see fill_separate).
+        offered = D.system(self.os, self.detail)["usages"]
+        for ident, button in self.usage_buttons.items():
+            self.show_only(button, ident in offered)
+            # The FlowBox keeps a place for a hidden card unless its own
+            # child is hidden too.
+            if button.get_parent() is not None:
+                self.show_only(button.get_parent(), ident in offered)
+        if self.usage is not None and self.usage not in offered:
+            self.usage = None
+            self.usage_none.set_active(True)
         caption = lbl("Disks outside the system pool (optional): each formatted as its own drive"
                       if asks else "Data disks (optional)")
         caption.set_max_width_chars(40)
@@ -610,18 +628,42 @@ class DiskPage:
         """The encryption of the system, when the install command offers
         one (its name in the capabilities); else no box, no passphrase,
         and one line that says so."""
-        name = D.system(self.os, self.detail)["encryption"]
-        offered = bool(name)
+        sysinfo = D.system(self.os, self.detail)
+        name, home = sysinfo["encryption"], sysinfo["home_encryption"]
+        offered = bool(name or home)
         if not offered and self.enc_check.get_active():
             self.enc_check.set_active(False)
-        self.enc_check.set_label(
-            f"Encrypt the system ({name}); the passphrase is asked at every start" if offered else "")
-        self.enc_note.set_text("" if offered else
-                               f"Encrypting the system is not offered on {D.os_title(self.os)}.")
+        label, note = self.encryption_texts(name, home)
+        self.enc_check.set_label(label)
+        self.enc_note.set_text(note)
         self.show_only(self.enc_check, offered)
-        self.show_only(self.enc_note, not offered)
+        self.show_only(self.enc_note, bool(note))
+        self.fill_swap_encryption(bool(sysinfo["swap_encryption"]))
         for widget in self.pass_row:
             self.show_only(widget, offered)
+
+    def encryption_texts(self, name, home):
+        """The label of the box and the line under it: the system (name),
+        or the home directories and the data only (home), or neither."""
+        where = D.os_title(self.os)
+        if name:
+            return f"Encrypt the system ({name}); the passphrase is asked at every start", ""
+        if home:
+            # The system itself is not encrypted there (illumos): the home
+            # directories and the data are.
+            return (f"Encrypt the home directories and the data ({home}); "
+                    "the passphrase is asked at every start",
+                    f"The system itself is not encrypted on {where}.")
+        return "", f"Encrypting the system is not offered on {where}."
+
+    def fill_swap_encryption(self, offered):
+        """Encrypted swap only where the install command makes it (the swap
+        row is built after the first call; load fills it)."""
+        if not hasattr(self, "swap_enc"):
+            return
+        if not offered and self.swap_enc.get_active():
+            self.swap_enc.set_active(False)
+        self.show_only(self.swap_enc, offered)
 
     def fill_capabilities(self):
         """Everything the page offers that the install command decides."""
@@ -1055,6 +1097,7 @@ class DiskPage:
     def refresh_bars(self):
         for child in self.bars.get_children():
             self.bars.remove(child)
+        self.after_bars = []
         plan = self.plan()
         index = D.disk_index(self.detail)
         shown = []
@@ -1067,21 +1110,43 @@ class DiskPage:
         shown += [n for n in self.data_disks if n not in shown]
         if self.mode == "erase" and self.usage == "separate":
             shown += [n for n, m in sorted(self.separate.items()) if m and n not in shown]
+        shown = [n for n in shown if n in index]
+        # One disk: its name goes into the title, a line less in the box;
+        # several: each names itself.
+        one = len(shown) == 1
+        self.bars_title.set_text("Before and after" + (
+            f" — {shown[0]}  {index[shown[0]].get('model', '')}".rstrip() if one else ""))
         for name in shown:
-            disk = index.get(name)
-            if not disk:
-                continue
+            disk = index[name]
             grid = Gtk.Grid(column_spacing=10, row_spacing=2)
-            grid.attach(lbl(f"{name}  {disk.get('model', '')}", "bar-caption", wrap=False), 0, 0, 2, 1)
+            if not one:
+                grid.attach(lbl(f"{name}  {disk.get('model', '')}", "bar-caption", wrap=False), 0, 0, 2, 1)
             grid.attach(lbl("now", "bar-caption", wrap=False), 0, 1, 1, 1)
             grid.attach(bar(D.bar_before(disk)), 1, 1, 1, 1)
             grid.attach(lbl("after", "bar-caption", wrap=False), 0, 2, 1, 1)
             after = D.bar_after(disk, plan, self.os, self.wiz.product, self.detail)
-            grid.attach(bar(after), 1, 2, 1, 1)
+            after_bar = bar(after)
+            self.after_bars.append(after_bar)
+            grid.attach(after_bar, 1, 2, 1, 1)
             self.bars.pack_start(grid, False, False, 0)
         if not shown:
             self.bars.pack_start(lbl("Choose a disk.", "muted"), False, False, 0)
         self.bars.show_all()
+        self.fit_bars()
+
+    def fit_bars(self):
+        """The box shows whole disks: up to two of them it is as high as
+        they are (the toolkit measures them, no bar is cut); from three on
+        it scrolls, two disks high."""
+        count = len(self.after_bars)
+        if count <= 2:
+            self.bars_sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER)
+            return
+        _minimum, natural = self.bars.get_preferred_height()
+        two = 2 * (natural // count)
+        self.bars_sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.bars_sw.set_max_content_height(max(two, BAR_DISK_PX))
+        self.bars_sw.set_min_content_height(max(two, BAR_DISK_PX))
 
     def refresh_problems(self):
         if self.asks_usage() and self.usage is None:

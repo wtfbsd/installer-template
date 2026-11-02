@@ -1874,10 +1874,53 @@ def disk_index(detail):
     return diskplan.disk_index(detail)
 
 
+def shot_disk_names(state, detail):
+    """The state of a shot with its disks named the way the report names
+    them: a shot spec is written once (nda0, da0 of the sample report), and
+    a picture of another system (illumos: c2t0d0) shows that system's
+    disks.  A name the report does not have stands for the disk of the
+    report in the same place, in the order the shot names them."""
+    have = [d.get("name") for d in detail.get("disks", []) if d.get("name")]
+    order = _shot_disks(state)
+    spare = [n for n in have if n not in order]
+    rename = {}
+    for name in order:
+        if name not in have and spare:
+            rename[name] = spare.pop(0)
+    return _renamed(state, rename) if rename else state
+
+
+def _shot_disks(state):
+    """The disks a shot names, each once, in the order it names them."""
+    named = []
+    for key in ("selected", "data_disks"):
+        named += [n for n in state.get(key, []) if isinstance(n, str)]
+    for key in ("separate", "wipe"):
+        named += [n for n in state.get(key, {}) if isinstance(n, str)]
+    order = []
+    for name in named:
+        if name not in order:
+            order.append(name)
+    return order
+
+
+def _renamed(state, rename):
+    """The state with the disks renamed."""
+    out = dict(state)
+    for key in ("selected", "data_disks"):
+        if key in out:
+            out[key] = [rename.get(n, n) for n in out[key]]
+    for key in ("separate", "wipe"):
+        if key in out:
+            out[key] = {rename.get(n, n): v for n, v in out[key].items()}
+    return out
+
+
 def apply_disk_state(win, state):
     """Set the disk page the way a person would: the mode, the disks, the
     layout and the options."""
     dp = win.disk_page
+    state = shot_disk_names(state, dp.detail)
     # Every shot starts from a page without the choices of the shot before.
     dp.wipe = {}
     dp.partitions = []
@@ -2005,6 +2048,15 @@ def _report_usage(win, shot, page, state, outdir):
         "model": dp.usage,
         "active": {k: b.get_active() for k, b in dp.usage_buttons.items()},
         "sensitive": {k: b.get_sensitive() for k, b in dp.usage_buttons.items()},
+        "shown": {k: b.get_visible() and (b.get_parent() is None or b.get_parent().get_visible())
+                  for k, b in dp.usage_buttons.items()},
+        "asked": dp.usage_area.get_visible(),
+        "enc_label": dp.enc_check.get_label() if dp.enc_check.get_visible() else "",
+        "enc_note": dp.enc_note.get_text() if dp.enc_note.get_visible() else "",
+        "passphrase_shown": any(w.get_visible() for w in dp.pass_row),
+        "swap_enc_shown": dp.swap_enc.get_visible(),
+        "disks": [row[1] for row in dp.store],
+        "selected": list(dp.selected),
         "error": win.error_label.get_text(),
         "layout_note": dp.layout_more.get_visible(),
         "identity": win.identity_text,
@@ -2130,6 +2182,49 @@ def render_page_state(win, page, state):
         render_software(win, state)
 
 
+def _scroller_of(widget):
+    """The nearest scrolled window around widget, or None."""
+    box = widget.get_parent()
+    while box is not None and not isinstance(box, Gtk.ScrolledWindow):
+        box = box.get_parent()
+    return box
+
+
+def _placed(widget, outer, height):
+    """(top of widget in outer, True when it lies whole inside outer)."""
+    if outer is None:
+        return None, False
+    at = widget.translate_coordinates(outer, 0, 0)
+    if not at:
+        return None, False
+    return at[1], at[1] >= 0 and at[1] + height <= outer.get_allocated_height()
+
+
+def bars_of(win):
+    """Where each "after" bar of the Disk page lies: inside the box of the
+    bars (its scroller), inside the page, and on the screen as the page
+    opens (the page scroller not scrolled), measured once laid out."""
+    dp = win.disk_page
+    box = _scroller_of(dp.bars)
+    page = win.stack.get_visible_child()
+    view = win.page_scroller
+    out = []
+    for widget in getattr(dp, "after_bars", []):
+        height = widget.get_allocation().height
+        box_top, in_box = _placed(widget, box, height)
+        page_top, in_page = _placed(widget, page, height)
+        # On the screen as the page opens (not scrolled).
+        view_top, in_view = _placed(widget, view, height)
+        out.append({
+            "height": height,
+            "box_top": box_top,
+            "box_height": box.get_allocated_height() if box is not None else None,
+            "page_top": page_top, "page_height": page.get_allocated_height(),
+            "inside_box": in_box, "inside_page": in_page,
+            "view_top": view_top, "view_height": view.get_allocated_height(),
+            "inside_view": in_view})
+    return out
+
 def render_shot(win, shot, outdir, size):
     """Draw one shot; the names of the PNGs written."""
     page = shot.get("page", "welcome")
@@ -2143,6 +2238,8 @@ def render_shot(win, shot, outdir, size):
     if state.get("report") == "lists":
         # Measured once the page is laid out, before it is drawn.
         write_report(outdir, shot, "lists", lists_of(win), indent=1)
+    if state.get("report") == "bars":
+        write_report(outdir, shot, "bars", bars_of(win), indent=1)
     render_save(win, outdir, shot["name"])
     written = [shot["name"]]
     if shot.get("full"):

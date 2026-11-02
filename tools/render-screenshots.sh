@@ -22,6 +22,9 @@
 # release of its template (RELEASE_BASES of lib/identity.py), whatever BASE
 # the sample identity file names.
 #
+# The disks are those of the system too: tools/render-fixtures names the
+# disk fixture of each system (illumos: the captured c2t0d0 and c4t0d0).
+#
 # The PNGs are made smaller with optipng, oxipng or pngcrush when one of
 # them is installed.  Needs python3 with PyGObject (GTK 3) and broadwayd.
 
@@ -71,13 +74,21 @@ for try in 1 2 3 4 5 6 7 8; do
 done
 [ "${ready}" = yes ] || die 'broadwayd did not start'
 
+# The OS of the configuration the pictures are drawn for, and its disks.
+conf_os=$(sed -n 's/^OS=//p' "${INSTALLER_CONF:-${root}/installer.conf}" | head -n 1)
+case "${conf_os}" in
+	''|*[!a-z]*) conf_os=default ;;
+esac
+fixture=$(sed -n "s/^${conf_os:-default}=//p" "${root}/tools/render-fixtures" | head -n 1)
+[ -n "${fixture}" ] || fixture=$(sed -n 's/^default=//p' "${root}/tools/render-fixtures" | head -n 1)
+
 # render <spec> <size> <identity file>
 render() {
 	shots="${work}/shots"
 	rm -rf "${shots}" && mkdir "${shots}"
 	GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${work}" \
 		INSTALLER_ARTWORK="${root}/tests/fixtures/artwork" INSTALLER_IDENTITY="$3" \
-		INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/dual-os.conf" \
+		INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/${fixture}" INSTALLER_MNTTAB=/nonexistent \
 		"${root}/bin/installer-gui" --render "$1" --size "$2" --screenshots "${shots}" \
 		> "${work}/render.log" 2>&1 || { cat "${work}/render.log" >&2; die "cannot render $1"; }
 	for png in "${shots}"/*.png; do

@@ -1,0 +1,3 @@
+DISK                    VID      PID              SERIAL               FLT LOC LOCATION
+c2t0d0                  Virtio   Block Device     BHYVE-0000-0000-0001 -   -   -
+c4t0d0                  Virtio   Block Device     BHYVE-0000-0000-0002 -   -   -
