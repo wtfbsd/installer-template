@@ -29,6 +29,37 @@ sanitize_text() {
 	printf '%s' "$1" | LC_ALL=C tr -d '[:cntrl:]"\\' | LC_ALL=C tr -cd ' -~'
 }
 
+# zone_list <zone table> [country table] — "zone<TAB>description<TAB>every
+# country" for every zone of a zone1970.tab (or zone.tab) table, sorted: the
+# description is the countries of the zone (two, then "…"), by name from an
+# iso3166.tab table, and the comment of the table ("United States — Eastern
+# (most areas)"); the last column names every country (for the search).
+zone_list() {
+	_ct=${2:-}
+	[ -n "${_ct}" ] && [ -f "${_ct}" ] || _ct=/dev/null
+	# The country table is told apart by its name, not by FNR == NR, which
+	# reads the zone table as the countries when the country table is empty.
+	ZL_CT=${_ct} awk -F '\t' '
+		FILENAME == ENVIRON["ZL_CT"] { if ($0 !~ /^#/ && NF >= 2) name[$1] = $2; next }
+		/^#/ || NF < 3 { next }
+		$3 !~ /^[A-Za-z][A-Za-z0-9+_-]*(\/[A-Za-z0-9+_-]+)*$/ { next }
+		{
+			n = split($1, code, ",")
+			d = ""
+			for (i = 1; i <= n && i <= 2; i++)
+				d = d (d == "" ? "" : ", ") ((code[i] in name) ? name[code[i]] : code[i])
+			if (n > 2)
+				d = d ", …"
+			if (NF >= 4 && $4 != "")
+				d = d (d == "" ? "" : " — ") $4
+			all = ""
+			for (i = 1; i <= n; i++)
+				all = all (all == "" ? "" : ", ") ((code[i] in name) ? name[code[i]] : code[i])
+			print $3 "\t" (d == "" ? $3 : d) "\t" all
+		}
+	' "${_ct}" "$1" | sort -u -t "$(printf '\t')" -k1,1
+}
+
 # disk_name_valid <name> — succeed when the name is the name of a disk:
 # letters then digits (ada0, sd1, nda0), or the cXtYdZ of illumos (c2t0d0,
 # c0t5000CCA012345678d0).

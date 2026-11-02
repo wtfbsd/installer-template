@@ -29,8 +29,7 @@ zone_rows() {
 	if [ -z "${_rows}" ]; then
 		printf 'warning: no zone list from the adapter; the installer uses its own table\n' >&2
 		printf 'UTC\tCoordinated Universal Time\n'
-		awk -F '\t' '/^#/ || NF < 3 { next } { print $3 "\t" ((NF >= 4 && $4 != "") ? $4 : $3) }' \
-			"${root}/lib/zone1970.tab" | sort -u
+		zone_list "${root}/lib/zone1970.tab" "${root}/lib/iso3166.tab"
 		return 0
 	fi
 	printf '%s\n' "${_rows}"
@@ -53,14 +52,22 @@ cmd_probe() {
 			"$(json_escape "$(zone_descr "${default}")")"
 		first=0
 	fi
-	printf '%s\n' "${rows}" | while IFS="${TAB}" read -r name descr; do
-		[ -n "${name}" ] || continue
-		[ "${first}" -eq 1 ] || printf ','
-		first=0
-		printf '{"name":"%s","descr":"%s"}' \
-			"$(json_escape "$(sanitize_text "${name}")")" \
-			"$(json_escape "$(sanitize_text "${descr:-${name}}")")"
-	done
+	# The names and the texts of the zone tables are UTF-8 (Côte d'Ivoire):
+	# kept as they are, without control characters, as JSON strings.
+	printf '%s\n' "${rows}" | python3 -I -c '
+import json, sys
+first = sys.argv[1] == "1"
+for raw in sys.stdin.buffer.read().decode("utf-8", "replace").split("\n"):
+    f = raw.split("\t")
+    if not f[0]:
+        continue
+    f = ["".join(c for c in x if c.isprintable()) for x in f] + ["", ""]
+    item = {"name": f[0], "descr": f[1] or f[0]}
+    if f[2]:
+        item["search"] = f[2]
+    sys.stdout.write(("" if first else ",") + json.dumps(item, ensure_ascii=True, separators=(",", ":")))
+    first = False
+' "${first}"
 	printf ']}\n'
 }
 

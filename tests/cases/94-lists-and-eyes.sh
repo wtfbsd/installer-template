@@ -77,6 +77,7 @@ check "broadwayd started" yes "${ready}"
 
 cat > "${tmp}/spec.json" <<'JSON'
 [{"name": "tz", "page": "timezone", "full": false, "state": {"report": "lists_and_eyes", "search": "berlin"}},
+ {"name": "tz2", "page": "timezone", "full": false, "state": {"report": "lists_and_eyes", "search": "norway"}},
  {"name": "users", "page": "users", "full": false, "state": {"report": "lists_and_eyes", "reveal": "password"}},
  {"name": "disk", "page": "disk", "full": false, "state": {"mode": "erase", "report": "lists_and_eyes", "reveal": "pass1"}}]
 JSON
@@ -91,6 +92,11 @@ r() {
 }
 check "time zone page: every zone in the list" "${zones}" "$(r tz 'r["zones"]')"
 check "time zone page: the search filters (berlin)" "['Europe/Berlin']" "$(r tz 'r["filtered"]')"
+check "time zone page: the countries and the comment, not the zone again" \
+	"Côte d’Ivoire, Burkina Faso, … | United States — Eastern (most areas)" \
+	"$(r tz 'r["descr"]["Africa/Abidjan"] + " | " + r["descr"]["America/New_York"]')"
+check "time zone page: the search finds a country (norway)" "['Europe/Berlin']" \
+	"$(r tz2 'r["filtered"]')"
 check "time zone page: the list scrolls in its own scroller" True "$(r tz 'r["zones_scroll"]')"
 check "users: every password field has its eye" \
 	"{'password': True, 'confirm': True, 'root_pw': True, 'root_pw2': True}" "$(r users 'r["eyes"]')"
@@ -100,5 +106,11 @@ check "users: the eye has a name for a screen reader" "Show the password" "$(r u
 check "users: leaving the page hides it again" False "$(r users 'r["shown_after_leaving"]')"
 check "disk: the passphrase fields have their eye, one shown" "{'pass1': True, 'pass2': False}" \
 	"$(r disk 'r["shown"]')"
+
+# The zone list stands without its country table (a system without
+# iso3166.tab): every zone, with its codes, not an empty list.
+zl_empty=$(sh -c 'root=$1; . "$1/lib/backend.sh"; zone_list "$1/lib/zone1970.tab" ""' sh "${root}" | wc -l)
+check "the zone list without a country table still has every zone" yes \
+	"$([ "${zl_empty}" -gt 300 ] && echo yes || echo no)"
 
 finish
