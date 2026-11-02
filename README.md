@@ -274,8 +274,11 @@ stops the installation with an `ERROR` line and the command never runs.
   `layouts` reports it instead of the adapter's `os_layouts`; other keys
   are left out.  A command without the option, an error or an answer that
   is not usable falls back to `os_layouts` (or the built-in table) without
-  a word.  The Disk page offers only the boot modes listed; a single one is
-  shown as a text.
+  a word.  The Disk page offers only the boot modes listed (a single one is
+  shown as a text), the filesystems and the layouts listed, and an
+  `encryption` of `""` means the system cannot be encrypted: no box, no
+  passphrase, a line that says so, and a plan with `encryption.enabled`
+  is refused.
 
 ### The disk plan
 

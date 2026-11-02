@@ -1981,48 +1981,75 @@ def flag_kind(button):
     return "text"
 
 
+def _report_encryption(win, shot, page, state, outdir):
+    dp = win.disk_page
+    write_report(outdir, shot, "encryption",
+                 {"layout": dp.layout, "active": dp.enc_check.get_active(),
+                  "sensitive": dp.enc_check.get_sensitive(),
+                  "shown": dp.enc_check.get_visible(),
+                  "passphrase_shown": any(w.get_visible() for w in dp.pass_row),
+                  "note": dp.enc_note.get_text() if dp.enc_note.get_visible() else "",
+                  "filesystems": [row[1] for row in dp.fs_combo.get_model()],
+                  "data_layouts": [row[1] for row in dp.data_layout.get_model()],
+                  "plan": dp.plan().get("encryption")})
+
+
+def _report_usage(win, shot, page, state, outdir):
+    dp = win.disk_page
+    if state.get("press_next"):
+        # Next before the question is answered, the way a person may.
+        win.act_next()
+    if state.get("choose"):
+        dp.usage_buttons[state["choose"]].set_active(True)
+    write_report(outdir, shot, "usage", {
+        "model": dp.usage,
+        "active": {k: b.get_active() for k, b in dp.usage_buttons.items()},
+        "sensitive": {k: b.get_sensitive() for k, b in dp.usage_buttons.items()},
+        "error": win.error_label.get_text(),
+        "layout_note": dp.layout_more.get_visible(),
+        "identity": win.identity_text,
+        "problems": list(dp.errors)})
+
+
+def _report_boot(win, shot, page, state, outdir):
+    dp = win.disk_page
+    model = dp.boot_combo.get_model()
+    write_report(outdir, shot, "boot", {
+        "offered": [row[1] for row in model] if model is not None else [],
+        "active": dp.boot_combo.get_active_id(),
+        "dropdown": dp.boot_combo.get_visible(),
+        "fixed": dp.boot_fixed.get_text() if dp.boot_fixed.get_visible() else "",
+        "plan": dp.plan().get("boot")})
+
+
+def _report_busy(win, shot, page, state, outdir):
+    # How the window lived through the slow probes of this shot.
+    write_report(outdir, shot, "busy", win.busy_stats)
+
+
+def _report_flags(win, shot, page, state, outdir):
+    # What each flag button shows: an image, a badge, or a text.
+    flags = [{"locale": locale, "country": button.flag_country, "kind": flag_kind(button)}
+             for locale, button in win.flag_buttons.items()]
+    write_report(outdir, shot, "flags", flags, indent=1)
+    if page == "keyboard":
+        win.show_page("keyboard")
+
+
+REPORTS = {
+    "encryption": _report_encryption,
+    "usage": _report_usage,
+    "boot": _report_boot,
+    "busy": _report_busy,
+    "flags": _report_flags,
+}
+
+
 def render_reports(win, shot, page, state, outdir):
     """The reports written before the page is laid out."""
-    report = state.get("report")
-    if report == "encryption":
-        dp = win.disk_page
-        write_report(outdir, shot, "encryption",
-                     {"layout": dp.layout, "active": dp.enc_check.get_active(),
-                      "sensitive": dp.enc_check.get_sensitive()})
-    if report == "usage":
-        dp = win.disk_page
-        if state.get("press_next"):
-            # Next before the question is answered, the way a person may.
-            win.act_next()
-        if state.get("choose"):
-            dp.usage_buttons[state["choose"]].set_active(True)
-        write_report(outdir, shot, "usage", {
-            "model": dp.usage,
-            "active": {k: b.get_active() for k, b in dp.usage_buttons.items()},
-            "sensitive": {k: b.get_sensitive() for k, b in dp.usage_buttons.items()},
-            "error": win.error_label.get_text(),
-            "layout_note": dp.layout_more.get_visible(),
-            "identity": win.identity_text,
-            "problems": list(dp.errors)})
-    if report == "boot":
-        dp = win.disk_page
-        model = dp.boot_combo.get_model()
-        write_report(outdir, shot, "boot", {
-            "offered": [row[1] for row in model] if model is not None else [],
-            "active": dp.boot_combo.get_active_id(),
-            "dropdown": dp.boot_combo.get_visible(),
-            "fixed": dp.boot_fixed.get_text() if dp.boot_fixed.get_visible() else "",
-            "plan": dp.plan().get("boot")})
-    if report == "busy":
-        # How the window lived through the slow probes of this shot.
-        write_report(outdir, shot, "busy", win.busy_stats)
-    if report == "flags":
-        # What each flag button shows: an image, a badge, or a text.
-        flags = [{"locale": locale, "country": button.flag_country, "kind": flag_kind(button)}
-                 for locale, button in win.flag_buttons.items()]
-        write_report(outdir, shot, "flags", flags, indent=1)
-        if page == "keyboard":
-            win.show_page("keyboard")
+    writer = REPORTS.get(state.get("report"))
+    if writer is not None:
+        writer(win, shot, page, state, outdir)
 
 
 def render_focus(win, state):

@@ -231,6 +231,14 @@ def _caps_filesystems(caps: dict) -> List[Tuple[str, str]]:
             if isinstance(f, list) and len(f) == 2 and all(isinstance(x, str) for x in f)]
 
 
+OS_TITLES = {"freebsd": "FreeBSD", "netbsd": "NetBSD", "openbsd": "OpenBSD",
+             "dragonfly": "DragonFly", "illumos": "illumos"}
+
+
+def os_title(os_name: str) -> str:
+    return OS_TITLES.get(os_name, os_name)
+
+
 def layouts(os_name: str, detail: Optional[dict] = None) -> List[Layout]:
     return list(system(os_name, detail)["layouts"])
 
@@ -665,6 +673,8 @@ class _Validation:
         # no passphrase to ask for.
         chosen = layout(self.os_name, plan.get("layout", ""), self.detail) \
             if self.mode == "erase" and isinstance(plan.get("layout", ""), str) else None
+        if enc.get("enabled") and not self.sysinfo["encryption"]:
+            errors.append(f"encrypting the system is not offered on {os_title(self.os_name)}: turn encryption off")
         if chosen is not None and chosen.encrypted and not enc.get("enabled"):
             errors.append(f"the layout {chosen.title} encrypts: encryption has to be on")
         if enc.get("swap") and swap == 0:
@@ -906,14 +916,15 @@ def bar_before(disk: dict) -> List[dict]:
     return segs
 
 
-def bar_after(disk: dict, plan: dict, os_name: str, product: str) -> List[dict]:
+def bar_after(disk: dict, plan: dict, os_name: str, product: str,
+              detail: Optional[dict] = None) -> List[dict]:
     """The segments of a disk after the installation of the plan."""
     name = disk.get("name")
     size = int(disk.get("size_bytes", 0)) or 1
     mode = plan.get("mode")
     swap = plan.get("swap_mb", 0) * MiB
     if mode == "erase" and name in plan.get("disks", []):
-        return _after_erase(size, swap, plan, os_name, product)
+        return _after_erase(size, swap, plan, os_name, product, detail)
     if mode == "alongside" and (plan.get("alongside") or {}).get("disk") == name:
         return _after_alongside(disk, plan, product)
     if mode == "manual":
@@ -926,11 +937,12 @@ def bar_after(disk: dict, plan: dict, os_name: str, product: str) -> List[dict]:
     return bar_before(disk)
 
 
-def _after_erase(size: int, swap: int, plan: dict, os_name: str, product: str) -> List[dict]:
+def _after_erase(size: int, swap: int, plan: dict, os_name: str, product: str,
+                 detail: Optional[dict] = None) -> List[dict]:
     segs = [{"kind": "efi", "label": "EFI", "bytes": 260 * MiB}]
     if swap:
         segs.append({"kind": "swap", "label": "swap", "bytes": swap})
-    fs = dict(filesystems(os_name)).get(plan.get("filesystem", ""), "")
+    fs = dict(filesystems(os_name, detail)).get(plan.get("filesystem", ""), "")
     segs.append({"kind": "new", "label": f"{product} ({fs})".strip(),
                  "bytes": max(size - sum(s["bytes"] for s in segs), 0)})
     return segs
