@@ -214,7 +214,7 @@ class CapabilitiesTest(unittest.TestCase):
 
     def test_separately_is_refused_where_it_is_not_offered(self):
         plan = self.plan(usage="separate", data=[])
-        self.assertIn("using the disks separately is not offered on illumos: choose another way to use them",
+        self.assertIn("illumos: disks can only be used together",
                       D.validate(plan, self.report(), "illumos"))
 
     def test_swap_encryption(self):
@@ -225,7 +225,7 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertTrue(D.system("freebsd", {"disks": [], "capabilities": {
             "swap_encryption": "no"}})["swap_encryption"])
         plan = self.plan(swap_mb=2048, encryption={"enabled": True, "swap": True})
-        self.assertIn("encrypting the swap is not offered on illumos: turn swap encryption off",
+        self.assertIn("illumos: no swap encryption",
                       D.validate(plan, self.report(), "illumos"))
         bsd = {"disks": [{"name": "ada0", "size_bytes": 64 * 2 ** 30}]}
         self.assertEqual(D.validate(dict(plan, disks=["ada0"], filesystem="zfs"), bsd, "freebsd"), [])
@@ -234,7 +234,7 @@ class CapabilitiesTest(unittest.TestCase):
         plan = self.plan(encryption={"enabled": True, "swap": False})
         self.assertEqual(D.validate(plan, self.report(), "illumos"), [])
         none = dict(self.report(), capabilities=dict(self.caps(), home_encryption=""))
-        self.assertTrue(any("not offered on illumos" in e for e in D.validate(plan, none, "illumos")))
+        self.assertIn("illumos: no system encryption", D.validate(plan, none, "illumos"))
 
 
 if __name__ == "__main__":

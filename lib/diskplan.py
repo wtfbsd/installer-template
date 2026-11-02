@@ -287,6 +287,11 @@ OS_TITLES = {"freebsd": "FreeBSD", "netbsd": "NetBSD", "openbsd": "OpenBSD",
              "dragonfly": "DragonFly", "illumos": "illumos"}
 
 
+# The modes in the words of a terse refusal ("OpenBSD: no install alongside").
+MODE_WORDS = {"erase": "erase and install", "alongside": "install alongside",
+              "manual": "manual partitioning"}
+
+
 def os_title(os_name: str) -> str:
     return OS_TITLES.get(os_name, os_name)
 
@@ -554,9 +559,11 @@ def install_types(detail: dict, product: str, os_name: str = "freebsd") -> List[
          "warning": ""},
     ]
     for item in types:
-        if item["ident"] not in sysinfo["modes"]:
+        # A mode the install command does not take is not shown at all.
+        item["offered"] = item["ident"] in sysinfo["modes"]
+        if not item["offered"]:
             item["available"] = False
-            item["reason"] = item["title"] + " is " + sysinfo["not_offered"]
+            item["reason"] = f"{os_title(os_name)}: no {MODE_WORDS[item['ident']]}"
     return types
 
 
@@ -647,7 +654,7 @@ class _Validation:
         if not isinstance(mode, str) or mode not in MODES:
             errors.append("the mode is not erase, alongside or manual")
         elif mode not in system(self.os_name, self.detail)["modes"]:
-            errors.append(f"{mode} is {system(self.os_name, self.detail)['not_offered']}")
+            errors.append(f"{os_title(self.os_name)}: no {MODE_WORDS[mode]}")
         self.mode = mode
         self.sysinfo = system(self.os_name, self.detail)
         boot = plan.get("boot", "uefi")
@@ -677,7 +684,8 @@ class _Validation:
         if usage not in USAGES:
             self.errors.append("usage is not together or separate")
         elif usage not in self.sysinfo["usages"]:
-            self.errors.append(f"using the disks {USAGE_WORDS.get(usage, usage)} is not offered on {os_title(self.os_name)}: choose another way to use them")
+            ways = " or ".join(USAGE_WORDS.get(u, u) for u in self.sysinfo["usages"])
+            self.errors.append(f"{os_title(self.os_name)}: disks can only be used {ways}")
         elif self.mode != "erase":
             self.errors.append("usage is for Erase and install only")
         elif usage == "separate":
@@ -746,13 +754,13 @@ class _Validation:
         # and the data (home_encryption): the system itself is not.
         if enc.get("enabled") and not (self.sysinfo["encryption"] or
                                        self.sysinfo["home_encryption"]):
-            errors.append(f"encrypting the system is not offered on {os_title(self.os_name)}: turn encryption off")
+            errors.append(f"{os_title(self.os_name)}: no system encryption")
         if chosen is not None and chosen.encrypted and not enc.get("enabled"):
             errors.append(f"the layout {chosen.title} encrypts: encryption has to be on")
         if enc.get("swap") and swap == 0:
             errors.append("encrypted swap needs swap")
         if enc.get("swap") and not self.sysinfo["swap_encryption"]:
-            errors.append(f"encrypting the swap is not offered on {os_title(self.os_name)}: turn swap encryption off")
+            errors.append(f"{os_title(self.os_name)}: no swap encryption")
 
     def filesystem(self) -> None:
         sysinfo = self.sysinfo
@@ -905,7 +913,7 @@ class _Validation:
             data = []
         self.data = data
         if data and not system(self.os_name, self.detail)["data_pools"]:
-            errors.append("data pools are " + system(self.os_name, self.detail)["not_offered"])
+            errors.append(f"{os_title(self.os_name)}: no data disks")
         data_mounts: List[str] = []
         for i, pool in enumerate(data, start=1):
             self.data_pool(i, pool, data_mounts)
@@ -1004,7 +1012,7 @@ def bar_after(disk: dict, plan: dict, os_name: str, product: str,
             return _after_manual(size, parts)
     for pool in plan.get("data", []):
         if name in pool.get("disks", []):
-            return [{"kind": "data", "label": f"{pool.get('name')} ({pool.get('mount')})", "bytes": size}]
+            return [{"kind": "data", "label": data_words(pool, os_name, detail), "bytes": size}]
     return bar_before(disk)
 
 
@@ -1076,11 +1084,21 @@ def actions(plan: dict, detail: dict, os_name: str, product: str) -> List[Tuple[
     elif mode == "manual":
         out += _manual_actions(plan)
     for pool in plan.get("data", []):
-        item = layout(os_name, pool.get("layout", ""), detail)
         for name in pool.get("disks", []):
-            out.append((name, f"erase, data pool {pool.get('name')} "
-                        f"({item.title if item else pool.get('layout')}) on {pool.get('mount')}", True))
+            out.append((name, f"erase, {data_words(pool, os_name, detail)}", True))
     return out
+
+
+def data_words(pool: dict, os_name: str, detail: Optional[dict] = None) -> str:
+    """A data disk in few words: "FFS on /data", or for ZFS "ZFS pool tank
+    (Mirror) on /tank" (a pool only where there is one)."""
+    fs = pool.get("filesystem", "")
+    title = dict(filesystems(os_name, detail)).get(fs, fs)
+    if fs == "zfs":
+        item = layout(os_name, pool.get("layout", ""), detail)
+        return (f"{title} pool {pool.get('name')} ({item.title if item else pool.get('layout')}) "
+                f"on {pool.get('mount')}")
+    return f"{title} on {pool.get('mount')}"
 
 
 def _erase_actions(plan: dict, system_of: tuple, storage: tuple) -> List[Tuple[str, str, bool]]:

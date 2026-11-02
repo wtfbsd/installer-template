@@ -10,6 +10,8 @@ optional data disks, and the disk utilities.  The page builds a disk plan
 (lib/diskplan.py) and checks it with the same rules the root helper uses.
 """
 
+import re
+
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -17,6 +19,7 @@ from gi.repository import Gtk, Pango  # noqa: E402
 
 import diskplan as D  # noqa: E402
 from gui_lists import not_a_list, scrolled  # noqa: E402
+import gui_reveal  # noqa: E402
 
 CSS = b"""
 .mode-card { padding: 10px 14px; border: 2px solid alpha(#000000, 0.15);
@@ -91,6 +94,12 @@ def bar(segments, width=BAR_WIDTH, captions=True):
 
 # The height of one disk of the Before and after box (three lines).
 BAR_DISK_PX = 76
+# The words every refusal of the disk section starts with (lib/adapter.sh
+# cannot_tell), what the page says to do, and the tools a reason may start
+# with (kept in lower case, the way they are typed).
+REFUSAL_PREFIX = "cannot list disks:"
+REFUSAL_STEP = "Check the disk tools, then Look for disks again."
+TOOL_WORDS = ("zpool", "zfs", "mount", "glabel", "readlink", "dkctl", "sysctl", "diskinfo")
 BOOT_TITLES = {"uefi": "UEFI", "bios": "Legacy BIOS"}
 
 
@@ -118,8 +127,8 @@ class DiskPage:
 
     def build(self):
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        # Two disks or more: together or separately?  Nothing is chosen
-        # for the user.
+        # Two disks or more: together or separately?  The first way the
+        # system offers is chosen (default_usage); the person may change it.
         self.usage_area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.usage_area.pack_start(lbl("This machine has more than one disk. How should "
                                        f"{self.wiz.product} use them?", "lead"), False, False, 0)
@@ -160,12 +169,14 @@ class DiskPage:
         head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         head.pack_start(lbl("Disks (the disk the live system runs from is not listed)",
                             "section-title"), True, True, 0)
+        self.head_buttons = {}
         for text, handler in (("Health details", self.on_health),
                               ("Secure erase…", self.on_secure_erase),
-                              ("Look for disks again", lambda *_a: self.load())):
+                              ("Look for disks again", self.on_look_again)):
             button = Gtk.Button(label=text)
             button.connect("clicked", handler)
             head.pack_start(button, False, False, 0)
+            self.head_buttons[text] = button
         self.table_area.pack_start(head, False, False, 0)
         self.store = Gtk.ListStore(bool, str, str, str, str, str, str, str, str)
         self.view = Gtk.TreeView(model=self.store)
@@ -198,7 +209,18 @@ class DiskPage:
         # Many disks: at most seven rows, the rest scrolls.
         table = scrolled(self.view, 3, 5, name="disks")
         table.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.table_sw = table
         self.table_area.pack_start(table, False, False, 0)
+        # Where the list would be when the disks could not be read: why,
+        # and what to do (the message of the backend).
+        self.table_message = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.message_lines = [lbl("No disk can be offered", "section-title"),
+                              lbl("", "error-text"), lbl("")]
+        for line in self.message_lines:
+            line.set_selectable(True)
+            self.table_message.pack_start(line, False, False, 0)
+        self.table_message.set_no_show_all(True)
+        self.table_area.pack_start(self.table_message, False, False, 0)
         self.warnings = lbl("", "warn-text")
         page.pack_start(self.warnings, False, False, 0)
 
@@ -353,6 +375,10 @@ class DiskPage:
             return
         types = {t["ident"]: t for t in D.install_types(self.detail, self.wiz.product, self.os)}
         for ident, info in types.items():
+            # Not offered by the install command: not shown at all.
+            self.show_only(self.mode_buttons[ident], info["offered"])
+            if self.mode_buttons[ident].get_parent() is not None:
+                self.show_only(self.mode_buttons[ident].get_parent(), info["offered"])
             self.type_line[ident].set_text(info["line"])
             self.type_reason[ident].set_text(f"Not possible: {info['reason']}" if info["reason"] else "")
             self.type_warning[ident].set_text(info["warning"])
@@ -416,6 +442,7 @@ class DiskPage:
         self.separate_area.set_visible(separate)
         self.layout_title.set_visible(not separate)
         self.layout_grid.set_visible(not separate)
+        self.hide_unusable()
 
     def build_erase(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -455,13 +482,12 @@ class DiskPage:
         arow += 1
         self.enc_check = Gtk.CheckButton(label="")
         grid.attach(self.enc_check, 0, row, 3, 1)
-        self.enc_note = lbl("", "muted")
-        grid.attach(self.enc_note, 0, row + 1, 3, 1)
-        row += 2
+        row += 1
         self.pass1 = Gtk.Entry(visibility=False, placeholder_text="Passphrase")
         self.pass2 = Gtk.Entry(visibility=False, placeholder_text="Confirm the passphrase")
         for entry in (self.pass1, self.pass2):
             entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+            gui_reveal.add_eye(entry)
             entry.connect("changed", lambda *_a: self.refresh_strength())
         self.strength = Gtk.LevelBar(min_value=0, max_value=4)
         self.strength.set_size_request(160, 10)
@@ -626,35 +652,30 @@ class DiskPage:
 
     def fill_encryption(self):
         """The encryption of the system, when the install command offers
-        one (its name in the capabilities); else no box, no passphrase,
-        and one line that says so."""
+        one (its name in the capabilities); else no box and no passphrase,
+        and nothing about it on the page (what a system does not offer is
+        in the README, not in the installer)."""
         sysinfo = D.system(self.os, self.detail)
         name, home = sysinfo["encryption"], sysinfo["home_encryption"]
         offered = bool(name or home)
         if not offered and self.enc_check.get_active():
             self.enc_check.set_active(False)
-        label, note = self.encryption_texts(name, home)
-        self.enc_check.set_label(label)
-        self.enc_note.set_text(note)
+        self.enc_check.set_label(self.encryption_label(name, home))
         self.show_only(self.enc_check, offered)
-        self.show_only(self.enc_note, bool(note))
         self.fill_swap_encryption(bool(sysinfo["swap_encryption"]))
         for widget in self.pass_row:
             self.show_only(widget, offered)
 
-    def encryption_texts(self, name, home):
-        """The label of the box and the line under it: the system (name),
-        or the home directories and the data only (home), or neither."""
-        where = D.os_title(self.os)
+    @staticmethod
+    def encryption_label(name, home):
+        """The label of the box: the system (name), or the home directories
+        and the data only (home, illumos), or none."""
         if name:
-            return f"Encrypt the system ({name}); the passphrase is asked at every start", ""
+            return f"Encrypt the system ({name}); the passphrase is asked at every start"
         if home:
-            # The system itself is not encrypted there (illumos): the home
-            # directories and the data are.
             return (f"Encrypt the home directories and the data ({home}); "
-                    "the passphrase is asked at every start",
-                    f"The system itself is not encrypted on {where}.")
-        return "", f"Encrypting the system is not offered on {where}."
+                    "the passphrase is asked at every start")
+        return ""
 
     def fill_swap_encryption(self, offered):
         """Encrypted swap only where the install command makes it (the swap
@@ -687,10 +708,74 @@ class DiskPage:
         self.boot_fixed.set_no_show_all(not single)
         self.boot_fixed.set_visible(single)
 
+    def default_usage(self):
+        """With two disks or more the first way the system offers (together)
+        is chosen, in the model and on its card: the page shows the disks
+        at once, and the person may change it."""
+        if self.usage is None and self.asks_usage():
+            offered = D.system(self.os, self.detail)["usages"]
+            self.usage_buttons[offered[0]].set_active(True)
+
+    def on_look_again(self, *_args):
+        """Read the disks again, now (not the report of this visit)."""
+        self.wiz.forget_disks()
+        self.load()
+
+    @staticmethod
+    def probe_message(err):
+        """(reason, next step) of a refusal of the backend: the reason as a
+        short phrase (without the words every refusal starts with or an
+        exit status) and what to do; the whole text when it is not a
+        refusal, without a next step."""
+        parts = [p.strip() for p in err.split("installer-backend:") if p.strip()]
+        reason = parts[0] if parts else err.strip()
+        step = ""
+        if reason.startswith(REFUSAL_PREFIX):
+            reason = re.sub(r" \(exit \d+\)$", "", reason[len(REFUSAL_PREFIX):].strip())
+            step = REFUSAL_STEP
+        if reason and not reason.endswith("."):
+            reason += "."
+        return reason, step
+
+    def show_probe_error(self):
+        """No disk could be read: one message in place of the list — a
+        heading, the reason, what to do — and nothing that cannot be used."""
+        failed = bool(self.probe_error)
+        reason, step = self.probe_message(self.probe_error) if failed else ("", "")
+        if reason.split(" ", 1)[0] not in TOOL_WORDS:
+            reason = reason[:1].upper() + reason[1:]
+        self.message_lines[1].set_text(reason)
+        self.message_lines[2].set_text(step)
+        self.message_lines[2].set_visible(bool(step))
+        self.table_message.set_visible(failed)
+        for line in self.message_lines[:2]:
+            line.set_visible(failed)
+        self.table_sw.set_visible(not failed)
+        for name in ("Health details", "Secure erase…"):
+            self.head_buttons[name].set_visible(not failed)
+        self.hide_unusable()
+
+    def hide_unusable(self):
+        """Refused: the parts of the page that need a disk are hidden."""
+        if not getattr(self, "probe_error", ""):
+            return
+        for widget in (self.usage_area, self.mode_stack, self.bars_area):
+            widget.set_visible(False)
+
     def load(self):
         """Read the report of the disks again and fill the page."""
         self.detail, err = self.wiz.disk_report()
+        # The disks could not be read at all (the backend refused): the
+        # page says why where the list would be, and nothing can be chosen.
+        self.probe_error = err if err and not self.detail.get("disks") else ""
+        self.show_probe_error()
         self.fill_capabilities()
+        # A mode the install command does not take is never the mode (with
+        # one mode the Installation type page is not shown at all).
+        modes = D.system(self.os, self.detail)["modes"]
+        if self.mode not in modes and modes[0] in getattr(self, "mode_buttons", {}):
+            self.mode_buttons[modes[0]].set_active(True)
+        self.default_usage()
         index = D.disk_index(self.detail)
         self.selected = [n for n in self.selected if n in index]
         if not self.selected and index:
@@ -708,7 +793,7 @@ class DiskPage:
             self._swap_set = True
         self.fill_regions()
         self.fill_data()
-        if err:
+        if err and not self.probe_error:
             self.problems.set_text(err)
         self.refresh()
 
@@ -837,12 +922,6 @@ class DiskPage:
             row.pack_start(combo, False, False, 0)
             row.pack_start(mount, False, False, 0)
             self.separate_list.pack_start(row, False, False, 0)
-        if not D.data_pools_offered(self.os, self.detail) and self.separate:
-            # Said, not greyed: why the other disks can only be kept.
-            self.separate_list.pack_start(
-                lbl("Formatting the other disks as drives is "
-                    f"{D.system(self.os, self.detail)['not_offered']}; they are left as they are.",
-                    "muted"), False, False, 0)
         self.separate_area.show_all()
 
     def on_toggle(self, _renderer, path):
@@ -1149,6 +1228,12 @@ class DiskPage:
         self.bars_sw.set_min_content_height(max(two, BAR_DISK_PX))
 
     def refresh_problems(self):
+        if getattr(self, "probe_error", ""):
+            # Shown where the list would be; Next stays refused.
+            self.errors = [f"No disk can be offered: {self.probe_message(self.probe_error)[0]}"]
+            self.problems.set_text("")
+            self.warnings.set_text("")
+            return
         if self.asks_usage() and self.usage is None:
             self.errors = ["Choose whether to use the disks together or separately."]
             self.problems.set_text("")

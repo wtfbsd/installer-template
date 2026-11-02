@@ -1,8 +1,15 @@
 # Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
 #
-# The disk fixture the pictures of each system are drawn with
-# (tools/render-screenshots.sh): an illumos picture shows illumos disks
-# (cXtYdZ, the captured report), never the ada0 of another system.
-# OS=fixture under tests/fixtures/disks; a system not named uses default.
-illumos=captured-illumos.conf
+# The fixture the pictures of each system are drawn with
+# (tools/render-screenshots.sh): its disks, hardware and network adapters,
+# from the captured outputs of that system, never the devices of another
+# (an OpenBSD picture shows sd1 and vio0, never nda0 or em0).
+# OS=fixture [min_disk_gb=N] under tests/fixtures/disks; a system not named
+# uses default.  min_disk_gb: the captured disks are the small disks of
+# the capture machine, so the pictures do not show them as too small.
+freebsd=dual-os.conf
+netbsd=render-netbsd.conf min_disk_gb=1
+openbsd=render-openbsd.conf min_disk_gb=1
+dragonfly=render-dragonfly.conf min_disk_gb=1
+illumos=captured-illumos.conf min_disk_gb=1
 default=dual-os.conf

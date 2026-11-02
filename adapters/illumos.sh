@@ -37,12 +37,10 @@ os_disk_rows() {
 
 os_excluded_disks() {
 	# The medium and the pool of the root (lib/illumos.py excluded), or
-	# exit 3 when they cannot be told: nothing is then offered.  A
-	# rehearsal on captures reads the zpool status of the capture.
-	_status='' _zrc=1 _reh=''
-	if [ -n "${rehearsal}" ]; then
-		_reh=--rehearsal
-	fi
+	# cannot_tell when they cannot be told: nothing is then offered (a
+	# rehearsal follows the rule of cannot_tell).  A rehearsal on captures
+	# reads the zpool status of the capture.
+	_status='' _zrc=1
 	if [ -n "${rehearsal}" ] && _cap=$(kv_get "${rehearsal}" DISKS_CAPTURE) && [ -n "${_cap}" ]; then
 		_cap=${_cap%%:*}
 		case "${_cap}" in
@@ -60,9 +58,15 @@ os_excluded_disks() {
 	case "${_zrc}" in
 		''|*[!0-9]*) _zrc=1 ;;
 	esac
+	_why=$(mktemp "${tmp_root}/wtfbsd-excluded.XXXXXX") || cannot_tell 'cannot create a temporary file'
 	_out=$(printf '%s\n' "${_status}" |
-		python3 -I "${root}/lib/illumos.py" excluded "${INSTALLER_MNTTAB:-/etc/mnttab}" "${_zrc}" ${_reh}) ||
-		return 3
+		python3 -I "${root}/lib/illumos.py" excluded "${INSTALLER_MNTTAB:-/etc/mnttab}" "${_zrc}" \
+		2>"${_why}") || {
+		_reason=$(head -n 1 "${_why}")
+		rm -f "${_why}"
+		cannot_tell "${_reason:-lib/illumos.py excluded failed}"
+	}
+	rm -f "${_why}"
 	printf '%s\n' "${_out}" | tr '\n' ' '
 }
 
@@ -70,6 +74,18 @@ os_interfaces() {
 	[ -x /usr/sbin/dladm ] || die 3 'reading the network adapters needs dladm'
 	/usr/sbin/dladm show-phys -p -o link 2>/dev/null | python3 -I "${root}/lib/illumos.py" links
 }
+
+# The keymaps of illumos (the names of kbd_layouts of OpenIndiana 2026.10,
+# tests/fixtures/illumos/kbd_layouts), for a system whose table cannot be
+# read.
+KEYMAPS_KNOWN="Albanian Arabic Belarusian Belgian Brazilian Bulgarian
+Canadian-Bilingual Croatian Czech Danish Dutch Dvorak Estonian Finnish
+French French-Canadian Hungarian German Greek Icelandic Italian
+Japanese-type6 Japanese Korean Latin-American Lithuanian Latvian
+Macedonian Malta_UK Malta_US Norwegian Polish Portuguese Romanian
+Russian Serbia-And-Montenegro Slovak Slovenian Spanish Swedish
+Swiss-French Swiss-German Traditional-Chinese TurkishF TurkishQ
+UK-English US-English"
 
 os_keymaps() {
 	_layouts=/usr/share/lib/keytables/type_6/kbd_layouts
@@ -79,7 +95,7 @@ os_keymaps() {
 		done
 		return 0
 	fi
-	keymap_rows US-English UK-English German French Spanish Italian Swedish Japanese
+	keymaps_known "${_layouts}" ${KEYMAPS_KNOWN}
 }
 
 # os_layouts — the same as "<slug>-install --capabilities" of the illumos

@@ -52,7 +52,8 @@ each says so.
 | ![Disk](../docs/screenshots/05-disk.png) | ![Users](../docs/screenshots/06-users.png) |
 | ![Network](../docs/screenshots/07-network.png) | ![Additional software](../docs/screenshots/08-additional-software.png) |
 | ![Summary](../docs/screenshots/09-summary.png) | ![Installing](../docs/screenshots/10-installing.png) |
-| ![Hardware and drivers](../docs/screenshots/11-hardware-and-drivers.png) | ![Disk at 1920x1080](../docs/screenshots/large-disk.png) |
+| ![Hardware and drivers](../docs/screenshots/11-hardware-and-drivers.png) | ![Finished](../docs/screenshots/12-finished.png) |
+| ![Disk at 1920x1080](../docs/screenshots/large-disk.png) | |
 
 Before the first page the checks of the text front end run.  A machine
 without a disk, or without a network adapter, gets the "Unfortunately"

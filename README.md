@@ -156,8 +156,7 @@ and `scanpci`; its zone table is under `/usr/share/lib/zoneinfo`
 (`/.cdrom`) and the disks of the pool the root is in (`/etc/mnttab`,
 `zpool status`), and when it cannot tell them (`zpool status` fails or
 names no disk of that pool, a live root without its medium, a root on
-anything else) it offers no disk at all (exit 3, "cannot tell which disks
-hold the running system").  Not capture-tested yet, written after the
+anything else) it offers no disk at all (exit 3, see Fail closed below).  Not capture-tested yet, written after the
 documented formats: `/etc/mnttab`, `dladm scan-wifi` and the columns of
 `tab/zone_sun.tab`.
 
@@ -174,6 +173,34 @@ HAMMER2 label is followed to its disk.  An array the system assembled by
 itself from members it found on the disks (NetBSD RAIDframe `raidN`,
 OpenBSD softraid `sdN`, the hook `os_assembled_volumes`) is not offered
 either: its members are, shown as members of it.
+
+**Fail closed.**  When an adapter cannot tell which disks hold the running
+system, the installation media or the live medium — the tool it reads them
+with fails (`mount`, `mount -p`, `zpool status`, `sysctl hw.disknames`), or
+a label (`glabel`), a DUID, a `/dev/serno` or `part-by-label` link
+(`readlink`), a wedge (`dkctl`) or a pool cannot be followed to its disk —
+the disk section refuses: exit 3 and no disk is offered.  The backend says
+it in two short lines, "cannot list disks: <reason>" (`cannot_tell` in
+`lib/adapter.sh`, e.g. "cannot list disks: zpool status failed (exit 1)")
+and "no disk offered; check the disk tools".  The Disk page shows "No disk
+can be offered", the reason ("zpool status failed.") and "Check the disk
+tools, then Look for disks again." where the list would be, hides what
+needs a disk, and Look for disks again reads the disks anew.  Every adapter gathers what the running system
+needs in one place (`boot_devices`: the root, the media, the live medium)
+and only follows each device to its disk itself.  A
+device that is followed and is simply not one of the disks (a memory disk,
+an optical drive) is fine, and so is nothing mounted on the media mount
+point.  A rehearsal on a machine that is not the target only reports what
+it cannot tell, unless its fixture has `EXCLUSION=strict`.
+
+**The live medium.**  A live system names the device it was started from in
+`/var/run/wtfbsd-live-medium`, written early at its start: a regular file
+of root, not writable by others, one line, the name of a device
+(`/dev/da0`, `cd0`, `/dev/iso9660/LIVE`), followed like any other device
+and never offered.  A file that is there but cannot be trusted refuses the
+disk section.  With `LIVE_MEDIUM_REQUIRED=yes` a root in memory without the
+file refuses it too; each template turns the setting on once it writes the
+file and the capture of its live start passes.
 
 ### What is on the disks now
 
@@ -286,15 +313,30 @@ stops the installation with an `ERROR` line and the command never runs.
   is not usable falls back to `os_layouts` (or the built-in table) without
   a word.  The Disk page offers only the boot modes listed (a single one is
   shown as a text), the filesystems and the layouts listed, and an
-  `encryption` of `""` means the system cannot be encrypted: no box, no
-  passphrase, a line that says so, and a plan with `encryption.enabled`
-  is refused — unless `home_encryption` names how the home directories
-  and the data are encrypted (illumos: `ZFS native`): then the box says
-  that, a line says the system itself is not encrypted, and
-  `encryption.enabled` of the plan means the home directories and the
-  data.  `usages` lists how two disks or more may be used; without it
-  both are offered; with one, the question is not asked and a plan with
-  the other is refused.
+  `encryption` of `""` means the system cannot be encrypted: no box and no
+  passphrase, and a plan with `encryption.enabled` is refused ("NetBSD: no
+  system encryption") — unless `home_encryption` names how the home
+  directories and the data are encrypted (illumos: `ZFS native`): then the
+  box says that, and `encryption.enabled` of the plan means the home
+  directories and the data.  `swap_encryption` false: no "Encrypt the
+  swap", and a plan with it is refused ("illumos: no swap encryption").
+  `usages` lists how two disks or more may be used; without it both are
+  offered, the first chosen; with one, the question is not asked and a
+  plan with the other is refused ("illumos: disks can only be used
+  together").  `modes` with one mode: the Installation type page is not
+  shown at all; a card of a mode that is not offered is never shown.
+
+  What is not offered is never shown, and the pages say nothing about it.
+  This is what each system's install command does not offer (its built-in
+  table, lib/diskplan.py; the install command's own `--capabilities` win):
+
+  | System | Not offered |
+  | --- | --- |
+  | FreeBSD | — |
+  | NetBSD | — |
+  | OpenBSD | install alongside, manual partitioning |
+  | DragonFly | — |
+  | illumos | install alongside, manual partitioning, data disks, disks used separately, system encryption (home and data only, ZFS native), swap encryption |
 
 ### The disk plan
 
@@ -365,7 +407,20 @@ all: it puts the same file next to the configuration file of the installer and
 calls it `rehearsal.conf`.  The environment variable wins when it is set.
 
 `KEYMAPS` and `ZONES` (comma separated names) give a rehearsal lists of its
-own; without them a rehearsal offers the short lists of the sections.  A
+own; without them a rehearsal offers the full lists: every zone of the
+installer's table (`lib/zone1970.tab`, the IANA tzdb, public domain) and
+the keymaps of the system.  On a machine the zone table and the keymaps of
+the system are read; when they cannot be, that is a broken image: the log
+gets a warning and the installer offers every zone of its own table and
+the full keymap list it knows for that system (FreeBSD `share/vt/keymaps`,
+DragonFly `share/syscons/keymaps`, the wscons encodings of NetBSD and
+OpenBSD, the `kbd_layouts` of illumos), never a short choice.
+
+The pictures (`tools/render-screenshots.sh`) of each system are drawn with
+that system's own captured disks, hardware and network adapters
+(`tools/render-fixtures`).  Every password and passphrase field has an eye
+(the icon at its end, or Ctrl+Shift+H in the field) that shows and hides
+it; leaving the page hides it again.  A
 rehearsed installation prints the same `PROGRESS` lines a real one does.
 
 The FreeBSD adapter reads the disks from the machine like this:
@@ -412,6 +467,7 @@ anchored pattern before it is used.
 | `DEFAULT_TZ` | `^[A-Za-z][A-Za-z0-9+_-]*(/[A-Za-z0-9+_-]+)*$` | the time zone the installer offers first |
 | `PRODUCT_LOGO` (optional) | an absolute path of plain names | an image the graphical front end and the menu entry show |
 | `MIN_DISK_GB` (optional) | `^[1-9][0-9]{0,3}$` | the smallest disk the system is installed to, in GB (16 when not set) |
+| `LIVE_MEDIUM_REQUIRED` (optional) | `^(yes\|no)$` | `yes`: a live system whose root is in memory (md, rd, tmpfs, unionfs) must name its medium in `/var/run/wtfbsd-live-medium`, or no disk is offered; `no` (the default) until the template writes that file and its live-boot capture passes |
 
 The minimum is never below what the media needs.  The adapter verb
 `image-size` reports the bytes the installed system takes: the hook

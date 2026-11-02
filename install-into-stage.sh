@@ -122,7 +122,7 @@ product=$(conf_get PRODUCT_NAME)
 # system the image is for (no wheel on illumos).
 . "${here}/lib/osinfo.sh"
 os=$(conf_get OS)
-unknown_os="no owner group is known for the system '${os}': set OS to freebsd, netbsd, openbsd, dragonfly or illumos, or add the system to lib/osinfo.sh"
+unknown_os="unknown OS '${os}' (add it to lib/osinfo.sh)"
 root_group=$(os_root_group "${os}") || die "${unknown_os}"
 root_gid=$(os_root_gid "${os}") || die "${unknown_os}"
 logo=$(conf_get PRODUCT_LOGO 2>/dev/null) || logo=''

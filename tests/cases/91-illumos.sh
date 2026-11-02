@@ -69,15 +69,27 @@ for kind in fails nomembers; do
 		nomembers) printf '  pool: rpool\n state: ONLINE\nconfig:\n\n\tNAME STATE\n\trpool ONLINE\n' \
 			> "${tmp}/cap-${kind}/zpool_status.out" ;;
 	esac
+	# A rehearsal refuses only with EXCLUSION=strict (cannot_tell).
 	sed "s|^DISKS_CAPTURE=.*|DISKS_CAPTURE=${tmp}/cap-${kind}|" "${fixture}" > "${tmp}/${kind}.conf"
+	printf 'EXCLUSION=strict\n' >> "${tmp}/${kind}.conf"
 	cp tests/fixtures/disks/captured-illumos-sniffs.json "${tmp}/"
 	rc=0
 	out=$(INSTALLER_CONF="${conf}" INSTALLER_ADAPTER_FIXTURE="${tmp}/${kind}.conf" \
 		INSTALLER_MNTTAB="${root}/tests/fixtures/illumos/mnttab-installed" \
 		"${backend}" disk probe 2>&1) || rc=$?
 	check "zpool status ${kind}: the disk section is refused (exit 3), no disk offered" \
-		"3 yes no" "${rc} $(case "${out}" in *"cannot tell which disks hold the running system"*) echo yes ;; *) echo no ;; esac) $(case "${out}" in *'"disks":[{'*) echo yes ;; *) echo no ;; esac)"
+		"3 yes no" "${rc} $(case "${out}" in *"cannot list disks: "*) echo yes ;; *) echo no ;; esac) $(case "${out}" in *'"disks":[{'*) echo yes ;; *) echo no ;; esac)"
 done
+
+# The same rehearsal without EXCLUSION=strict only says what it cannot
+# tell (the rule of cannot_tell, the same for every system).
+sed "s|^DISKS_CAPTURE=.*|DISKS_CAPTURE=${tmp}/cap-fails|" "${fixture}" > "${tmp}/lenient.conf"
+rc=0
+out=$(INSTALLER_CONF="${conf}" INSTALLER_ADAPTER_FIXTURE="${tmp}/lenient.conf" \
+	INSTALLER_MNTTAB="${root}/tests/fixtures/illumos/mnttab-installed" \
+	"${backend}" disk probe 2>&1) || rc=$?
+check "a rehearsal (not strict) that cannot tell: it says so and goes on" "0 yes" \
+	"${rc} $(case "${out}" in *"cannot list disks: zpool status failed (exit 1)"*) echo yes ;; *) echo no ;; esac)"
 
 # The hardware of the captured outputs.
 out=$(INSTALLER_CONF="${conf}" INSTALLER_ADAPTER_FIXTURE="${fixture}" adapters/illumos.sh hardware)
@@ -158,7 +170,7 @@ r() {
 }
 # The disks of an illumos picture are those of tools/render-fixtures (the
 # pictures of the documentation are drawn with it): illumos disks.
-ill_fixture=$(sed -n 's/^illumos=//p' tools/render-fixtures 2>/dev/null) || ill_fixture=three-disks.conf
+ill_fixture=$(sed -n 's/^illumos=\([^ ]*\).*/\1/p' tools/render-fixtures 2>/dev/null) || ill_fixture=three-disks.conf
 check "the pictures of illumos are drawn with the captured illumos disks" captured-illumos.conf "${ill_fixture}"
 check_contains "tools/render-screenshots.sh draws with the disks of the system" \
 	'INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/${fixture}"' "$(cat tools/render-screenshots.sh)"
@@ -172,8 +184,7 @@ check "illumos: the separate card is hidden" "{'together': True, 'separate': Fal
 check "illumos: the box encrypts the home directories and the data" \
 	"Encrypt the home directories and the data (ZFS native); the passphrase is asked at every start" \
 	"$(r illumos 'r["enc_label"]')"
-check "illumos: one line says the system itself is not encrypted" \
-	"The system itself is not encrypted on illumos." "$(r illumos 'r["enc_note"]')"
+check "illumos: no line about what is not offered or not encrypted" "" "$(r illumos 'r["enc_note"]')"
 check "illumos: the passphrase is asked for" True "$(r illumos 'r["passphrase_shown"]')"
 check "illumos: no Encrypt the swap (its install command refuses it)" False "$(r illumos 'r["swap_enc_shown"]')"
 # The Before and after box at 1024x768: every "after" bar shows whole,
@@ -191,6 +202,30 @@ check "1024x768: the after bar shows whole, in its box and on the screen as the 
 ok = [all(b[k] for b in r) for k in ("inside_box", "inside_page", "inside_view")]
 print(len(r), *ok, r if not all(ok) else "")' \
 	"${tmp}/bars/bars.bars.json" 2>&1 | sed 's/ *$//')"
+# The Disk page when the disks cannot be told: the reason and what to do,
+# where the list would be; Next is refused with the reason.
+printf '%s\n' '[{"name": "refused", "page": "disk", "full": false, "state": {"mode": "erase", "report": "probe", "press_next": true, "look_again": true}}]' \
+	> "${tmp}/refused.json"
+mkdir -p "${tmp}/refused"
+GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${tmp}" \
+	INSTALLER_CONF="${conf}" INSTALLER_MNTTAB="${root}/tests/fixtures/illumos/mnttab-installed" \
+	INSTALLER_ADAPTER_FIXTURE="${tmp}/fails.conf" \
+	bin/installer-gui --render "${tmp}/refused.json" --size 1024x768 --screenshots "${tmp}/refused" \
+	> "${tmp}/refused.log" 2>&1 || cat "${tmp}/refused.log" >&2
+p() {
+	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+		"${tmp}/refused/refused.probe.json" "$1" 2>&1
+}
+check "refused disks: one message where the list would be (heading, reason, next step)" \
+	"['No disk can be offered', 'zpool status failed.', 'Check the disk tools, then Look for disks again.']" \
+	"$(p 'r["lines"]')"
+check "refused disks: only the message and Look for disks again are shown" \
+	"{'list': False, 'usage': False, 'layout': False, 'before_after': False, 'health': False, 'secure_erase': False, 'look_again': True}" \
+	"$(p 'r["shown"]')"
+check "refused disks: no other problem lines" "" "$(p 'r["problems"]')"
+check "refused disks: Look for disks again reads the disks anew" True "$(p 'r["reread"]')"
+check "refused disks: Next says why" \
+	"No disk can be offered: zpool status failed." "$(p 'r["error"]')"
 sed 's/^OS=.*/OS=freebsd/' "${conf}" > "${tmp}/freebsd.conf"
 render freebsd "${tmp}/freebsd.conf" three-disks.conf
 check "FreeBSD (no usages): both cards, the question asked" "True {'together': True, 'separate': True}" \

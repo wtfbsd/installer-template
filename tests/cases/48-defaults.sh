@@ -31,7 +31,7 @@ rc=0
 INSTALLER_ANSWERS="${answers}" "${backend}" timezone validate >/dev/null 2>&1 || rc=$?
 check_rc "the configured time zone is accepted" 0 "${rc}"
 
-printf 'KEYMAP=uk\n' > "${answers}"
+printf 'KEYMAP=xx.unknown\n' > "${answers}"
 rc=0
 INSTALLER_ANSWERS="${answers}" "${backend}" keyboard validate >/dev/null 2>&1 || rc=$?
 check_rc "a layout that is not known is refused" 2 "${rc}"

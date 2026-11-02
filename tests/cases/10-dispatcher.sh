@@ -64,6 +64,14 @@ for system in freebsd netbsd openbsd dragonfly; do
 	for section in disk network keyboard timezone users; do
 		rc=0
 		out=$(INSTALLER_CONF="${conf}" "${backend}" "${section}" probe 2>&1) || rc=$?
+		# On this machine (not that system) the disk section may not be
+		# able to tell which disks hold the running system: it then
+		# refuses (exit 3), never offers them.
+		if [ "${section}" = disk ] && [ "${rc}" = 3 ]; then
+			case "${out}" in
+				*"cannot list disks: "*) rc=0 ;;
+			esac
+		fi
 		check_rc "the ${system} adapter answers the ${section} probe" 0 "${rc}"
 		check_absent "the ${system} adapter is written (${section})" \
 			"not implemented" "${out}"

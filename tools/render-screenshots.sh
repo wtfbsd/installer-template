@@ -22,8 +22,9 @@
 # release of its template (RELEASE_BASES of lib/identity.py), whatever BASE
 # the sample identity file names.
 #
-# The disks are those of the system too: tools/render-fixtures names the
-# disk fixture of each system (illumos: the captured c2t0d0 and c4t0d0).
+# The disks, the hardware and the network adapters are those of the system
+# too: tools/render-fixtures names the fixture of each system, made from
+# its captured outputs (OpenBSD: sd1, sd2, vio0; illumos: c2t0d0, c4t0d0).
 #
 # The PNGs are made smaller with optipng, oxipng or pngcrush when one of
 # them is installed.  Needs python3 with PyGObject (GTK 3) and broadwayd.
@@ -79,8 +80,22 @@ conf_os=$(sed -n 's/^OS=//p' "${INSTALLER_CONF:-${root}/installer.conf}" | head 
 case "${conf_os}" in
 	''|*[!a-z]*) conf_os=default ;;
 esac
-fixture=$(sed -n "s/^${conf_os:-default}=//p" "${root}/tools/render-fixtures" | head -n 1)
-[ -n "${fixture}" ] || fixture=$(sed -n 's/^default=//p' "${root}/tools/render-fixtures" | head -n 1)
+entry=$(sed -n "s/^${conf_os:-default}=//p" "${root}/tools/render-fixtures" | head -n 1)
+[ -n "${entry}" ] || entry=$(sed -n 's/^default=//p' "${root}/tools/render-fixtures" | head -n 1)
+fixture=${entry%% *}
+case "${fixture}" in
+	''|*[!A-Za-z0-9._-]*) die "not a fixture in tools/render-fixtures: ${fixture}" ;;
+esac
+# The configuration the pictures are drawn with: the one given, and for
+# the small disks of a capture machine the minimum of the entry.
+conf="${work}/installer.conf"
+cp "${INSTALLER_CONF:-${root}/installer.conf}" "${conf}"
+min=$(printf '%s\n' "${entry}" | sed -n 's/.* min_disk_gb=\([0-9][0-9]*\).*/\1/p')
+if [ -n "${min}" ]; then
+	grep -v '^MIN_DISK_GB=' "${conf}" > "${conf}.new" || :
+	printf 'MIN_DISK_GB=%s\n' "${min}" >> "${conf}.new"
+	mv "${conf}.new" "${conf}"
+fi
 
 # render <spec> <size> <identity file>
 render() {
@@ -88,6 +103,7 @@ render() {
 	rm -rf "${shots}" && mkdir "${shots}"
 	GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${work}" \
 		INSTALLER_ARTWORK="${root}/tests/fixtures/artwork" INSTALLER_IDENTITY="$3" \
+		INSTALLER_CONF="${conf}" \
 		INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/${fixture}" INSTALLER_MNTTAB=/nonexistent \
 		"${root}/bin/installer-gui" --render "$1" --size "$2" --screenshots "${shots}" \
 		> "${work}/render.log" 2>&1 || { cat "${work}/render.log" >&2; die "cannot render $1"; }

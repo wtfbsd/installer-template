@@ -17,19 +17,20 @@ if [ $# -ge 1 ]; then
 	shift
 fi
 
-# The zones the section offers when the adapter has no list of its own.
-ZONES='UTC America/New_York Europe/London Europe/Berlin Asia/Tokyo'
 
 OS=$(config_value OS) || exit 2
 
 # zone_rows — "name<TAB>description" for every zone: the list of the
-# adapter (the zone table of the system), or the list above.
+# adapter (the zone table of the system), or every zone of the installer's
+# own table (lib/zone1970.tab), never a short list.  What the adapter says
+# on standard error (a warning) goes to the log.
 zone_rows() {
-	_rows=$(adapter_cmd timezones 2>/dev/null) || _rows=''
+	_rows=$(adapter_cmd timezones) || _rows=''
 	if [ -z "${_rows}" ]; then
-		for _z in ${ZONES}; do
-			printf '%s\t%s\n' "${_z}" "$(zone_descr "${_z}")"
-		done
+		printf 'warning: no zone list from the adapter; the installer uses its own table\n' >&2
+		printf 'UTC\tCoordinated Universal Time\n'
+		awk -F '\t' '/^#/ || NF < 3 { next } { print $3 "\t" ((NF >= 4 && $4 != "") ? $4 : $3) }' \
+			"${root}/lib/zone1970.tab" | sort -u
 		return 0
 	fi
 	printf '%s\n' "${_rows}"

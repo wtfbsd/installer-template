@@ -108,6 +108,7 @@ if not GTK_OK:
     sys.exit(fallback_tui(GTK_REASON))
 
 from gui_lists import not_a_list, scrolled  # noqa: E402
+import gui_reveal  # noqa: E402
 
 CSS = b"""
 .flag-button { padding: 2px 4px; min-width: 30px; }
@@ -450,7 +451,12 @@ class InstallerWindow(Gtk.Window):
 
     def mark_steps(self):
         current = W.PAGE_IDS.index(self.page) if self.page in W.PAGE_IDS else -1
+        shown = self.wiz.pages()
         for index, ident in enumerate(W.PAGE_IDS):
+            # A page the system does not offer (one installation type
+            # only) is not in the list of the steps either.
+            self.step_labels[ident].set_no_show_all(ident not in shown)
+            self.step_labels[ident].set_visible(ident in shown)
             ctx = self.step_labels[ident].get_style_context()
             ctx.remove_class("step-current")
             ctx.remove_class("step-done")
@@ -548,6 +554,8 @@ class InstallerWindow(Gtk.Window):
     def show_page(self, page):
         if page != getattr(self, "page", None):
             self.wiz.forget_disks()
+            # A password shown on the page left is hidden again.
+            gui_reveal.hide_all()
         self.page = page
         self.error_label.set_text("")
         if page == "preflight":
@@ -1153,6 +1161,7 @@ class InstallerWindow(Gtk.Window):
             if secret:
                 entry.set_visibility(False)
                 entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+                gui_reveal.add_eye(entry)
             grid.attach(entry, 1, row, 1, 1)
             error = label("", "error-text")
             grid.attach(error, 1, row + 1, 1, 1)
@@ -1206,6 +1215,7 @@ class InstallerWindow(Gtk.Window):
         for i, (entry, text) in enumerate(((self.root_pw, "R_oot password"),
                                            (self.root_pw2, "Confirm the root pass_word"))):
             entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+            gui_reveal.add_eye(entry)
             entry.set_hexpand(True)
             roots.attach(field_label(text, entry), 0, i, 1, 1)
             roots.attach(entry, 1, i, 1, 1)
@@ -1939,6 +1949,8 @@ def apply_disk_state(win, state):
     dp.usage_none.set_active(True)
     if state.get("usage"):
         dp.usage_buttons[state["usage"]].set_active(True)
+    else:
+        dp.default_usage()
     if "separate" in state:
         dp.separate = dict(state["separate"])
         dp.fill_separate()
@@ -1999,7 +2011,9 @@ def render_show(win, shot, page, state):
         win.disk_page.mode_buttons[shot["disk_state"].get("mode", "erase")].set_active(True)
         win.show_page("disk")
         apply_disk_state(win, shot["disk_state"])
-        win.disk_page.collect()
+        problem = win.disk_page.collect()
+        if problem:
+            sys.stderr.write(f"render: the disk plan of {shot.get('name')}: {problem}\n")
         win.wiz.answers.user_name = "tester"
         win.wiz.answers.full_name = "Test User"
     mode = state.get("mode")
@@ -2031,7 +2045,8 @@ def _report_encryption(win, shot, page, state, outdir):
                   "sensitive": dp.enc_check.get_sensitive(),
                   "shown": dp.enc_check.get_visible(),
                   "passphrase_shown": any(w.get_visible() for w in dp.pass_row),
-                  "note": dp.enc_note.get_text() if dp.enc_note.get_visible() else "",
+                  # What the page says about what is not offered (nothing).
+                  "note": " | ".join(not_offered_lines(win)),
                   "filesystems": [row[1] for row in dp.fs_combo.get_model()],
                   "data_layouts": [row[1] for row in dp.data_layout.get_model()],
                   "plan": dp.plan().get("encryption")})
@@ -2052,13 +2067,14 @@ def _report_usage(win, shot, page, state, outdir):
                   for k, b in dp.usage_buttons.items()},
         "asked": dp.usage_area.get_visible(),
         "enc_label": dp.enc_check.get_label() if dp.enc_check.get_visible() else "",
-        "enc_note": dp.enc_note.get_text() if dp.enc_note.get_visible() else "",
+        "enc_note": " | ".join(not_offered_lines(win)),
         "passphrase_shown": any(w.get_visible() for w in dp.pass_row),
         "swap_enc_shown": dp.swap_enc.get_visible(),
         "disks": [row[1] for row in dp.store],
         "selected": list(dp.selected),
         "error": win.error_label.get_text(),
         "layout_note": dp.layout_more.get_visible(),
+        "list_shown": dp.table_area.get_visible(),
         "identity": win.identity_text,
         "problems": list(dp.errors)})
 
@@ -2088,7 +2104,118 @@ def _report_flags(win, shot, page, state, outdir):
         win.show_page("keyboard")
 
 
+def _report_probe(win, shot, page, state, outdir):
+    """What the Disk page shows when the disks could not be read."""
+    dp = win.disk_page
+    reread = None
+    if state.get("look_again"):
+        # A report of this visit stands in the cache: Look for disks again
+        # must read the disks anew, not show it.
+        stale = ({"disks": []}, "the report of this visit")
+        win.wiz._disk_report = stale
+        dp.on_look_again()
+        reread = win.wiz._disk_report is not stale
+    if state.get("press_next"):
+        win.act_next()
+    write_report(outdir, shot, "probe", {
+        "reread": reread,
+        # What the page shows when refused: the lines of the message, and
+        # which parts of the page are still shown.
+        "lines": [w.get_text() for w in getattr(dp, "message_lines", [])
+                  if w.get_visible() and w.get_text()]
+        if getattr(dp, "table_message", None) is not None and dp.table_message.get_visible() else [],
+        "shown": {name: widget.get_visible() for name, widget in (
+            ("list", dp.table_sw), ("usage", dp.usage_area), ("layout", dp.mode_stack),
+            ("before_after", dp.bars_area),
+            ("health", dp.head_buttons.get("Health details") if hasattr(dp, "head_buttons") else None),
+            ("secure_erase", dp.head_buttons.get("Secure erase…") if hasattr(dp, "head_buttons") else None),
+            ("look_again", dp.head_buttons.get("Look for disks again") if hasattr(dp, "head_buttons") else None))
+            if widget is not None},
+        "list_shown": dp.table_sw.get_visible(),
+        "problems": dp.problems.get_text(),
+        "error": win.error_label.get_text()})
+
+
+NOT_OFFERED_WORDS = ("not offered", "not encrypted on", "not possible:", " yet")
+
+
+def visible_labels(widget):
+    """The texts shown under a widget: its labels and the text cells of
+    its lists."""
+    out = []
+    if not widget.get_visible():
+        return out
+    if isinstance(widget, Gtk.Label) and widget.get_text():
+        out.append(widget.get_text())
+    if isinstance(widget, Gtk.TreeView) and widget.get_model() is not None:
+        for row in widget.get_model():
+            out += [v for v in row if isinstance(v, str) and v]
+    if isinstance(widget, Gtk.Container):
+        for child in widget.get_children():
+            out += visible_labels(child)
+    return out
+
+
+def not_offered_lines(win):
+    """The lines of the page shown that speak of what is not offered: a
+    system shows what it can do, nothing about what it cannot."""
+    page = win.stack.get_visible_child()
+    return [t for t in visible_labels(page) if any(w in t.lower() for w in NOT_OFFERED_WORDS)]
+
+
+def _report_page(win, shot, page, state, outdir):
+    """Where Next leads, the steps shown, and any line about what is not
+    offered."""
+    if state.get("press_next"):
+        win.act_next()
+    write_report(outdir, shot, "page", {
+        "page": win.page,
+        "steps": [i for i in W.PAGE_IDS if win.step_labels[i].get_visible()],
+        "not_offered": not_offered_lines(win),
+        "texts": visible_labels(win.stack.get_visible_child()),
+        "type_cards": {k: b.get_visible() for k, b in win.disk_page.mode_buttons.items()}
+        if hasattr(win.disk_page, "mode_buttons") else {}})
+
+
+def _report_lists_and_eyes(win, shot, page, state, outdir):
+    """The zones of the time zone page (all, and filtered by a search) and
+    the eyes of the password fields of the page."""
+    out = {}
+    if page == "timezone":
+        out["zones"] = len(win.tz_store)
+        win.tz_search.set_text(state.get("search", ""))
+        win.tz_filter.refilter()
+        out["filtered"] = [row[0] for row in win.tz_filter]
+        sw = win.tz_view.get_parent()
+        out["zones_scroll"] = isinstance(sw, Gtk.ScrolledWindow) and sw is not win.page_scroller
+    fields = {}
+    if page == "users":
+        fields = {"password": win.user_entries["password"], "confirm": win.user_entries["confirm"],
+                  "root_pw": win.root_pw, "root_pw2": win.root_pw2}
+    elif page == "disk":
+        fields = {"pass1": win.disk_page.pass1, "pass2": win.disk_page.pass2}
+    if fields:
+        if state.get("reveal") in fields:
+            gui_reveal.toggle(fields[state["reveal"]])
+        out["eyes"] = {k: gui_reveal.has_eye(e) for k, e in fields.items()}
+        out["shown"] = {k: e.get_visibility() for k, e in fields.items()}
+        # The name of the eye of a field that is hidden.
+        hidden = [e for e in fields.values() if not e.get_visibility()]
+        out["eye_name"] = hidden[0].get_icon_tooltip_text(Gtk.EntryIconPosition.SECONDARY) \
+            if hidden else ""
+        current = win.page
+        win.show_page("welcome")
+        out["shown_after_leaving"] = any(e.get_visibility() for e in fields.values())
+        win.show_page(current)
+        if state.get("reveal") in fields:
+            gui_reveal.toggle(fields[state["reveal"]])
+    write_report(outdir, shot, "lists_and_eyes", out)
+
+
 REPORTS = {
+    "lists_and_eyes": _report_lists_and_eyes,
+    "page": _report_page,
+    "probe": _report_probe,
     "encryption": _report_encryption,
     "usage": _report_usage,
     "boot": _report_boot,
@@ -2263,6 +2390,11 @@ def render(win, spec, outdir, size):
     win.start()
     written = []
     for shot in shots:
+        # A page this system does not show (Installation type with one
+        # mode) has no picture either.
+        if shot.get("page", "welcome") in W.PAGE_IDS and \
+                shot.get("page", "welcome") not in win.wiz.pages(read=True):
+            continue
         written += render_shot(win, shot, outdir, size)
     print("render: " + " ".join(written))
     return W.EXIT_OK

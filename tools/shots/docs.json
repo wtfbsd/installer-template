@@ -11,5 +11,6 @@
  {"name": "09-summary", "page": "summary", "full": false,
   "disk_state": {"mode": "erase", "selected": ["nda0"], "usage": "together"}, "state": {"typed": "erase"}},
  {"name": "10-installing", "page": "install", "full": false, "state": {"slide": 1, "progress": 0.42, "step": "Writing the system files"}},
- {"name": "11-hardware-and-drivers", "page": "hardware", "full": false, "state": {}}
+ {"name": "11-hardware-and-drivers", "page": "hardware", "full": false, "state": {}},
+ {"name": "12-finished", "page": "finish", "full": false, "state": {}}
 ]

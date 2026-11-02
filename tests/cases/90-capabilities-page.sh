@@ -47,7 +47,7 @@ on = diskplan.validate(p, d, "netbsd")
 off = diskplan.validate(dict(p, encryption={"enabled": False, "swap": False}), d, "netbsd")
 print([e for e in on if "encrypt" in e], off)' "${root}/lib")
 check "no encryption offered: a plan with encryption is refused, without it it is good" \
-	"['encrypting the system is not offered on NetBSD: turn encryption off'] []" "${out}"
+	"['NetBSD: no system encryption'] []" "${out}"
 
 if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -c 'import gi' 2>/dev/null; then
 	printf 'skip the drawing checks: no broadwayd or PyGObject\n'
@@ -90,8 +90,7 @@ r() {
 }
 check "no encryption offered: no box, no passphrase" "False False" \
 	"$(r 'str(r["shown"]) + " " + str(r["passphrase_shown"])')"
-check "no encryption offered: one line says so" "Encrypting the system is not offered on NetBSD." \
-	"$(r 'r["note"]')"
+check "no encryption offered: nothing about it on the page" "" "$(r 'r["note"]')"
 check "no encryption offered: the plan does not encrypt" False "$(r 'r["plan"]["enabled"]')"
 check "the filesystems are the install command's" "['ffs', 'lfs']" "$(r 'r["filesystems"]')"
 check "the layouts of the data disks are the install command's" "['single', 'raid1']" \

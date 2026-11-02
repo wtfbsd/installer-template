@@ -378,15 +378,42 @@ class CapabilitiesTest(unittest.TestCase):
         dual = dict(detail("dual-os"), capabilities=self.OPENBSD)
         types = {t["ident"]: t for t in D.install_types(dual, "X", "openbsd")}
         self.assertFalse(types["alongside"]["available"])
-        self.assertIn("not offered on OpenBSD yet", types["alongside"]["reason"])
+        # Not offered: not shown at all (no reason to show).
+        self.assertFalse(types["alongside"]["offered"])
+        self.assertFalse(types["manual"]["offered"])
+        self.assertTrue(types["erase"]["offered"])
         self.assertFalse(types["manual"]["available"])
         self.assertTrue(types["erase"]["available"])
         plan = {"version": 1, "mode": "erase", "disks": ["ada0", "ada1"], "layout": "raid1",
                 "filesystem": "ffs", "data": [{"name": "data", "disks": ["ada2"],
                 "layout": "single", "filesystem": "ffs", "mount": "/data"}]}
         errors = D.validate(plan, self.report(), "openbsd")
-        self.assertTrue(any("data pools" in e for e in errors), errors)
+        self.assertIn("OpenBSD: no data disks", errors)
+        alongside = {"version": 1, "mode": "alongside", "disks": [],
+                     "alongside": {"disk": "ada0", "region": {"start_mb": 1, "size_mb": 40000}}}
+        self.assertIn("OpenBSD: no install alongside", D.validate(alongside, self.report(), "openbsd"))
         self.assertFalse(D.data_pools_offered("openbsd", self.report()))
+
+    def test_a_system_with_one_mode_skips_the_installation_type_page(self):
+        import wizard as W
+        self.assertNotIn("type", W.shown_pages("openbsd", None))
+        self.assertNotIn("type", W.shown_pages("illumos", None))
+        self.assertIn("type", W.shown_pages("freebsd", None))
+        both = dict(detail("three-disks"), capabilities=dict(self.OPENBSD, modes=["erase", "manual"]))
+        self.assertIn("type", W.shown_pages("openbsd", both))
+
+    def test_data_disks_are_worded_by_their_filesystem(self):
+        report = dict(detail("three-disks"), capabilities=dict(self.OPENBSD, data_pools=True))
+        ffs = {"version": 1, "mode": "erase", "disks": ["ada0"], "layout": "single", "filesystem": "ffs",
+               "data": [{"name": "data", "disks": ["ada2"], "layout": "single", "filesystem": "ffs",
+                         "mount": "/data"}]}
+        lines = dict((d, t) for d, t, _x in D.actions(ffs, report, "openbsd", "X"))
+        self.assertEqual(lines["ada2"], "erase, FFS on /data")
+        zfs = {"version": 1, "mode": "erase", "disks": ["ada0"], "layout": "single", "filesystem": "zfs",
+               "data": [{"name": "tank", "disks": ["ada1", "ada2"], "layout": "mirror", "filesystem": "zfs",
+                         "mount": "/tank"}]}
+        lines = dict((d, t) for d, t, _x in D.actions(zfs, detail("three-disks"), "freebsd", "X"))
+        self.assertEqual(lines["ada2"], "erase, ZFS pool tank (Mirror) on /tank")
 
     def test_the_boot_modes_are_those_of_the_install_command(self):
         def boot(value):
@@ -433,7 +460,7 @@ class CapabilitiesTest(unittest.TestCase):
         report = dict(detail("three-disks"), capabilities=caps)
         plan = {"version": 1, "mode": "erase", "disks": ["ada0"], "layout": "single",
                 "filesystem": "lfs", "encryption": {"enabled": True, "swap": False}}
-        self.assertIn("encrypting the system is not offered on NetBSD: turn encryption off",
+        self.assertIn("NetBSD: no system encryption",
                       D.validate(plan, report, "netbsd"))
         self.assertEqual(D.validate(dict(plan, encryption={"enabled": False, "swap": False}),
                                     report, "netbsd"), [])

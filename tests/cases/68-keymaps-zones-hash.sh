@@ -120,10 +120,10 @@ out=$(INSTALLER_CONF="${tmp}/openbsd.conf" \
 check_rc "the root helper refuses RAID 5 on OpenBSD" 2 "${rc}"
 check_contains "it says why" "the layout 'raid5' is not one this system offers" "${out}"
 
-# A rehearsal keeps the short lists of the sections, so that a rehearsal
-# looks the same on every machine.
+# A rehearsal without KEYMAPS offers the keymaps of the system (here the
+# keymap directory of the test), never a short list of the section.
 out=$(INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/adapter-fixture.conf" \
 	INSTALLER_CONF="${tmp}/freebsd.conf" "${backend}" keyboard probe)
-check "a rehearsal offers the layouts of the section" "us gb de fr es" "$(names "${out}" layouts)"
+check "a rehearsal offers the keymaps of the system" "de fr.acc uk us" "$(names "${out}" layouts)"
 
 finish
