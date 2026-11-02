@@ -340,7 +340,8 @@ class DiskPage:
             grid.attach(lbl("now", "bar-caption", wrap=False), 0, 0, 1, 1)
             grid.attach(bar(D.bar_before(disk)), 1, 0, 1, 1)
             grid.attach(lbl("after", "bar-caption", wrap=False), 0, 1, 1, 1)
-            grid.attach(bar(D.bar_after(disk, plan, self.os, self.wiz.product)), 1, 1, 1, 1)
+            after = D.bar_after(disk, plan, self.os, self.wiz.product, self.detail)
+            grid.attach(bar(after), 1, 1, 1, 1)
             self.notice_bars.pack_start(grid, False, False, 0)
             self.notice_bars.show_all()
             return
@@ -427,22 +428,18 @@ class DiskPage:
         adv = Gtk.Grid(column_spacing=14, row_spacing=8)
         adv.set_margin_top(6)
         arow = 0
-        fss = D.filesystems(self.os)
+        # The filesystems, the encryption and the boot modes are those of
+        # the install command (its capabilities, fill_capabilities).
         self.fs_combo = Gtk.ComboBoxText()
-        for ident, title in fss:
-            self.fs_combo.append(ident, title)
-        self.fs_combo.set_active_id(fss[0][0])
-        self.fs_combo.connect("changed", lambda *_a: self.refresh())
-        if len(fss) > 1:
-            adv.attach(lbl("Filesystem", "field-label"), 0, arow, 1, 1)
-            adv.attach(self.fs_combo, 1, arow, 2, 1)
-            arow += 1
-        enc_name = D.system(self.os)["encryption"]
-        self.enc_check = Gtk.CheckButton(
-            label=f"Encrypt the system ({enc_name}); the passphrase is asked at every start")
-        self.enc_check.connect("toggled", lambda *_a: self.refresh())
+        self.fs_label = lbl("Filesystem", "field-label")
+        adv.attach(self.fs_label, 0, arow, 1, 1)
+        adv.attach(self.fs_combo, 1, arow, 2, 1)
+        arow += 1
+        self.enc_check = Gtk.CheckButton(label="")
         grid.attach(self.enc_check, 0, row, 3, 1)
-        row += 1
+        self.enc_note = lbl("", "muted")
+        grid.attach(self.enc_note, 0, row + 1, 3, 1)
+        row += 2
         self.pass1 = Gtk.Entry(visibility=False, placeholder_text="Passphrase")
         self.pass2 = Gtk.Entry(visibility=False, placeholder_text="Confirm the passphrase")
         for entry in (self.pass1, self.pass2):
@@ -458,6 +455,10 @@ class DiskPage:
         meter.pack_start(self.strength_text, False, False, 0)
         grid.attach(meter, 2, row, 1, 1)
         self.pass_row = [self.pass1, self.pass2, meter]
+        self.fill_filesystems()
+        self.fill_encryption()
+        self.fs_combo.connect("changed", lambda *_a: self.refresh())
+        self.enc_check.connect("toggled", lambda *_a: self.refresh())
         row += 1
         adv.attach(lbl("Swap", "field-label"), 0, arow, 1, 1)
         swap_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -512,7 +513,7 @@ class DiskPage:
         if not hasattr(self, "advanced_summary"):
             return
         parts = []
-        fs_title = dict(D.filesystems(self.os)).get(self.fs_combo.get_active_id() or "", "")
+        fs_title = dict(D.filesystems(self.os, self.detail)).get(self.fs_combo.get_active_id() or "", "")
         if fs_title:
             parts.append(fs_title.split(" (")[0])
         swap = int(self.swap.get_value())
@@ -585,6 +586,49 @@ class DiskPage:
 
     # ------------------------------------------------------------ data
 
+    @staticmethod
+    def show_only(widget, shown):
+        """Shown or hidden, and kept so by show_all."""
+        widget.set_no_show_all(not shown)
+        widget.set_visible(shown)
+
+    def fill_filesystems(self):
+        """The filesystems the install command takes: a drop-down when
+        there is a choice, nothing to choose otherwise."""
+        offered = D.filesystems(self.os, self.detail)
+        current = self.fs_combo.get_active_id()
+        self.fs_combo.remove_all()
+        for ident, title in offered:
+            self.fs_combo.append(ident, title)
+        ids = [ident for ident, _title in offered]
+        if ids:
+            self.fs_combo.set_active_id(current if current in ids else ids[0])
+        for widget in (self.fs_label, self.fs_combo):
+            self.show_only(widget, len(offered) > 1)
+
+    def fill_encryption(self):
+        """The encryption of the system, when the install command offers
+        one (its name in the capabilities); else no box, no passphrase,
+        and one line that says so."""
+        name = D.system(self.os, self.detail)["encryption"]
+        offered = bool(name)
+        if not offered and self.enc_check.get_active():
+            self.enc_check.set_active(False)
+        self.enc_check.set_label(
+            f"Encrypt the system ({name}); the passphrase is asked at every start" if offered else "")
+        self.enc_note.set_text("" if offered else
+                               f"Encrypting the system is not offered on {D.os_title(self.os)}.")
+        self.show_only(self.enc_check, offered)
+        self.show_only(self.enc_note, not offered)
+        for widget in self.pass_row:
+            self.show_only(widget, offered)
+
+    def fill_capabilities(self):
+        """Everything the page offers that the install command decides."""
+        self.fill_filesystems()
+        self.fill_encryption()
+        self.fill_boot()
+
     def fill_boot(self):
         """The boot modes the install command takes (its capabilities):
         a drop-down of them, or the one as a fixed text."""
@@ -604,7 +648,7 @@ class DiskPage:
     def load(self):
         """Read the report of the disks again and fill the page."""
         self.detail, err = self.wiz.disk_report()
-        self.fill_boot()
+        self.fill_capabilities()
         index = D.disk_index(self.detail)
         self.selected = [n for n in self.selected if n in index]
         if not self.selected and index:
@@ -688,7 +732,7 @@ class DiskPage:
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.data_mount = Gtk.Entry(text=DATA_MOUNT, width_chars=10)
         self.data_layout = Gtk.ComboBoxText()
-        for item in D.layouts(self.os):
+        for item in D.layouts(self.os, self.detail):
             self.data_layout.append(item.ident, item.title)
         self.data_layout.set_active_id("single")
         row.pack_start(lbl("Mounted on", wrap=False), False, False, 0)
@@ -1032,7 +1076,8 @@ class DiskPage:
             grid.attach(lbl("now", "bar-caption", wrap=False), 0, 1, 1, 1)
             grid.attach(bar(D.bar_before(disk)), 1, 1, 1, 1)
             grid.attach(lbl("after", "bar-caption", wrap=False), 0, 2, 1, 1)
-            grid.attach(bar(D.bar_after(disk, plan, self.os, self.wiz.product)), 1, 2, 1, 1)
+            after = D.bar_after(disk, plan, self.os, self.wiz.product, self.detail)
+            grid.attach(bar(after), 1, 2, 1, 1)
             self.bars.pack_start(grid, False, False, 0)
         if not shown:
             self.bars.pack_start(lbl("Choose a disk.", "muted"), False, False, 0)

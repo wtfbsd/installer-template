@@ -427,6 +427,22 @@ class CapabilitiesTest(unittest.TestCase):
             os.chmod(cmd, 0o644)
             self.assertFalse(D.trusted_command(cmd))
 
+    def test_no_encryption_in_the_capabilities_refuses_an_encrypted_plan(self):
+        caps = {"encryption": "", "filesystems": [["ffs", "FFSv2"], ["lfs", "LFS"]],
+                "layouts": [{"ident": "single", "title": "Single disk", "min_disks": 1, "max_disks": 1}]}
+        report = dict(detail("three-disks"), capabilities=caps)
+        plan = {"version": 1, "mode": "erase", "disks": ["ada0"], "layout": "single",
+                "filesystem": "lfs", "encryption": {"enabled": True, "swap": False}}
+        self.assertIn("encrypting the system is not offered on NetBSD: turn encryption off",
+                      D.validate(plan, report, "netbsd"))
+        self.assertEqual(D.validate(dict(plan, encryption={"enabled": False, "swap": False}),
+                                    report, "netbsd"), [])
+        self.assertEqual(D.system("netbsd", report)["encryption"], "")
+        self.assertEqual(D.system("netbsd")["encryption"], "cgd")
+        disk = D.disk_index(report)["ada0"]
+        labels = [s["label"] for s in D.bar_after(disk, plan, "netbsd", "X", report)]
+        self.assertIn("X (LFS)", labels)
+
     def test_without_capabilities_the_built_in_table_is_used(self):
         self.assertTrue(D.data_pools_offered("freebsd", detail("three-disks")))
 
