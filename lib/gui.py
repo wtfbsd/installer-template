@@ -243,9 +243,10 @@ def monitor_size():
     return max(area.width, 640), max(area.height, 480)
 
 
-def item_list(columns, activate=None):
-    """A list of rows: a ListStore, its view and its scroller."""
-    store = Gtk.ListStore(*([str] * len(columns)))
+def item_list(columns, activate=None, hidden=0):
+    """A list of rows: a ListStore, its view and its scroller; hidden more
+    text columns in the store that are not shown (what a search matches)."""
+    store = Gtk.ListStore(*([str] * (len(columns) + hidden)))
     view = Gtk.TreeView(model=store)
     view.set_headers_visible(True)
     for index, title in enumerate(columns):
@@ -1017,7 +1018,8 @@ class InstallerWindow(Gtk.Window):
         self.tz_search = Gtk.SearchEntry()
         self.tz_search.set_placeholder_text("Search, for example Berlin or New_York")
         box.pack_start(self.tz_search, False, False, 0)
-        self.tz_store, self.tz_view, scroller = item_list(("Time zone", "Region"), self.act_next)
+        self.tz_store, self.tz_view, scroller = item_list(("Time zone", "Countries"), self.act_next,
+                                                          hidden=1)
         self.tz_filter = self.tz_store.filter_new()
         self.tz_filter.set_visible_func(self.tz_visible)
         self.tz_view.set_model(self.tz_filter)
@@ -1037,13 +1039,15 @@ class InstallerWindow(Gtk.Window):
         return box
 
     def tz_visible(self, model, it, _data):
+        # The zone, its countries (every one of them) and the comment.
         text = self.tz_search.get_text().strip().lower().replace(" ", "_")
-        return not text or text in (model[it][0] + " " + model[it][1]).lower().replace(" ", "_")
+        where = " ".join(model[it][i] or "" for i in range(3))
+        return not text or text in where.lower().replace(" ", "_")
 
     def enter_timezone(self):
         if not len(self.tz_store):
             for item in self.wiz.zones():
-                self.tz_store.append([item.name, item.descr])
+                self.tz_store.append([item.name, item.descr, item.search])
         select_name(self.tz_view, self.wiz.answers.timezone)
         (self.clock_local if self.wiz.answers.clock == "local" else self.clock_utc).set_active(True)
         # Windows on a disk of this computer keeps the clock in local time.
@@ -2183,6 +2187,7 @@ def _report_lists_and_eyes(win, shot, page, state, outdir):
     out = {}
     if page == "timezone":
         out["zones"] = len(win.tz_store)
+        out["descr"] = {row[0]: row[1] for row in win.tz_store}
         win.tz_search.set_text(state.get("search", ""))
         win.tz_filter.refilter()
         out["filtered"] = [row[0] for row in win.tz_filter]

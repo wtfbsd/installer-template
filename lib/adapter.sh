@@ -423,11 +423,16 @@ zone_rows() {
 		}
 	fi
 	printf 'UTC\tCoordinated Universal Time\n'
-	awk -F '\t' '
-		/^#/ || NF < 3 { next }
-		$3 !~ /^[A-Za-z][A-Za-z0-9+_-]*(\/[A-Za-z0-9+_-]+)*$/ { next }
-		{ d = (NF >= 4 && $4 != "") ? $4 : $3; print $3 "\t" d }
-	' "${_tab}" | sort -u -t "${TAB}" -k1,1
+	# The names of the countries: the table next to the zone table (tzdb
+	# iso3166.tab; illumos tab/country.tab), else the installer's own.
+	_ct="${root}/lib/iso3166.tab"
+	for _c in "${_tab%/*}/iso3166.tab" "${_tab%/*}/country.tab"; do
+		if [ "${_tab}" != "${root}/lib/zone1970.tab" ] && [ -f "${_c}" ]; then
+			_ct=${_c}
+			break
+		fi
+	done
+	zone_list "${_tab}" "${_ct}"
 }
 
 # zone_table — the zone table of the system: zone1970.tab or zone.tab of

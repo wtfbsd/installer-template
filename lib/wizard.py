@@ -143,6 +143,7 @@ class Item:
     name: str
     descr: str = ""
     size_bytes: int = 0
+    search: str = ""
 
 
 def human_size(size: int) -> str:
@@ -357,7 +358,7 @@ def items_of(data: dict, key: str) -> List[Item]:
             continue
         size = raw.get("size_bytes", 0)
         out.append(Item(str(raw["name"]), str(raw.get("descr") or raw["name"]),
-                        int(size) if isinstance(size, int) else 0))
+                        int(size) if isinstance(size, int) else 0, str(raw.get("search") or "")))
     return out
 
 
