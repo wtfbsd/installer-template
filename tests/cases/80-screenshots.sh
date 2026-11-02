@@ -56,7 +56,7 @@ for png in docs/screenshots/*.png; do
 done
 check "every picture is at most 300 KB" "" "${big}"
 for page in welcome keyboard timezone installation-type disk users network \
-	additional-software summary installing hardware-and-drivers; do
+	additional-software summary installing hardware-and-drivers finished; do
 	check_contains "gui/README.md shows the page ${page}" "-${page}.png" "$(cat gui/README.md)"
 done
 

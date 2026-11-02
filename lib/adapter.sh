@@ -11,8 +11,8 @@
 #   os_excluded_disks <names>    print the names of the disks that must not
 #                                be written to (the running system and the
 #                                installation media), separated by spaces;
-#                                exit 3 when it cannot tell them (then no
-#                                disk is offered)
+#                                exit non-zero (cannot_tell) when it cannot
+#                                tell them: then no disk is offered
 #   os_interfaces                print the names of the network adapters,
 #                                one per line
 #   os_keymaps                   print "name<TAB>description" for every
@@ -187,12 +187,96 @@ device_disk_prefix() {
 	return 1
 }
 
-# mounted_device <path> — the device that mount(8) shows on the path, from
-# the "<device> on <path> type ..." lines that NetBSD, OpenBSD and DragonFly
-# print.
-mounted_device() {
-	mount 2>/dev/null | awk -v want="$1" '$2 == "on" && $3 == want { print $1; exit }'
+# cannot_tell <reason> — the disks of the running system or of the media
+# cannot be told: exit 3, and no disk is offered (fail closed).  A
+# rehearsal (on a machine that is not the target, which it never writes
+# to) only says so, unless its fixture asks for EXCLUSION=strict.
+cannot_tell() {
+	printf 'cannot list disks: %s\n' "$*" >&2
+	if [ -n "${rehearsal:-}" ] && [ "$(kv_get "${rehearsal}" EXCLUSION 2>/dev/null || :)" != strict ]; then
+		exit 0
+	fi
+	exit 3
 }
+
+# boot_devices [-p] — the devices the running system needs, as they are
+# named, one a line: "root <device> <type>" (the file system on /),
+# "media <device>" (on the media mount point; none or more) and "medium
+# <device>" (live_medium); the adapter follows each to its disk.  -p reads
+# the table of "mount -p" (FreeBSD), else the "<device> on <path> type
+# <type>" lines of mount(8).  cannot_tell when mount fails, nothing is on
+# /, or a memory root lacks its medium (require_medium).  Run it in a
+# command substitution and pass its exit on: x=$(boot_devices) || exit $?
+boot_devices() {
+	if [ "${1:-}" = -p ]; then
+		_mt=$(mount -p 2>/dev/null) || cannot_tell "mount -p failed"
+		_bd_root=$(printf '%s\n' "${_mt}" | awk '$2 == "/" { print $1 " " $3; exit }')
+		_bd_media=$(printf '%s\n' "${_mt}" | awk -v p="${media_mount}" '$2 == p { print $1 }')
+	else
+		_mt=$(mount 2>/dev/null) || cannot_tell "mount failed"
+		_bd_root=$(printf '%s\n' "${_mt}" | awk '$2 == "on" && $3 == "/" { print $1 " " $5; exit }')
+		_bd_media=$(printf '%s\n' "${_mt}" |
+			awk -v p="${media_mount}" '$2 == "on" && $3 == p { print $1 }')
+	fi
+	[ -n "${_bd_root}" ] || cannot_tell "nothing mounted on /"
+	_bd_medium=$(live_medium) || exit $?
+	require_medium "${_bd_root% *}" "${_bd_medium}"
+	printf 'root %s\n' "${_bd_root}"
+	for _m in ${_bd_media}; do
+		printf 'media %s\n' "${_m}"
+	done
+	[ -z "${_bd_medium}" ] || printf 'medium %s\n' "${_bd_medium}"
+}
+
+# The file a live system writes at its start: one line, the device it was
+# started from (the live medium).  Root-owned, a regular file.
+live_medium_file=${INSTALLER_LIVE_MEDIUM_FILE:-/var/run/wtfbsd-live-medium}
+
+# live_medium — the device of the live medium, from live_medium_file;
+# nothing when the file is not there; cannot_tell when it is there but
+# cannot be trusted (a link, not a regular file, not root's, writable by
+# others, more than one line or not the name of a device).
+live_medium() {
+	[ -e "${live_medium_file}" ] || [ -L "${live_medium_file}" ] || return 0
+	_lm=$(python3 -I - "${live_medium_file}" <<'PY'
+import os, re, stat, sys
+path = sys.argv[1]
+st = os.lstat(path)
+uid = os.geteuid()
+if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o022 or st.st_size > 256 or \
+        not (st.st_uid == 0 or (uid != 0 and st.st_uid == uid)):
+    sys.exit(1)
+with open(path, encoding="ascii", errors="strict") as stream:
+    lines = stream.read().split("\n")
+if lines and lines[-1] == "":
+    lines.pop()
+dev = lines[0] if len(lines) == 1 else ""
+if not re.fullmatch(r"(/dev/)?[A-Za-z0-9][A-Za-z0-9._/-]{0,127}", dev, re.ASCII) or ".." in dev:
+    sys.exit(1)
+print(dev)
+PY
+) || cannot_tell "untrusted ${live_medium_file}"
+	printf '%s\n' "${_lm}"
+}
+
+# memory_root <device> — succeed when the root is a memory or overlay file
+# system (md, rd, tmpfs, unionfs, mfs): the disk it came from is the medium.
+memory_root() {
+	case "${1#/dev/}" in
+		md[0-9]*|rd[0-9]*|tmpfs|unionfs|mfs|mfs:*|union|ramdisk*) return 0 ;;
+	esac
+	return 1
+}
+
+# require_medium <root device> <medium> — with LIVE_MEDIUM_REQUIRED=yes, a
+# memory or overlay root without the name of its medium is cannot_tell.
+require_medium() {
+	memory_root "$1" || return 0
+	[ -z "$2" ] || return 0
+	[ "$(config_value LIVE_MEDIUM_REQUIRED 2>/dev/null || :)" = yes ] || return 0
+	cannot_tell "the boot medium can't be found (no ${live_medium_file})"
+}
+
 
 # dmesg_text — the kernel messages: the running buffer and the boot copy.
 dmesg_text() {
@@ -314,10 +398,42 @@ keymap_dir_rows() {
 	[ "${_found}" -eq 1 ]
 }
 
+# keymaps_known <dir> <name...> — the keymaps the adapter knows for its
+# system, when the directory of the system cannot be read: a broken image
+# (said in the log), but never a short choice.  A rehearsal says nothing.
+keymaps_known() {
+	_kdir=$1
+	shift
+	[ -n "${rehearsal:-}" ] ||
+		printf 'warning: the keymaps of the system (%s) cannot be read; the installer uses its own list\n' "${_kdir}" >&2
+	keymap_rows "$@"
+}
+
 # zone_rows — "name<TAB>description" for the time zones of the system, from
 # zone1970.tab or zone.tab of the zoneinfo directory (os_zoneinfo_dir of the
 # adapter, else /usr/share/zoneinfo).  UTC comes first.
 zone_rows() {
+	_tab=${1:-}
+	if [ -z "${_tab}" ]; then
+		_tab=$(zone_table) || {
+			# A system without a readable zone table is a broken image:
+			# say so, and offer every zone of the installer's own table.
+			printf 'warning: the zone table of the system cannot be read; the installer uses its own (lib/zone1970.tab)\n' >&2
+			_tab="${root}/lib/zone1970.tab"
+		}
+	fi
+	printf 'UTC\tCoordinated Universal Time\n'
+	awk -F '\t' '
+		/^#/ || NF < 3 { next }
+		$3 !~ /^[A-Za-z][A-Za-z0-9+_-]*(\/[A-Za-z0-9+_-]+)*$/ { next }
+		{ d = (NF >= 4 && $4 != "") ? $4 : $3; print $3 "\t" d }
+	' "${_tab}" | sort -u -t "${TAB}" -k1,1
+}
+
+# zone_table — the zone table of the system: zone1970.tab or zone.tab of
+# its zoneinfo directory (os_zoneinfo_dir, else /usr/share/zoneinfo); false
+# when there is none.
+zone_table() {
 	_zi=${INSTALLER_ZONEINFO:-}
 	if [ -z "${_zi}" ]; then
 		if command -v os_zoneinfo_dir >/dev/null 2>&1; then
@@ -337,12 +453,7 @@ zone_rows() {
 		fi
 	done
 	[ -n "${_tab}" ] || return 1
-	printf 'UTC\tCoordinated Universal Time\n'
-	awk -F '\t' '
-		/^#/ || NF < 3 { next }
-		$3 !~ /^[A-Za-z][A-Za-z0-9+_-]*(\/[A-Za-z0-9+_-]+)*$/ { next }
-		{ d = (NF >= 4 && $4 != "") ? $4 : $3; print $3 "\t" d }
-	' "${_tab}" | sort -u -t "${TAB}" -k1,1
+	printf '%s\n' "${_tab}"
 }
 
 # target_rows <file> — the rows of the disks that may be written to, into
@@ -359,13 +470,11 @@ target_rows() {
 	# The disks that must not be written to are left out, in a rehearsal
 	# too: a rehearsal is carried out on the machine that is the target.
 	_names=$(cut -f1 "${work}" | tr '\n' ' ')
-	# An adapter that cannot tell which disks hold the running system
-	# (exit 3) offers none: never a disk it may not write to.
-	_excluded=$(os_excluded_disks "${_names}") || {
-		_rc=$?
-		[ "${_rc}" -ne 3 ] || die 3 'cannot tell which disks hold the running system; no disk is offered'
-		_excluded=''
-	}
+	# An adapter that cannot tell which disks hold the running system or
+	# the media (cannot_tell, or any other failure) offers none: never a
+	# disk it may not write to.
+	_excluded=$(os_excluded_disks "${_names}") ||
+		die 3 'no disk offered; check the disk tools'
 	# An array the system assembled by itself from members found on the
 	# disks (NetBSD RAIDframe raidN, OpenBSD softraid sdN) is not offered:
 	# its members are, as members of it.  A rehearsal names them in
@@ -910,9 +1019,11 @@ cmd_target_root() {
 
 # cmd_keymaps — the keyboard layouts.  A rehearsal reads KEYMAPS from the
 # fixture; without it the section falls back to its own list.
+# cmd_keymaps — the keymaps: in a rehearsal the KEYMAPS of the fixture, else
+# the list of the system (os_keymaps, which reads the keymaps of the system
+# and falls back to the full list of that system it knows).
 cmd_keymaps() {
-	if [ -n "${rehearsal}" ]; then
-		_v=$(kv_get "${rehearsal}" KEYMAPS) || return 1
+	if [ -n "${rehearsal}" ] && _v=$(kv_get "${rehearsal}" KEYMAPS); then
 		# shellcheck disable=SC2046
 		keymap_rows $(printf '%s' "${_v}" | tr ',' ' ')
 		return 0
@@ -920,12 +1031,18 @@ cmd_keymaps() {
 	os_keymaps
 }
 
+# cmd_timezones — the time zones: in a rehearsal the ZONES of the fixture
+# or every zone of the installer's table, else the zone table of the
+# system (zone_rows).
 cmd_timezones() {
 	if [ -n "${rehearsal}" ]; then
-		_v=$(kv_get "${rehearsal}" ZONES) || return 1
-		for _z in $(printf '%s' "${_v}" | tr ',' ' '); do
-			printf '%s\t%s\n' "${_z}" "${_z}"
-		done
+		if _v=$(kv_get "${rehearsal}" ZONES); then
+			for _z in $(printf '%s' "${_v}" | tr ',' ' '); do
+				printf '%s\t%s\n' "${_z}" "${_z}"
+			done
+			return 0
+		fi
+		zone_rows "${root}/lib/zone1970.tab"
 		return 0
 	fi
 	zone_rows

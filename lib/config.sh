@@ -21,15 +21,20 @@ config_keys() {
 # MIN_DISK_GB   the smallest disk the system is installed to, in GB (16 when
 #               it is not set); never below what the media needs: its image,
 #               2 GB to spare and the swap (lib/diskplan.py)
+# LIVE_MEDIUM_REQUIRED
+#               yes: a live system whose root is a memory or overlay file
+#               system must name its medium (/var/run/wtfbsd-live-medium),
+#               or no disk is offered; no (the default) until the template
+#               writes the file
 config_optional_keys() {
-	printf '%s\n' PRODUCT_LOGO MIN_DISK_GB
+	printf '%s\n' PRODUCT_LOGO MIN_DISK_GB LIVE_MEDIUM_REQUIRED
 }
 
 # config_known_key <key> — succeed when the key is one the installer knows.
 config_known_key() {
 	case "$1" in
 		PRODUCT_NAME|PRODUCT_SLUG|OS|DEFAULT_KEYMAP|DEFAULT_TZ) return 0 ;;
-		PRODUCT_LOGO|MIN_DISK_GB) return 0 ;;
+		PRODUCT_LOGO|MIN_DISK_GB|LIVE_MEDIUM_REQUIRED) return 0 ;;
 		*) return 1 ;;
 	esac
 }
@@ -49,6 +54,7 @@ config_valid_value() {
 			_pattern='^/[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$'
 			;;
 		MIN_DISK_GB) _pattern='^[1-9][0-9]{0,3}$' ;;
+		LIVE_MEDIUM_REQUIRED) _pattern='^(yes|no)$' ;;
 		*) return 2 ;;
 	esac
 	printf '%s\n' "$2" | grep -Eq -- "${_pattern}"

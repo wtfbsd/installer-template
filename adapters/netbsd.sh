@@ -46,15 +46,25 @@ wedge_parent() {
 		awk '{ for (i = 1; i < NF; i++) if ($i == "at") { sub(/:$/, "", $(i + 1)); print $(i + 1); exit } }'
 }
 
+# os_excluded_disks <names> — the disks of the root (kern.root_device and
+# the device on /), of the installation media and of the live medium; a
+# wedge (dkN) is followed to its disk.  cannot_tell (exit 3) when one of
+# them cannot be told.
 os_excluded_disks() {
-	for _dev in "$(sysctl -n kern.root_device 2>/dev/null || true)" \
-		"$(mounted_device /)" "$(mounted_device "${media_mount}")"; do
+	# kern.root_device is a second witness: the device on / decides.
+	_kroot=$(sysctl -n kern.root_device 2>/dev/null) || _kroot=''
+	_boot=$(boot_devices) || exit $?
+	for _dev in ${_kroot} $(printf '%s\n' "${_boot}" | awk '{ print $2 }'); do
 		[ -n "${_dev}" ] || continue
 		_dev=${_dev#/dev/}
 		case "${_dev}" in
-			dk[0-9]*) _dev=$(wedge_parent "${_dev%%[!a-z0-9]*}") || continue ;;
+			dk[0-9]*)
+				_parent=$(wedge_parent "${_dev%%[!a-z0-9]*}") || _parent=''
+				[ -n "${_parent}" ] ||
+					cannot_tell "dkctl can't follow ${_dev}"
+				_dev=${_parent}
+				;;
 		esac
-		[ -n "${_dev}" ] || continue
 		device_disk_prefix "${_dev}" "$1" | tr '\n' ' ' || :
 	done
 }

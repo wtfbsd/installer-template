@@ -19,7 +19,7 @@ after the documented formats: /etc/mnttab and dladm scan-wifi.
   /etc/mnttab      SPECIAL MOUNT_POINT FSTYPE OPTIONS TIME (mnttab(5))
 
 Usage: illumos.py disks|links|layouts|hash|wifi  (the text on standard input)
-       illumos.py excluded MNTTAB ZPOOL_RC [--rehearsal]  (zpool status on
+       illumos.py excluded MNTTAB ZPOOL_RC  (zpool status on
        standard input; exit 3 when the disks of the running system cannot
        be told)
 """
@@ -103,20 +103,20 @@ def excluded_checked(mnttab: str, zpool_status: str, zpool_rc: int) -> List[str]
     root on anything else."""
     root = _mount_entry(mnttab, "/")
     if root is None:
-        raise Unknown("no / in /etc/mnttab")
+        raise Unknown("nothing mounted on / (/etc/mnttab)")
     special, fstype = root
     if fstype == "zfs":
         pool = special.split("/", 1)[0]
         if zpool_rc != 0:
-            raise Unknown(f"zpool status failed (exit {zpool_rc}): the disks of {pool} are unknown")
+            raise Unknown(f"zpool status failed (exit {zpool_rc})")
         if not pool_members(zpool_status).get(pool):
-            raise Unknown(f"zpool status names no disk of the pool {pool} the system runs from")
+            raise Unknown(f"zpool status lists no disk of pool {pool}")
     elif not DEV_DISK_RE.match(special):
         if not special.startswith("/devices/ramdisk"):
-            raise Unknown(f"the root is on {special}, which is not a disk the installer can name")
+            raise Unknown(f"root on {special} is not a disk")
         medium = _mount_entry(mnttab, "/.cdrom")
         if not (medium and DEV_DISK_RE.match(medium[0])):
-            raise Unknown("a live system whose medium (/.cdrom) is not a disk it can name")
+            raise Unknown("the boot medium can't be found")
     return excluded(mnttab, zpool_status)
 
 
@@ -209,30 +209,29 @@ def wifi(text: str) -> List[Tuple[str, str, int]]:
     return out
 
 
-def _print_excluded(path: str, status: str, rc: int, rehearsal: bool) -> int:
-    """excluded MNTTAB ZPOOL_RC [--rehearsal] (zpool status on stdin): the
-    disks, or exit 3 when they cannot be told.  A rehearsal on a machine
-    without /etc/mnttab (a test machine) excludes nothing."""
+def _print_excluded(path: str, status: str, rc: int) -> int:
+    """excluded MNTTAB ZPOOL_RC (zpool status on stdin): the disks, or the
+    reason on standard error and exit 3 when they cannot be told (the
+    adapter hands it to cannot_tell, which also decides for a
+    rehearsal)."""
     try:
         with open(path, encoding="utf-8", errors="replace") as stream:
             mnttab = stream.read(1 << 20)
     except OSError:
-        if rehearsal:
-            return 0
-        sys.stderr.write(f"cannot tell which disks hold the running system: cannot read {path}\n")
+        sys.stderr.write(f"cannot read {path}\n")
         return 3
     try:
         print("\n".join(excluded_checked(mnttab, status, rc)))
     except Unknown as error:
-        sys.stderr.write(f"cannot tell which disks hold the running system: {error}\n")
+        sys.stderr.write(f"{error}\n")
         return 3
     return 0
 
 
 def main(argv: List[str]) -> int:
     text = sys.stdin.read()
-    if len(argv) in (4, 5) and argv[1] == "excluded" and argv[3].isdigit():
-        return _print_excluded(argv[2], text, int(argv[3]), argv[4:] == ["--rehearsal"])
+    if len(argv) == 4 and argv[1] == "excluded" and argv[3].isdigit():
+        return _print_excluded(argv[2], text, int(argv[3]))
     if len(argv) != 2:
         return 2
     if argv[1] == "disks":

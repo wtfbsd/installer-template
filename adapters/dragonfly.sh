@@ -49,18 +49,25 @@ gpt_disk_size() {
 	'
 }
 
+# os_excluded_disks <names> — the disks of the root, of the installation
+# media and of the live medium; a /dev/serno, part-by-label or by-uuid
+# path is followed to its device.  cannot_tell (exit 3) when one of them
+# cannot be told.
 os_excluded_disks() {
-	for _dev in "$(mounted_device /)" "$(mounted_device "${media_mount}")"; do
+	_boot=$(boot_devices) || exit $?
+	for _dev in $(printf '%s\n' "${_boot}" | awk '{ print $2 }'); do
 		[ -n "${_dev}" ] || continue
 		case "${_dev}" in
 			/dev/serno/*)
-				_link=$(readlink "${_dev%.s[0-9]*}" 2>/dev/null) || continue
+				_link=$(readlink "${_dev%.s[0-9]*}" 2>/dev/null) ||
+					cannot_tell "readlink can't follow ${_dev}"
 				_dev=${_link##*/}
 				;;
 			# The live system mounts its root by label (or by the
 			# uuid of the partition): devfs links to the device.
 			/dev/part-by-label/*|/dev/part-by-uuid/*|/dev/by-label/*|/dev/by-uuid/*)
-				_link=$(readlink "${_dev%%@*}" 2>/dev/null) || continue
+				_link=$(readlink "${_dev%%@*}" 2>/dev/null) ||
+					cannot_tell "readlink can't follow ${_dev}"
 				_dev=${_link##*/}
 				;;
 		esac
@@ -74,9 +81,13 @@ os_interfaces() {
 	ifconfig -l 2>/dev/null | tr ' ' '\n' || true
 }
 
+# The keymaps of DragonFly (share/syscons/keymaps), for a system whose
+# keymap directory cannot be read.
+KEYMAPS_KNOWN="be.iso be.iso.acc bg.bds.ctrlcaps bg.phonetic.ctrlcaps br275.iso br275.iso.acc by.cp1131 ce.iso2 cs.latin2.qwertz danish.iso el.iso07 estonian.iso finnish.iso fr.dvorak fr.iso fr.iso.acc german.iso gr.elot.acc hr.iso hu.iso2.101keys hu.iso2.102keys icelandic.iso it.iso jp.106 lat-amer lt.iso4 norwegian.iso pl_PL.ISO8859-2 pt.iso pt.iso.acc ru.koi8-r si.iso sk.iso2 spanish.iso spanish.iso.acc swedish.iso swissfrench.iso swissgerman.iso tr.iso9.q ua.koi8-u uk.iso us.dvorak us.iso us.unix"
+
 os_keymaps() {
-	keymap_dir_rows "${INSTALLER_KEYMAP_DIR:-/usr/share/syscons/keymaps}" .kbd ||
-		keymap_rows us.iso uk.iso german.iso fr.iso spanish.iso it.iso
+	keymap_dir_rows "${INSTALLER_KEYMAP_DIR:-/usr/share/syscons/keymaps}" .kbd && return 0
+	keymaps_known "/usr/share/syscons/keymaps" ${KEYMAPS_KNOWN}
 }
 
 os_hash_scheme() {

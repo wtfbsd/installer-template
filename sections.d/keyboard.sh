@@ -17,9 +17,9 @@ if [ $# -ge 1 ]; then
 	shift
 fi
 
-# The layouts the section offers when the adapter has no list of its own
-# (a rehearsal without KEYMAPS, or a system whose adapter is not written).
-LAYOUTS='us gb de fr es'
+# The layouts the section offers when the adapter has no list at all (an
+# adapter that is not written): the common ones, never a handful.
+LAYOUTS='us gb de fr es it pt br ch be nl dk fi no se pl cz hu ru ua jp gr tr is'
 
 OS=$(config_value OS) || exit 2
 
@@ -27,7 +27,7 @@ OS=$(config_value OS) || exit 2
 # adapter, or the list above.  The configured default comes first when it
 # is not in the list.
 layout_rows() {
-	_rows=$(adapter_cmd keymaps 2>/dev/null) || _rows=''
+	_rows=$(adapter_cmd keymaps) || _rows=''
 	if [ -z "${_rows}" ]; then
 		for _l in ${LAYOUTS}; do
 			printf '%s\t%s\n' "${_l}" "$(layout_descr "${_l}")"

@@ -118,7 +118,8 @@ check "openbsd: the adapters from ifconfig without -l" "em0 iwm0" \
 # stamps): a virtio disk has no model, only the feature flags of the
 # device; the model is "VirtIO disk", never the flags.
 cp "${root}/tests/fixtures/hw-captures/netbsd/dmesg.out" "${tmp}/dmesg.boot"
-: > "${tmp}/mounts"
+# A root on a memory disk: no disk of the list holds it.
+printf '/dev/md0a / ffs rw 0 0\n' > "${tmp}/mounts"
 out=$(probe netbsd disk STUB_HW_DISKNAMES='ld0 dk0 dk1' STUB_DISK_INFO=/nonexistent)
 check "netbsd: a virtio disk is a VirtIO disk" "VirtIO disk" "$(field "${out}" ld0 descr)"
 check "netbsd: its size comes from the time stamped messages" "5368709120" \

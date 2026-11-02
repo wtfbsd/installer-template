@@ -55,6 +55,14 @@ PAGES: List[Tuple[str, str]] = [
 ]
 PAGE_IDS = [page for page, _title in PAGES]
 
+
+def shown_pages(os_name: str, detail: Optional[dict]) -> List[str]:
+    """The pages of this system: "Installation type" only where the install
+    command takes more than one mode (a choice that is not offered is not
+    shown)."""
+    modes = diskplan.system(os_name, detail)["modes"]
+    return [p for p in PAGE_IDS if not (p == "type" and len(modes) < 2)]
+
 # The exit codes of the graphical front end.  The live session reads
 # EXIT_TRY_LIVE to drop to the desktop instead of starting the installer
 # again.
@@ -626,7 +634,10 @@ class Wizard:
         return "the live session types in " + " ".join(argv[1:])
 
     def keymaps(self) -> List[Item]:
-        data, _err = self.backend.probe("keyboard")
+        data, err = self.backend.probe("keyboard")
+        if err:
+            # A warning of the backend (a keymap list it could not read).
+            self.log(err)
         self.locales = [l for l in data.get("locales", []) if isinstance(l, str)]
         return items_of(data, "layouts")
 
@@ -637,7 +648,9 @@ class Wizard:
         return list(self.locales)
 
     def zones(self) -> List[Item]:
-        data, _err = self.backend.probe("timezone")
+        data, err = self.backend.probe("timezone")
+        if err:
+            self.log(err)
         return items_of(data, "zones")
 
     def preflight(self) -> List[Failure]:
@@ -693,13 +706,25 @@ class Wizard:
                     Action("reboot", "Reboot", primary=True)]
         return [Action("back", "Back"), Action("next", "Next", primary=True)]
 
+    def pages(self, read: bool = False) -> List[str]:
+        """The pages of this system.  Whether Installation type is one of
+        them comes from the install command's modes (the disk report);
+        read=True reads the report when it was not read yet."""
+        if read and getattr(self, "_disk_report", None) is None:
+            self.disk_report()
+        return shown_pages(self.os_name, getattr(self, "disk_detail", None) or None)
+
     def next_page(self, page: str) -> str:
         index = PAGE_IDS.index(page)
-        return PAGE_IDS[min(index + 1, len(PAGE_IDS) - 1)]
+        pages = self.pages(read=PAGE_IDS[min(index + 1, len(PAGE_IDS) - 1)] == "type")
+        later = [p for p in PAGE_IDS[index + 1:] if p in pages]
+        return later[0] if later else PAGE_IDS[-1]
 
     def prev_page(self, page: str) -> str:
         index = PAGE_IDS.index(page)
-        return PAGE_IDS[max(index - 1, 0)]
+        pages = self.pages(read=PAGE_IDS[max(index - 1, 0)] == "type")
+        earlier = [p for p in PAGE_IDS[:index] if p in pages]
+        return earlier[-1] if earlier else PAGE_IDS[0]
 
     # ------------------------------------------------------- users
 

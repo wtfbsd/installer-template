@@ -70,8 +70,13 @@ r() { # r <shot> <python expression of the report r>
 	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
 		"${tmp}/shots/$1.usage.json" "$2" 2>&1
 }
-check "fresh: nothing chosen in the model" None "$(r fresh 'r["model"]')"
-check "fresh: no card looks chosen" "False False" "$(r fresh 'str(r["active"]["together"]) + " " + str(r["active"]["separate"])')"
+# The default way (together) is chosen, in the model and on the card, so
+# the page shows the disks at once; no other card looks chosen.
+check "fresh: the model holds the default, together" together "$(r fresh 'r["model"]')"
+check "fresh: the together card shows it, the other does not" "True False" "$(r fresh 'str(r["active"]["together"]) + " " + str(r["active"]["separate"])')"
+check "fresh: the list of the disks is shown at once" True "$(r fresh 'r["list_shown"]')"
+check "fresh: Next is not refused for a choice to make" "" \
+	"$(r fresh '"x" if any("together or separately" in p for p in r["problems"]) else ""')"
 check "fresh: separately can be chosen on OpenBSD" True "$(r fresh 'r["sensitive"]["separate"]')"
 check "Next first, then together: the model holds together" together "$(r next-then-together 'r["model"]')"
 check "Next first, then together: the card shows it" True "$(r next-then-together 'r["active"]["together"]')"
@@ -81,5 +86,43 @@ check "an OpenBSD picture names OpenBSD 8.0, not the BASE of the sample identity
 	"OpenBSD 8.0 False" "$(r fresh '("OpenBSD 8.0" if "OpenBSD 8.0" in r["identity"] else r["identity"]) + " " + str("FreeBSD" in r["identity"])')"
 check "separate: the model holds separate" separate "$(r separate 'r["model"]')"
 check "separate: no layout note (the system takes one disk)" False "$(r separate 'r["layout_note"]')"
+
+# OpenBSD offers Erase and install only: no Installation type page (Next
+# on the time zone leads to the Disk page, the step is not listed), and
+# no page says what is not offered.
+cat > "${tmp}/flow.json" <<'JSON'
+[{"name": "tz", "page": "timezone", "full": false, "state": {"report": "page", "press_next": true}},
+ {"name": "disk", "page": "disk", "full": false, "state": {"mode": "erase", "report": "page"}}]
+JSON
+mkdir -p "${tmp}/flow"
+GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${tmp}" \
+	INSTALLER_CONF="${tmp}/openbsd.conf" INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/dual-os.conf" \
+	bin/installer-gui --render "${tmp}/flow.json" --size 1024x768 --screenshots "${tmp}/flow" \
+	> "${tmp}/flow.log" 2>&1 || cat "${tmp}/flow.log" >&2
+f() {
+	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+		"${tmp}/flow/$1.page.json" "$2" 2>&1
+}
+check "OpenBSD: Next on the time zone leads to the Disk page" disk "$(f tz 'r["page"]')"
+check "OpenBSD: Installation type is not a step" False "$(f tz '"type" in r["steps"]')"
+check "OpenBSD: no line about what is not offered on the Disk page" "[]" "$(f disk 'r["not_offered"]')"
+
+# An install command that takes Erase and Manual: the page is there, with
+# those two cards only and no line about the third.
+cat > "${tmp}/two-modes" <<'SH'
+#!/bin/sh
+[ "${1-}" = --capabilities ] || exit 64
+echo '{"modes": ["erase", "manual"], "layouts": [{"ident": "single", "title": "Single disk", "min_disks": 1, "max_disks": 1}]}'
+SH
+chmod 755 "${tmp}/two-modes"
+printf '%s\n' '[{"name": "typecards", "page": "type", "full": false, "state": {"report": "page"}}]' > "${tmp}/type.json"
+GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${tmp}" \
+	INSTALLER_CONF="${tmp}/openbsd.conf" INSTALLER_INSTALL_COMMAND="${tmp}/two-modes" \
+	INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/dual-os.conf" \
+	bin/installer-gui --render "${tmp}/type.json" --size 1024x768 --screenshots "${tmp}/flow" \
+	> "${tmp}/flow2.log" 2>&1 || cat "${tmp}/flow2.log" >&2
+check "two modes: only their cards are shown" "{'erase': True, 'alongside': False, 'manual': True}" \
+	"$(f typecards 'r["type_cards"]')"
+check "two modes: no line about what is not offered" "[]" "$(f typecards 'r["not_offered"]')"
 
 finish

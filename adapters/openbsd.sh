@@ -44,13 +44,22 @@ os_disk_rows() {
 	done
 }
 
+# os_excluded_disks <names> — the disks of the root, of the installation
+# media and of the live medium; a disk named by its DUID is found in
+# hw.disknames.  cannot_tell (exit 3) when one of them cannot be told.
 os_excluded_disks() {
-	for _dev in "$(mounted_device /)" "$(mounted_device "${media_mount}")"; do
+	_boot=$(boot_devices) || exit $?
+	for _dev in $(printf '%s\n' "${_boot}" | awk '{ print $2 }'); do
 		[ -n "${_dev}" ] || continue
 		case "${_dev}" in
 			[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].[a-p])
-				_dev=$(disknames | awk -F '\t' -v u="${_dev%.*}" '$2 == u { print $1; exit }')
-				[ -n "${_dev}" ] || continue
+				_names=$(sysctl -n hw.disknames 2>/dev/null) ||
+					cannot_tell "sysctl hw.disknames failed"
+				_disk=$(printf '%s\n' "${_names}" | tr ',' '\n' |
+					awk -F: -v u="${_dev%.*}" '$2 == u { print $1; exit }')
+				[ -n "${_disk}" ] ||
+					cannot_tell "DUID ${_dev} not in hw.disknames"
+				_dev=${_disk}
 				;;
 		esac
 		device_disk_prefix "${_dev}" "$1" | tr '\n' ' ' || :

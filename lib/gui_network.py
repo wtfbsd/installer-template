@@ -25,6 +25,7 @@ except (ImportError, ValueError):
 
 import netplan as N  # noqa: E402
 from gui_lists import scrolled  # noqa: E402
+import gui_reveal  # noqa: E402
 
 # The examples in the empty fields: the documentation network of RFC 5737
 # (192.0.2.0/24), its netmask derived from it, not typed as an address.
@@ -102,6 +103,7 @@ class AdapterTab:
             self.psk = Gtk.Entry(visibility=False)
             row.attach(linked("Passphrase", self.psk), 0, 2, 1, 1)
             self.psk.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+            gui_reveal.add_eye(self.psk)
             row.attach(self.psk, 1, 2, 1, 1)
             box.pack_start(row, False, False, 0)
             box.pack_start(lbl("The installed system joins this network when it starts. The "
