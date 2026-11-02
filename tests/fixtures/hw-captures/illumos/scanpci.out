@@ -1,0 +1,24 @@
+
+pci bus 0x0000 cardnum 0x00 function 0x00: vendor 0x1275 device 0x1275
+ Network Appliance Corporation Device unknown
+
+pci bus 0x0000 cardnum 0x01 function 0x00: vendor 0x8086 device 0x7000
+ Intel Corporation 82371SB PIIX3 ISA [Natoma/Triton II]
+
+pci bus 0x0000 cardnum 0x02 function 0x00: vendor 0x1af4 device 0x1001
+ Red Hat, Inc. Virtio block device
+
+pci bus 0x0000 cardnum 0x03 function 0x00: vendor 0x1af4 device 0x1001
+ Red Hat, Inc. Virtio block device
+
+pci bus 0x0000 cardnum 0x04 function 0x00: vendor 0x1af4 device 0x1000
+ Red Hat, Inc. Virtio network device
+
+pci bus 0x0000 cardnum 0x05 function 0x00: vendor 0x1af4 device 0x1005
+ Red Hat, Inc. Virtio RNG
+
+pci bus 0x0000 cardnum 0x06 function 0x00: vendor 0xfb5d device 0x40fb
+ Device unknown
+
+pci bus 0x0000 cardnum 0x07 function 0x00: vendor 0x8086 device 0x1e31
+ Intel Corporation 7 Series/C210 Series Chipset Family USB xHCI Host Controller

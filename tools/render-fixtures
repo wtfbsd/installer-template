@@ -1,0 +1,8 @@
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# The disk fixture the pictures of each system are drawn with
+# (tools/render-screenshots.sh): an illumos picture shows illumos disks
+# (cXtYdZ, the captured report), never the ada0 of another system.
+# OS=fixture under tests/fixtures/disks; a system not named uses default.
+illumos=captured-illumos.conf
+default=dual-os.conf

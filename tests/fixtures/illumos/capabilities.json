@@ -1,0 +1,88 @@
+{
+ "modes": [
+  "erase"
+ ],
+ "data_pools": false,
+ "boot": [
+  "uefi",
+  "bios"
+ ],
+ "encryption": "",
+ "not_offered": "not offered on illumos yet",
+ "filesystems": [
+  [
+   "zfs",
+   "ZFS"
+  ]
+ ],
+ "layouts": [
+  {
+   "ident": "single",
+   "title": "Single disk",
+   "min_disks": 1,
+   "max_disks": 1,
+   "even": false,
+   "note": "",
+   "encrypted": false
+  },
+  {
+   "ident": "stripe",
+   "title": "Stripe",
+   "min_disks": 2,
+   "max_disks": 64,
+   "even": false,
+   "note": "all the space, no redundancy",
+   "encrypted": false
+  },
+  {
+   "ident": "mirror",
+   "title": "Mirror",
+   "min_disks": 2,
+   "max_disks": 64,
+   "even": false,
+   "note": "",
+   "encrypted": false
+  },
+  {
+   "ident": "raid10",
+   "title": "RAID 10",
+   "min_disks": 4,
+   "max_disks": 64,
+   "even": true,
+   "note": "mirrors, striped",
+   "encrypted": false
+  },
+  {
+   "ident": "raidz1",
+   "title": "RAID-Z1",
+   "min_disks": 3,
+   "max_disks": 64,
+   "even": false,
+   "note": "",
+   "encrypted": false
+  },
+  {
+   "ident": "raidz2",
+   "title": "RAID-Z2",
+   "min_disks": 4,
+   "max_disks": 64,
+   "even": false,
+   "note": "",
+   "encrypted": false
+  },
+  {
+   "ident": "raidz3",
+   "title": "RAID-Z3",
+   "min_disks": 5,
+   "max_disks": 64,
+   "even": false,
+   "note": "",
+   "encrypted": false
+  }
+ ],
+ "home_encryption": "ZFS native",
+ "usages": [
+  "together"
+ ],
+ "swap_encryption": false
+}

@@ -16,6 +16,7 @@ Everything here only reads:
   with an empty environment: sysctl, diskinfo, gpart, fstyp and zpool
   import on FreeBSD; gpt, dkctl, fdisk, fstyp and raidctl on NetBSD;
   fdisk, disklabel and bioctl on OpenBSD; gpt and fstyp on DragonFly;
+  diskinfo, iostat and zpool on illumos;
 - the first MiB and the last sector of a disk or partition, opened
   read-only, for the signatures the tools do not know: LUKS, BitLocker,
   GELI, a ZFS label, and whether a disk without a table holds anything;
@@ -48,13 +49,14 @@ import sys
 # the path, the module next to it is named explicitly.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fatdir  # noqa: E402
+import illumos  # noqa: E402
 from typing import Callable, Dict, List, Optional, Tuple
 
 MiB = 1024 * 1024
 
 WINDOWS_RECOVERY = "Windows recovery"
 # The name of a disk (vtbd1, ld0, sd2): [0-9] only, never another digit.
-DISK_NAME_RE = re.compile(r"[a-z]+\d+", re.ASCII)
+DISK_NAME_RE = re.compile(r"[a-z]+\d+|c\d+(?:t[0-9A-F]+)?d\d+", re.ASCII)
 # hw.disknames of NetBSD and OpenBSD, and the key of its capture.
 HW_DISKNAMES = "hw.disknames"
 HW_DISKNAMES_KEY = "sysctl_-n_" + HW_DISKNAMES
@@ -263,7 +265,7 @@ TOOLS = {
     "diskinfo": ["/usr/sbin/diskinfo"],
     "gpart": ["/sbin/gpart"],
     "fstyp": ["/usr/sbin/fstyp", "/sbin/fstyp"],
-    "zpool": ["/sbin/zpool"],
+    "zpool": ["/sbin/zpool", "/usr/sbin/zpool"],
     "geli": ["/sbin/geli"],
     "zdb": ["/usr/sbin/zdb", "/sbin/zdb", "/usr/bin/zdb"],
     "gpt": ["/sbin/gpt"],
@@ -272,6 +274,7 @@ TOOLS = {
     "disklabel": ["/sbin/disklabel"],
     "raidctl": ["/sbin/raidctl"],
     "bioctl": ["/sbin/bioctl"],
+    "iostat": ["/usr/bin/iostat"],
 }
 
 
@@ -297,6 +300,9 @@ class System(Runner):
             return f"/dev/r{disk}{part}"
         if self.os_name == "openbsd":
             return f"/dev/r{disk}c"
+        if self.os_name == "illumos":
+            # p0: the whole disk on x86, whatever its table.
+            return f"/dev/rdsk/{disk}p0"
         return f"/dev/{disk}"
 
     def run(self, key, argv):
@@ -1039,13 +1045,135 @@ def probe_dragonfly(runner: Runner, names: List[str]) -> List[dict]:
     return disks
 
 
+# ------------------------------------------------------------------ illumos
+
+ILLUMOS_DISK_RE = re.compile(r"c\d+(?:t[0-9A-F]+)?d\d+", re.ASCII)
+
+
+def illumos_diskinfo(text: str) -> Dict[str, dict]:
+    """{disk: size, model, removable, ssd} of `diskinfo -Hp`: tab-separated
+    TYPE, DISK, VID, PID, SIZE (bytes), RMV, SSD."""
+    out = {}
+    for line in text.split("\n"):
+        f = line.split("\t")
+        if len(f) < 7 or not ILLUMOS_DISK_RE.fullmatch(f[1]) or not f[4].strip().isdigit():
+            continue
+        ssd = {"yes": True, "no": False}.get(f[6].strip().lower())
+        out[f[1]] = {"size": int(f[4]), "model": " ".join(x.strip() for x in f[2:4] if x.strip()),
+                     "removable": f[5].strip().lower() == "yes", "ssd": ssd}
+    return out
+
+
+def illumos_iostat(text: str) -> Dict[str, dict]:
+    """{disk: vendor, product, serial} of `iostat -En`: a block per device
+    that starts with its name; "Vendor: V Product: P Revision: R Serial
+    No: S" on its second line."""
+    out: Dict[str, dict] = {}
+    current = None
+    for line in text.split("\n"):
+        head = line.split(" ", 1)[0]
+        if head and ILLUMOS_DISK_RE.fullmatch(head):
+            current = out.setdefault(head, {})
+            continue
+        found = iostat_ident(line)
+        if current is not None and found:
+            vendor, product, serial = found
+            current.update(vendor=vendor.strip(), product=product.strip(), serial=serial.strip())
+    return out
+
+
+def _ws_start(text: str, start: int, end: int) -> int:
+    """Where the whitespace that ends text[start:end] begins."""
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return end
+
+
+# The labels of an `iostat -En` identity line.
+_VENDOR = "Vendor: "
+_PRODUCT = "Product: "
+_REVISION = "Revision: "
+_SERIAL = "Serial No:"
+
+
+def iostat_ident(line: str) -> Optional[Tuple[str, str, str]]:
+    """Vendor, product and serial of a line "Vendor: V Product: P
+    Revision: R Serial No: S" of `iostat -En`, or None; what
+    ^Vendor: (.*?)\\s*Product: (.*?)\\s*Revision: .*?Serial No: ?(\\S*)
+    matched, without its backtracking: the first Product: after Vendor:,
+    the first Revision: after it, the first Serial No: after that."""
+    if not line.startswith(_VENDOR):
+        return None
+    head = len(_VENDOR)
+    prod = line.find(_PRODUCT, head)
+    if prod < 0:
+        return None
+    rev = line.find(_REVISION, prod + len(_PRODUCT))
+    if rev < 0:
+        return None
+    ser = line.find(_SERIAL, rev + len(_REVISION))
+    if ser < 0:
+        return None
+    vendor = line[head:_ws_start(line, head, prod)]
+    after = prod + len(_PRODUCT)
+    product = line[after:_ws_start(line, after, rev)]
+    pos = ser + len(_SERIAL)
+    if line[pos:pos + 1] == " ":
+        pos += 1
+    end = pos
+    while end < len(line) and not line[end].isspace():
+        end += 1
+    return vendor, product, line[pos:end]
+
+
+def illumos_pools(text: str) -> Dict[str, str]:
+    """{disk: pool} of `zpool status` or `zpool import` (lib/illumos.py
+    pool_members reads the format)."""
+    return {disk: pool for pool, members in illumos.pool_members(text).items()
+            for disk in sorted(members)}
+
+
+def illumos_bus(vendor: str, product: str) -> str:
+    """The bus of a disk by what it says it is (its name does not say)."""
+    text = f"{vendor} {product}".lower()
+    for key, bus in (("virtio", "VirtIO"), ("nvme", "NVMe"), ("usb", "USB"), ("ata", "SATA")):
+        if key in text:
+            return bus
+    return ""
+
+
+def probe_illumos(runner: Runner, names: List[str]) -> List[dict]:
+    rc, out = runner.run("diskinfo_-Hp", ["diskinfo", "-Hp"])
+    info = illumos_diskinfo(out) if rc == 0 else {}
+    rc, out = runner.run("iostat_-En", ["iostat", "-En"])
+    ident = illumos_iostat(out) if rc == 0 else {}
+    pools: Dict[str, str] = {}
+    for key, argv in (("zpool_import", ["zpool", "import"]), ("zpool_status", ["zpool", "status"])):
+        rc, out = runner.run(key, argv)
+        if rc == 0:
+            pools.update(illumos_pools(out))
+    disks = []
+    for name in names:
+        di, io = info.get(name, {}), ident.get(name, {})
+        model = " ".join(x for x in (io.get("vendor", ""), io.get("product", "")) if x) \
+            or di.get("model", "")
+        disk = {"name": name, "size_bytes": di.get("size", 0), "sector": 512, "model": model,
+                "serial": io.get("serial", ""),
+                "bus": illumos_bus(io.get("vendor", ""), io.get("product", "")),
+                "ssd": di.get("ssd"), "scheme": "none", "parts": []}
+        if name in pools:
+            disk["pool"] = pools[name]
+        disks.append(disk)
+    return disks
+
+
 # ------------------------------------------------------------------- report
 
 SYSNAMES = {"freebsd": "freebsd", "netbsd": "netbsd", "openbsd": "openbsd",
-            "dragonfly": "dragonfly"}
+            "dragonfly": "dragonfly", "illumos": "sunos"}
 
 PROBES = {"freebsd": probe_freebsd, "netbsd": probe_netbsd, "openbsd": probe_openbsd,
-          "dragonfly": probe_dragonfly}
+          "dragonfly": probe_dragonfly, "illumos": probe_illumos}
 
 
 def efi_systems(files: List[str]) -> List[Tuple[str, str]]:
@@ -1369,7 +1497,7 @@ def main(argv: List[str]) -> int:
     runner: Optional[Runner] = None
     if not args:
         sys.stderr.write("usage: diskprobe.py [--replay DIR [--sniffs FILE]] "
-                         "freebsd|netbsd|openbsd|dragonfly DISK...\n")
+                         "freebsd|netbsd|openbsd|dragonfly|illumos DISK...\n")
         return 2
     if replay:
         runner = _replay_runner(replay, sniff_file)

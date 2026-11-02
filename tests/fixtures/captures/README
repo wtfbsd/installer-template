@@ -38,3 +38,8 @@ volume ids are replaced by made-up values (the same value everywhere), the
 build host names are gone, and the salt, the encrypted master key and the
 hash lines of the `geli dump` of the test passphrase are left out.  The
 kernel messages (dmesg) and uname are not kept.
+
+illumos/live-host holds the outputs of the disk tools of OpenIndiana
+Hipster 2026.10 (illumos), run as root on a bhyve guest with two virtio
+disks: c2t0d0 holds rpool (the running system), c4t0d0 is empty.  The
+serial numbers are made up (BHYVE-0000-0000-000N); the host name is gone.

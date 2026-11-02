@@ -10,7 +10,9 @@
 #                                every disk of the machine
 #   os_excluded_disks <names>    print the names of the disks that must not
 #                                be written to (the running system and the
-#                                installation media), separated by spaces
+#                                installation media), separated by spaces;
+#                                exit 3 when it cannot tell them (then no
+#                                disk is offered)
 #   os_interfaces                print the names of the network adapters,
 #                                one per line
 #   os_keymaps                   print "name<TAB>description" for every
@@ -313,11 +315,22 @@ keymap_dir_rows() {
 }
 
 # zone_rows — "name<TAB>description" for the time zones of the system, from
-# zone1970.tab or zone.tab of the zoneinfo directory.  UTC comes first.
+# zone1970.tab or zone.tab of the zoneinfo directory (os_zoneinfo_dir of the
+# adapter, else /usr/share/zoneinfo).  UTC comes first.
 zone_rows() {
-	_zi=${INSTALLER_ZONEINFO:-/usr/share/zoneinfo}
+	_zi=${INSTALLER_ZONEINFO:-}
+	if [ -z "${_zi}" ]; then
+		if command -v os_zoneinfo_dir >/dev/null 2>&1; then
+			_zi=$(os_zoneinfo_dir)
+		else
+			_zi=/usr/share/zoneinfo
+		fi
+	fi
 	_tab=''
-	for _t in "${_zi}/zone1970.tab" "${_zi}/zone.tab"; do
+	# illumos keeps its tables in tab/ (zone_sun.tab has the columns of
+	# zone.tab).
+	for _t in "${_zi}/zone1970.tab" "${_zi}/zone.tab" "${_zi}/tab/zone_sun.tab" \
+		"${_zi}/tab/zone.tab"; do
 		if [ -f "${_t}" ]; then
 			_tab=${_t}
 			break
@@ -346,7 +359,13 @@ target_rows() {
 	# The disks that must not be written to are left out, in a rehearsal
 	# too: a rehearsal is carried out on the machine that is the target.
 	_names=$(cut -f1 "${work}" | tr '\n' ' ')
-	_excluded=$(os_excluded_disks "${_names}") || _excluded=''
+	# An adapter that cannot tell which disks hold the running system
+	# (exit 3) offers none: never a disk it may not write to.
+	_excluded=$(os_excluded_disks "${_names}") || {
+		_rc=$?
+		[ "${_rc}" -ne 3 ] || die 3 'cannot tell which disks hold the running system; no disk is offered'
+		_excluded=''
+	}
 	# An array the system assembled by itself from members found on the
 	# disks (NetBSD RAIDframe raidN, OpenBSD softraid sdN) is not offered:
 	# its members are, as members of it.  A rehearsal names them in

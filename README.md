@@ -144,13 +144,22 @@ crypt scheme it accepts.
 | NetBSD | `sysctl hw.disknames`, `disklabel`, the kernel messages | `ifconfig -l` | the wscons encodings | `bcrypt-2a` (`$2a$`; NetBSD refuses `$2b$`) |
 | OpenBSD | `sysctl hw.disknames`, `disklabel`, the kernel messages | the `<name>: flags=` lines of `ifconfig` | the wscons encodings | `bcrypt` (`$2b$`) |
 | DragonFly | `sysctl kern.disks`, the kernel messages | `ifconfig -l` | `/usr/share/syscons/keymaps` | `sha512` (`$6$`) |
+| illumos | `diskinfo -Hp`, `iostat -En`, `zpool status`/`import` | `dladm show-phys`; Wi-Fi `dladm scan-wifi` | `/usr/share/lib/keytables/type_6/kbd_layouts` (never `kbd -s`) | `CRYPT_DEFAULT` of `policy.conf` (`6`: `sha512`) |
 
-The illumos adapter is written against the documented formats of the
-illumos tools (`diskinfo -Hp`, `dladm show-phys`, the `kbd` layout table;
-ZFS single, mirror, RAID-Z1 and RAID-Z2; `$6$`) and is unproven: until
-outputs of a real illumos machine prove it, it answers in a rehearsal only,
-and on a machine it reports `adapter not implemented for illumos` and exits
-3, so an unfinished system is never mistaken for a working one.
+The illumos adapter's disks, hardware, keymaps and hash scheme, and where
+its zone table lives, are tested against outputs captured on OpenIndiana
+2026.10 (`tests/fixtures/captures/illumos`, `hw-captures/illumos`,
+`tests/fixtures/illumos`): its disks are named `cXtYdZ` (`c2t0d0`), which
+every check of a disk name accepts; its hardware comes from `prtconf -D`
+and `scanpci`; its zone table is under `/usr/share/lib/zoneinfo`
+(`tab/zone_sun.tab`).  It leaves out the disk of the live medium
+(`/.cdrom`) and the disks of the pool the root is in (`/etc/mnttab`,
+`zpool status`), and when it cannot tell them (`zpool status` fails or
+names no disk of that pool, a live root without its medium, a root on
+anything else) it offers no disk at all (exit 3, "cannot tell which disks
+hold the running system").  Not capture-tested yet, written after the
+documented formats: `/etc/mnttab`, `dladm scan-wifi` and the columns of
+`tab/zone_sun.tab`.
 
 The time zones of every system are the zone table of zoneinfo
 (`zone1970.tab`, else `zone.tab`), with UTC first.  When an adapter has no
@@ -260,7 +269,8 @@ stops the installation with an `ERROR` line and the command never runs.
 - Optional: `<slug>-install --capabilities` prints what the command can do
   with disks, one JSON object in the shape of the adapter hook `os_layouts`
   (`layouts`, `filesystems`, `modes`, `data_pools`, `boot` — a list of
-  `uefi` and `bios` —, `encryption`, `not_offered`).  The installed
+  `uefi` and `bios` —, `encryption`, `home_encryption`, `usages` — a list
+  of `together` and `separate` —, `not_offered`).  The installed
   command is looked for in the directories of the system's programs
   (`/usr/local/sbin`, `/usr/local/bin`, `/usr/pkg/sbin`, `/usr/pkg/bin`,
   `/opt/local/sbin`, `/opt/local/bin`, `/usr/sbin`, `/usr/bin`, `/sbin`,
@@ -278,7 +288,13 @@ stops the installation with an `ERROR` line and the command never runs.
   shown as a text), the filesystems and the layouts listed, and an
   `encryption` of `""` means the system cannot be encrypted: no box, no
   passphrase, a line that says so, and a plan with `encryption.enabled`
-  is refused.
+  is refused — unless `home_encryption` names how the home directories
+  and the data are encrypted (illumos: `ZFS native`): then the box says
+  that, a line says the system itself is not encrypted, and
+  `encryption.enabled` of the plan means the home directories and the
+  data.  `usages` lists how two disks or more may be used; without it
+  both are offered; with one, the question is not asked and a plan with
+  the other is refused.
 
 ### The disk plan
 

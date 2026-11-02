@@ -23,7 +23,9 @@ from typing import Dict, Iterable, List, Optional, Tuple
 MiB = 1024 * 1024
 GiB = 1024 * MiB
 # re.ASCII: \d is 0 to 9 only, never another digit of Unicode.
-DISK_RE = re.compile(r"[a-z]+\d+", re.ASCII)
+# A disk: letters then digits (ada0, sd1, nda0), or the cXtYdZ of illumos
+# (c2t0d0, c0t5000CCA012345678d0).
+DISK_RE = re.compile(r"[a-z]+\d+|c\d+(?:t[0-9A-F]+)?d\d+", re.ASCII)
 NAME_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 MOUNT_RE = re.compile(r"/([A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*)?")
 MAX_PLAN_BYTES = 64 * 1024
@@ -147,6 +149,30 @@ SYSTEMS: Dict[str, dict] = {
         "data_pools": True,
         "not_offered": "not offered on OpenBSD yet",
     },
+    # illumos: what its install command takes (--capabilities): ZFS on
+    # whole disks, Erase and install, the disks together; the home
+    # directories and the data encrypted (ZFS native), never the system.
+    "illumos": {
+        "layouts": [
+            Layout("single", SINGLE_DISK, 1, 1),
+            Layout("stripe", "Stripe", 2, note="all the space, no redundancy"),
+            Layout("mirror", "Mirror", 2),
+            Layout("raid10", "RAID 10", 4, even=True, note="mirrors, striped"),
+            Layout("raidz1", "RAID-Z1", 3),
+            Layout("raidz2", "RAID-Z2", 4),
+            Layout("raidz3", "RAID-Z3", 5),
+        ],
+        "filesystems": [("zfs", "ZFS")],
+        "single_only": set(),
+        "encryption": "",
+        "home_encryption": "ZFS native",
+        "swap_encryption": False,
+        "boot": ("uefi", "bios"),
+        "modes": ("erase",),
+        "usages": ("together",),
+        "data_pools": False,
+        "not_offered": "not offered on illumos yet",
+    },
     "dragonfly": {
         "layouts": [Layout("single", SINGLE_DISK, 1, 1)],
         "filesystems": [("hammer2", "HAMMER2"), ("ufs", "UFS")],
@@ -180,10 +206,21 @@ def system(os_name: str, detail: Optional[dict] = None) -> dict:
     base.setdefault("modes", MODES)
     base.setdefault("data_pools", True)
     base.setdefault("not_offered", "not offered on this system")
+    base.setdefault("usages", USAGES)
+    base.setdefault("home_encryption", "")
+    base.setdefault("swap_encryption", True)
     caps = (detail or {}).get("capabilities") if isinstance(detail, dict) else None
     if not isinstance(caps, dict) or not caps:
         return base
     out = dict(base)
+    _caps_disk_keys(caps, out)
+    _caps_choice_keys(caps, out)
+    return out
+
+
+def _caps_disk_keys(caps: dict, out: dict) -> None:
+    """The layouts, filesystems, modes, data pools and swap encryption of
+    the capabilities, over the table."""
     items = _caps_layouts(caps)
     if items:
         out["layouts"] = items
@@ -193,18 +230,33 @@ def system(os_name: str, detail: Optional[dict] = None) -> dict:
     modes = [m for m in caps.get("modes") or [] if m in MODES]
     if modes:
         out["modes"] = tuple(modes)
-    if isinstance(caps.get("data_pools"), bool):
-        out["data_pools"] = caps["data_pools"]
+    for key in ("data_pools", "swap_encryption"):
+        if isinstance(caps.get(key), bool):
+            out[key] = caps[key]
+
+
+def _known(caps: dict, key: str, known: Tuple[str, ...]) -> Tuple[str, ...]:
+    """The values of a list of the capabilities that are known, in the
+    order of known; () when there is none."""
+    given = caps.get(key) if isinstance(caps.get(key), list) else []
+    return tuple(v for v in known if v in given)
+
+
+def _caps_choice_keys(caps: dict, out: dict) -> None:
+    """The boot modes, the usages and the texts of the capabilities."""
     # How the system starts: only the modes the install command takes;
     # an unknown value is left out, none at all keeps the table.
-    boots = caps.get("boot") if isinstance(caps.get("boot"), list) else []
-    boots = [b for b in BOOT_MODES if b in boots]
+    boots = _known(caps, "boot", BOOT_MODES)
     if boots:
-        out["boot"] = tuple(boots)
-    for key in ("encryption", "not_offered"):
+        out["boot"] = boots
+    # Together and separately: only the ways the install command takes;
+    # none at all (the BSDs) keeps both.
+    usages = _known(caps, "usages", USAGES)
+    if usages:
+        out["usages"] = usages
+    for key in ("encryption", "home_encryption", "not_offered"):
         if isinstance(caps.get(key), str):
             out[key] = caps[key]
-    return out
 
 
 def _int_or(raw: dict, key: str, default: int) -> int:
@@ -423,9 +475,12 @@ def is_blank(disk: dict) -> bool:
             and not disk.get("unknown_bytes"))
 
 
-def needs_usage_question(detail: dict) -> bool:
-    """Two or more installable disks: use them together or separately?"""
-    return len(detail.get("disks", []) or []) >= 2
+def needs_usage_question(detail: dict, os_name: str = "") -> bool:
+    """Two or more installable disks: use them together or separately?
+    Asked only when the system offers both ways."""
+    if len(detail.get("disks", []) or []) < 2:
+        return False
+    return not os_name or len(system(os_name, detail)["usages"]) > 1
 
 
 def separate_plan(system_disk: str, others: Dict[str, Optional[str]], filesystem: str) -> dict:
@@ -543,6 +598,9 @@ class _Partitions:
     efi: int = 0
 
 
+# How a plan's "usage" reads in a sentence.
+USAGE_WORDS = {"together": "together", "separate": "separately"}
+
 class _Validation:
     """The state the checks of one plan share: the errors in the order they
     are found, the disks the report offers and the disks the plan uses.
@@ -618,6 +676,8 @@ class _Validation:
             return
         if usage not in USAGES:
             self.errors.append("usage is not together or separate")
+        elif usage not in self.sysinfo["usages"]:
+            self.errors.append(f"using the disks {USAGE_WORDS.get(usage, usage)} is not offered on {os_title(self.os_name)}: choose another way to use them")
         elif self.mode != "erase":
             self.errors.append("usage is for Erase and install only")
         elif usage == "separate":
@@ -668,20 +728,31 @@ class _Validation:
         if not is_int(swap) or not 0 <= swap <= 1048576:
             errors.append("the swap size is not between 0 and 1048576 MB")
             swap = 0
+        self.encryption_offered(enc, swap)
+        for key in ("sector_4k", "trim"):
+            if key in plan and not isinstance(plan[key], bool):
+                errors.append(f"{key} is not true or false")
+
+    def encryption_offered(self, enc: dict, swap: int) -> None:
+        """The encryption of the plan against what the system offers, in
+        this order: the system (or home and data), the layout, the swap."""
+        plan, errors = self.plan, self.errors
         # A layout that is an encryption (OpenBSD's CRYPTO, RAID 1C) is never
         # chosen without encryption: the install command would make it with
         # no passphrase to ask for.
         chosen = layout(self.os_name, plan.get("layout", ""), self.detail) \
             if self.mode == "erase" and isinstance(plan.get("layout", ""), str) else None
-        if enc.get("enabled") and not self.sysinfo["encryption"]:
+        # On illumos the plan's encryption is that of the home directories
+        # and the data (home_encryption): the system itself is not.
+        if enc.get("enabled") and not (self.sysinfo["encryption"] or
+                                       self.sysinfo["home_encryption"]):
             errors.append(f"encrypting the system is not offered on {os_title(self.os_name)}: turn encryption off")
         if chosen is not None and chosen.encrypted and not enc.get("enabled"):
             errors.append(f"the layout {chosen.title} encrypts: encryption has to be on")
         if enc.get("swap") and swap == 0:
             errors.append("encrypted swap needs swap")
-        for key in ("sector_4k", "trim"):
-            if key in plan and not isinstance(plan[key], bool):
-                errors.append(f"{key} is not true or false")
+        if enc.get("swap") and not self.sysinfo["swap_encryption"]:
+            errors.append(f"encrypting the swap is not offered on {os_title(self.os_name)}: turn swap encryption off")
 
     def filesystem(self) -> None:
         sysinfo = self.sysinfo
@@ -1029,7 +1100,9 @@ def _erase_actions(plan: dict, system_of: tuple, storage: tuple) -> List[Tuple[s
                     f"({item.title if item else plan.get('layout')})", False))
     for name in plan.get("disks", []):
         disk = offered.get(name, {})
-        text = ", ".join(_erase_parts(plan, name, item, sysinfo["encryption"], storage))
+        enc_what = (sysinfo["encryption"] or
+                    (f"home and data, {sysinfo['home_encryption']}" if sysinfo["home_encryption"] else ""))
+        text = ", ".join(_erase_parts(plan, name, item, enc_what, storage))
         if foreign(disk):
             text += f" — this deletes {', '.join(foreign(disk))}"
         out.append((name, text, True))
@@ -1120,7 +1193,9 @@ def parse(data: bytes) -> dict:
     return plan
 
 
-CAPS_KEYS = ("modes", "data_pools", "boot", "encryption", "not_offered", "filesystems", "layouts")
+CAPS_KEYS = ("modes", "data_pools", "boot", "encryption", "home_encryption", "swap_encryption",
+             "usages",
+             "not_offered", "filesystems", "layouts")
 MAX_CAPS = 64 * 1024
 
 

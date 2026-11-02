@@ -1,0 +1,3 @@
+rpool/ROOT/openindiana	/	zfs	rw,devices,setuid,nonbmand,exec,xattr,atime,dev=4010002	1761955200
+/devices	/devices	devfs	dev=8b80000	1761955200
+swap	/tmp	tmpfs	xattr,dev=8b40001	1761955200

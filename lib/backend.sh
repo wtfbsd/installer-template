@@ -29,11 +29,16 @@ sanitize_text() {
 	printf '%s' "$1" | LC_ALL=C tr -d '[:cntrl:]"\\' | LC_ALL=C tr -cd ' -~'
 }
 
-# disk_name_valid <name> — succeed when the name is the name of a disk: a
-# name of a disk starts with letters and ends with digits.
+# disk_name_valid <name> — succeed when the name is the name of a disk:
+# letters then digits (ada0, sd1, nda0), or the cXtYdZ of illumos (c2t0d0,
+# c0t5000CCA012345678d0).
 disk_name_valid() {
 	[ -n "${1:-}" ] || return 1
-	printf '%s\n' "$1" | grep -Eq -- '^[a-z]+[0-9]+$'
+	# One line of letters and digits only (grep reads line by line).
+	case "$1" in
+		*[!A-Za-z0-9]*) return 1 ;;
+	esac
+	printf '%s\n' "$1" | grep -Eq -- '^([a-z]+[0-9]+|c[0-9]+(t[0-9A-F]+)?d[0-9]+)$'
 }
 
 # kv_get <file> <key> — print the value of one KEY=value line; return 1 when
