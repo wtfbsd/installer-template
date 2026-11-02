@@ -668,20 +668,24 @@ Everything it installs belongs to root and nobody else may write it, since
 the root helper runs it:
 
 - Run as root, it gives the whole installed tree (`libexec/wtfbsd-installer`,
-  `share/wtfbsd-installer`, the launcher and the menu entry) to root:wheel
-  (`chown -R 0:0`) and takes the write bit of the group and of the others
+  `share/wtfbsd-installer`, the launcher and the menu entry) to root and
+  the group of root (`chown -R 0:0`; gid 0 is `wheel` on the BSDs and
+  `root` on illumos, which has no `wheel`) and takes the write bit of the group and of the others
   away (`chmod -R go-w`).
 - An image built without root (a NO_ROOT build, makefs with a METALOG, as
   the NetBSD and OpenBSD builds do) passes `--metalog FILE`: the script
   appends an mtree line for every file and every directory it installs or
   makes, `./path type=file|dir uname=root gname=wheel mode=0755`, with the
-  mode the path has in the stage, and the image builder applies it.
+  mode the path has in the stage, and the image builder applies it.  The
+  group is the one of root on the system of the configuration (`OS`):
+  `gname=wheel` on the BSDs, `gname=root` on illumos (`lib/osinfo.sh`; a
+  system added to the installer gets its line there).
 - Without root and without `--metalog` it refuses and installs nothing.
 
 | Path (under the prefix) | What it is |
 | --- | --- |
 | `libexec/wtfbsd-installer/` | `bin`, `lib`, `sections.d`, `adapters`, `gui` and the `installer.conf` of the template (`--conf`) |
-| `libexec/wtfbsd-installer/installer-apply` | the root helper, root:wheel 0555 (when the stage is built as root) |
+| `libexec/wtfbsd-installer/installer-apply` | the root helper, root and the group of root, 0555 (when the stage is built as root) |
 | `bin/wtfbsd-installer` | the launcher, run as the user: the graphical front end under X, the text one without; `--graphical` or `--text` choose, and no other argument is accepted; root gets the text front end in a clean environment |
 | `share/applications/wtfbsd-installer.desktop` | "Install <product>" in the menu |
 | `share/wtfbsd-installer/desktop/wtfbsd-installer.desktop` | the same entry, for the desktop of the live user |

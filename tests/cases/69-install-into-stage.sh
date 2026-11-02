@@ -163,6 +163,41 @@ for top in libexec/wtfbsd-installer share/wtfbsd-installer bin/wtfbsd-installer 
 	check_contains "as root ${top} is not writable by others" "chmod -R go-w ${rs}/${top}" "${ownership}"
 done
 
+# ------------------------------------------- the group of root: illumos
+# illumos has no wheel: the group of root is root (gid 0).  The METALOG
+# names it and the chown as root gives gid 0, never wheel; a chown that is
+# asked for wheel fails the way it fails on illumos.
+sed 's/^OS=.*/OS=illumos/' "${tmp}/acme.conf" > "${tmp}/illumos.conf"
+mkdir -p "${tmp}/ilstage"
+: > "${tmp}/il.METALOG"
+rc=0
+"${root}/install-into-stage.sh" "${tmp}/ilstage" --conf "${tmp}/illumos.conf" \
+	--metalog "${tmp}/il.METALOG" >/dev/null 2>&1 || rc=$?
+check_rc "illumos: the stage is built with a METALOG" 0 "${rc}"
+check "illumos: every METALOG line gives the path to root:root" "" \
+	"$(grep -vE '^\./[^ ]+ type=(file|dir) uname=root gname=root mode=0[0-7]{3}$' "${tmp}/il.METALOG" || true)"
+check "illumos: the METALOG has lines" yes "$([ -s "${tmp}/il.METALOG" ] && echo yes || echo no)"
+ilroot="${tmp}/ilroot"
+mkdir -p "${ilroot}/bin" "${tmp}/ilrootstage"
+printf '#!/bin/sh
+echo 0
+' > "${ilroot}/bin/id"
+printf '#!/bin/sh
+case "$2" in *:wheel|wheel) echo "chown: unknown group wheel" >&2; exit 1 ;; esac
+echo "chown $*" >> "%s/il.ownership"
+' \
+	"${tmp}" > "${ilroot}/bin/chown"
+chmod +x "${ilroot}/bin/"*
+rc=0
+PATH="${ilroot}/bin:${PATH}" "${root}/install-into-stage.sh" "${tmp}/ilrootstage" \
+	--conf "${tmp}/illumos.conf" >/dev/null 2>&1 || rc=$?
+check_rc "illumos as root: the stage is built" 0 "${rc}"
+check_contains "illumos as root: the tree is given to root and gid 0" \
+	"chown -R 0:0 ${tmp}/ilrootstage/usr/local/libexec/wtfbsd-installer" "$(cat "${tmp}/il.ownership" 2>/dev/null || true)"
+check "no wheel on the root path of the installer" "" \
+	"$(grep -rn wheel "${root}/install-into-stage.sh" "${root}/lib" "${root}/bin" "${root}/sections.d" \
+		"${root}/adapters" "${root}/stage" | grep -vE ':[0-9]+:[[:space:]]*#' | grep -v "lib/osinfo.sh" || true)"
+
 # The installed backend runs from the stage.
 out=$(INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/adapter-fixture.conf" \
 	"${lx}/bin/installer-backend" welcome probe 2>&1 || :)
