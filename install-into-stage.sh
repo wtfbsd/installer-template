@@ -16,7 +16,8 @@
 #                                         template of the product: the look
 #                                         of the installer
 #   PREFIX/libexec/wtfbsd-installer/installer-apply
-#                                         the root helper, root:wheel 0555:
+#                                         the root helper, root 0555 (group
+#                                         of root, gid 0):
 #                                         the only file the doas or sudo rule
 #                                         of the live system may name
 #   PREFIX/bin/wtfbsd-installer           the launcher: the graphical front
@@ -39,11 +40,12 @@
 #
 # Everything it installs belongs to root and nobody else may write it: the
 # root helper runs it as root.  Run as root, the script gives the whole
-# installed tree to root:wheel and takes the write bit of the group and of
-# the others away.  An image that is built without root (NO_ROOT, makefs
+# installed tree to root and the group of root (gid 0: wheel on the BSDs,
+# root on illumos, from lib/osinfo.sh and the OS of the configuration) and
+# takes the write bit of the group and of the others away.  An image that is built without root (NO_ROOT, makefs
 # with a METALOG) gives it to root through the METALOG instead: the script
 # then requires --metalog FILE and appends an mtree line
-#   ./path type=file|dir uname=root gname=wheel mode=0755
+#   ./path type=file|dir uname=root gname=<group of root> mode=0755
 # for every path it installs and every directory it makes.  Without root
 # and without --metalog it refuses and installs nothing.
 #
@@ -116,6 +118,13 @@ conf_get() {
 	INSTALLER_CONF=${conf} "${here}/bin/installer-config" get "$1"
 }
 product=$(conf_get PRODUCT_NAME)
+# The owner of everything installed: root and the group of root of the
+# system the image is for (no wheel on illumos).
+. "${here}/lib/osinfo.sh"
+os=$(conf_get OS)
+unknown_os="no owner group is known for the system '${os}': set OS to freebsd, netbsd, openbsd, dragonfly or illumos, or add the system to lib/osinfo.sh"
+root_group=$(os_root_group "${os}") || die "${unknown_os}"
+root_gid=$(os_root_gid "${os}") || die "${unknown_os}"
 logo=$(conf_get PRODUCT_LOGO 2>/dev/null) || logo=''
 icon=${logo:-system-software-install}
 
@@ -218,7 +227,7 @@ stage_all() {
 for f in installer-backend installer-config installer-tui installer-gui; do
 	stage_file "${here}/bin/${f}" "${libexec}/bin/${f}" 755
 done
-# The root helper: root:wheel 0555, so that nobody but root changes it.  A
+# The root helper: root, the group of root, 0555, so that nobody but root changes it.  A
 # stage that is not built as root cannot give it to root; the build of the
 # image has to (the template runs this script as root).
 stage_file "${here}/bin/installer-apply" "${libexec}/installer-apply" 555
@@ -309,7 +318,7 @@ stage_file "${manifest_tmp}" "${share}/MANIFEST" 644
 if [ "${as_root}" = yes ]; then
 	for top in "${libexec}" "${share}" "${bindir}/wtfbsd-installer" \
 		"${appdir}/wtfbsd-installer.desktop"; do
-		chown -R 0:0 "${destdir}${top}"
+		chown -R "0:${root_gid}" "${destdir}${top}"
 		chmod -R go-w "${destdir}${top}"
 	done
 fi
@@ -327,11 +336,11 @@ if [ -n "${metalog}" ]; then
 				(cd "${destdir}" && find ".${top}" -type d) | sed 's|^\.||'
 			done
 		} | sort -u | while IFS= read -r path; do
-			printf '.%s type=dir uname=root gname=wheel mode=%04o\n' "${path}" \
+			printf '.%s type=dir uname=root gname=%s mode=%04o\n' "${path}" "${root_group}" \
 				"0$(mode_of "${destdir}${path}")"
 		done
 		grep -v '/$' "${destdir}${share}/MANIFEST" | while IFS= read -r path; do
-			printf '.%s type=file uname=root gname=wheel mode=%04o\n' "${path}" \
+			printf '.%s type=file uname=root gname=%s mode=%04o\n' "${path}" "${root_group}" \
 				"0$(mode_of "${destdir}${path}")"
 		done
 	} >> "${metalog}"
