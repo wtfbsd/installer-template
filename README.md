@@ -166,6 +166,27 @@ itself from members it found on the disks (NetBSD RAIDframe `raidN`,
 OpenBSD softraid `sdN`, the hook `os_assembled_volumes`) is not offered
 either: its members are, shown as members of it.
 
+**Fail closed.**  When an adapter cannot tell which disks hold the running
+system, the installation media or the live medium — the tool it reads them
+with fails (`mount`, `mount -p`, `zpool status`, `sysctl hw.disknames`), or
+a label (`glabel`), a DUID, a `/dev/serno` or `part-by-label` link
+(`readlink`), a wedge (`dkctl`) or a pool cannot be followed to its disk —
+the disk section refuses: exit 3, "cannot tell which disks hold the running
+system", and no disk is offered (`cannot_tell` in `lib/adapter.sh`).  A
+device that is followed and is simply not one of the disks (a memory disk,
+an optical drive) is fine, and so is nothing mounted on the media mount
+point.  A rehearsal on a machine that is not the target only reports what
+it cannot tell, unless its fixture has `EXCLUSION=strict`.
+
+**The live medium.**  A live system names the device it was started from in
+`/var/run/wtfbsd-live-medium`, written early at its start: a regular file
+of root, not writable by others, one line, the name of a device
+(`/dev/da0`, `cd0`, `/dev/iso9660/LIVE`), followed like any other device
+and never offered.  A file that is there but cannot be trusted refuses the
+disk section.  With `LIVE_MEDIUM_REQUIRED=yes` a root in memory without the
+file refuses it too; each template turns the setting on once it writes the
+file and the capture of its live start passes.
+
 ### What is on the disks now
 
 The verb `disks-detail` reports what each disk holds, for the disk page:
@@ -396,6 +417,7 @@ anchored pattern before it is used.
 | `DEFAULT_TZ` | `^[A-Za-z][A-Za-z0-9+_-]*(/[A-Za-z0-9+_-]+)*$` | the time zone the installer offers first |
 | `PRODUCT_LOGO` (optional) | an absolute path of plain names | an image the graphical front end and the menu entry show |
 | `MIN_DISK_GB` (optional) | `^[1-9][0-9]{0,3}$` | the smallest disk the system is installed to, in GB (16 when not set) |
+| `LIVE_MEDIUM_REQUIRED` (optional) | `^(yes\|no)$` | `yes`: a live system whose root is in memory (md, rd, tmpfs, unionfs) must name its medium in `/var/run/wtfbsd-live-medium`, or no disk is offered; `no` (the default) until the template writes that file and its live-boot capture passes |
 
 The minimum is never below what the media needs.  The adapter verb
 `image-size` reports the bytes the installed system takes: the hook

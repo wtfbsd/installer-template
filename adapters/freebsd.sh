@@ -68,17 +68,6 @@ label_provider() {
 		awk -v want="$1" '$1 == want { print $3; exit }'
 }
 
-# zfs_root_devices <dataset> — the devices of the ZFS pool that holds the
-# dataset.
-#
-# The devices of a pool are the paths that "zpool status -P" prints.
-zfs_root_devices() {
-	pool=${1%%/*}
-	[ -n "${pool}" ] || return 0
-	zpool status -P "${pool}" 2>/dev/null |
-		awk '/^[[:space:]]+\/dev\// { print $1 }'
-}
-
 # resolve_device <device> — the provider of a device.  A device of a GEOM
 # label class (/dev/iso9660/X, /dev/diskid/X, /dev/gptid/X, /dev/ufs/X,
 # /dev/ufsid/X, /dev/gpt/X, /dev/label/X, /dev/msdosfs/X, /dev/ext2fs/X,
@@ -119,40 +108,57 @@ resolve_device() {
 	printf '%s\n' "${_dev}"
 }
 
-# root_devices — the devices that hold the root file system, one per line.
-#
-# A ZFS root is found with the dataset that is mounted on /: every device
-# of the pool of that dataset holds it, and a device of the pool that is a
-# label is followed to its provider.  Every other root is a device of the
-# disk or a label of one.
-root_devices() {
-	dataset=$(zfs list -H -o name / 2>/dev/null | head -1) || dataset=''
-	if [ -n "${dataset}" ]; then
-		for vdev in $(zfs_root_devices "${dataset}"); do
-			resolve_device "${vdev}"
-		done
-		return 0
-	fi
-	device=$(mount -p 2>/dev/null | awk '$2 == "/" { print $1; exit }') ||
-		device=''
-	[ -n "${device}" ] || return 0
-	resolve_device "${device}"
-}
-
-# media_devices — the devices that hold the installation media, one per
-# line, labels followed to their provider.
-media_devices() {
-	for device in $(mount -p 2>/dev/null | awk -v path="${media_mount}" '$2 == path { print $1 }'); do
-		resolve_device "${device}"
-	done
+# resolve_checked <device> — resolve_device, or cannot_tell when a label
+# cannot be followed (glabel fails or does not list it).
+resolve_checked() {
+	_rc_out=$(resolve_device "$1") || _rc_out=''
+	case "${_rc_out}" in
+		''|/dev/iso9660/*|/dev/diskid/*|/dev/gptid/*|/dev/ufs/*|/dev/ufsid/*|\
+		/dev/gpt/*|/dev/label/*|/dev/msdosfs/*|/dev/ext2fs/*|/dev/ntfs/*)
+			cannot_tell "the label $1 cannot be followed to its disk (glabel)" ;;
+	esac
+	printf '%s\n' "${_rc_out}"
 }
 
 # excluded_disks <disks> — the names of the disks that must not be written
-# to, separated by spaces.
+# to, separated by spaces: the disks of the root (every device of the pool
+# of a ZFS root), of the installation media and of the live medium.  When
+# one of them cannot be told it is cannot_tell (exit 3): no disk is
+# offered.  Run in a command substitution.
 excluded_disks() {
-	for device in $(root_devices) $(media_devices); do
-		name=$(device_disk_prefix "${device}" "$1") || continue
-		printf '%s ' "${name}"
+	_mounts=$(mount -p 2>/dev/null) || cannot_tell "mount -p failed"
+	_root=$(printf '%s\n' "${_mounts}" | awk '$2 == "/" { print $1 " " $3; exit }')
+	[ -n "${_root}" ] || cannot_tell "nothing is mounted on /"
+	_rdev=${_root% *} _rfs=${_root##* }
+	_devs=''
+	if [ "${_rfs}" = zfs ]; then
+		# A ZFS root: every device of the pool of the dataset on /.
+		_pool=${_rdev%%/*}
+		_status=$(zpool status -P "${_pool}" 2>/dev/null) ||
+			cannot_tell "zpool status of the pool ${_pool} failed"
+		_vdevs=$(printf '%s\n' "${_status}" | awk '/^[[:space:]]+\/dev\// { print $1 }')
+		[ -n "${_vdevs}" ] || cannot_tell "zpool status names no device of the pool ${_pool}"
+		for _v in ${_vdevs}; do
+			_d=$(resolve_checked "${_v}") || exit $?
+			_devs="${_devs} ${_d}"
+		done
+	else
+		_d=$(resolve_checked "${_rdev}") || exit $?
+		_devs="${_devs} ${_d}"
+	fi
+	for _m in $(printf '%s\n' "${_mounts}" | awk -v path="${media_mount}" '$2 == path { print $1 }'); do
+		_d=$(resolve_checked "${_m}") || exit $?
+		_devs="${_devs} ${_d}"
+	done
+	_medium=$(live_medium) || exit $?
+	require_medium "${_rdev}" "${_medium}"
+	if [ -n "${_medium}" ]; then
+		_d=$(resolve_checked "${_medium}") || exit $?
+		_devs="${_devs} ${_d}"
+	fi
+	for _d in ${_devs}; do
+		_name=$(device_disk_prefix "${_d}" "$1") || continue
+		printf '%s ' "${_name}"
 	done
 }
 

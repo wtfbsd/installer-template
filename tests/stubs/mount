@@ -9,7 +9,10 @@
 # DragonFly print it: "<device> on <mount point> type <type> (<options>)".
 #
 # Environment:
-#   STUB_MOUNTS  the file that holds the lines of the mount table
+#   STUB_MOUNTS      the file that holds the lines of the mount table
+#   STUB_MOUNT_FAIL  set: the tool fails (exit 1, nothing printed)
+
+[ -z "${STUB_MOUNT_FAIL:-}" ] || exit 1
 
 case "${1:-}" in
 	-p)

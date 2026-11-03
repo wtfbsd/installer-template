@@ -44,13 +44,26 @@ os_disk_rows() {
 	done
 }
 
+# os_excluded_disks <names> — the disks of the root, of the installation
+# media and of the live medium; a disk named by its DUID is found in
+# hw.disknames.  cannot_tell (exit 3) when one of them cannot be told.
 os_excluded_disks() {
-	for _dev in "$(mounted_device /)" "$(mounted_device "${media_mount}")"; do
+	_root=$(mounted_device_checked /) || exit $?
+	[ -n "${_root}" ] || cannot_tell "nothing is mounted on /"
+	_media=$(mounted_device_checked "${media_mount}") || exit $?
+	_medium=$(live_medium) || exit $?
+	require_medium "${_root}" "${_medium}"
+	for _dev in "${_root}" "${_media}" "${_medium}"; do
 		[ -n "${_dev}" ] || continue
 		case "${_dev}" in
 			[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].[a-p])
-				_dev=$(disknames | awk -F '\t' -v u="${_dev%.*}" '$2 == u { print $1; exit }')
-				[ -n "${_dev}" ] || continue
+				_names=$(sysctl -n hw.disknames 2>/dev/null) ||
+					cannot_tell "sysctl hw.disknames failed: the disk of ${_dev} is unknown"
+				_disk=$(printf '%s\n' "${_names}" | tr ',' '\n' |
+					awk -F: -v u="${_dev%.*}" '$2 == u { print $1; exit }')
+				[ -n "${_disk}" ] ||
+					cannot_tell "the DUID of ${_dev} is not in hw.disknames"
+				_dev=${_disk}
 				;;
 		esac
 		device_disk_prefix "${_dev}" "$1" | tr '\n' ' ' || :

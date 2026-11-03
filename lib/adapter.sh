@@ -10,7 +10,9 @@
 #                                every disk of the machine
 #   os_excluded_disks <names>    print the names of the disks that must not
 #                                be written to (the running system and the
-#                                installation media), separated by spaces
+#                                installation media), separated by spaces;
+#                                exit non-zero (cannot_tell) when it cannot
+#                                tell them: then no disk is offered
 #   os_interfaces                print the names of the network adapters,
 #                                one per line
 #   os_keymaps                   print "name<TAB>description" for every
@@ -185,6 +187,75 @@ device_disk_prefix() {
 	return 1
 }
 
+# cannot_tell <reason> — the disks of the running system or of the media
+# cannot be told: exit 3, and no disk is offered (fail closed).  A
+# rehearsal (on a machine that is not the target, which it never writes
+# to) only says so, unless its fixture asks for EXCLUSION=strict.
+cannot_tell() {
+	printf 'cannot tell which disks hold the running system: %s\n' "$*" >&2
+	if [ -n "${rehearsal:-}" ] && [ "$(kv_get "${rehearsal}" EXCLUSION 2>/dev/null || :)" != strict ]; then
+		exit 0
+	fi
+	exit 3
+}
+
+# mounted_device_checked <path> — mounted_device, but a mount(8) that fails
+# is cannot_tell (nothing mounted there prints nothing).  Run it in a
+# command substitution and pass its exit on: dev=$(...) || exit $?
+mounted_device_checked() {
+	_mt=$(mount 2>/dev/null) || cannot_tell "mount(8) failed"
+	printf '%s\n' "${_mt}" | awk -v want="$1" '$2 == "on" && $3 == want { print $1; exit }'
+}
+
+# The file a live system writes at its start: one line, the device it was
+# started from (the live medium).  Root-owned, a regular file.
+live_medium_file=${INSTALLER_LIVE_MEDIUM_FILE:-/var/run/wtfbsd-live-medium}
+
+# live_medium — the device of the live medium, from live_medium_file;
+# nothing when the file is not there; cannot_tell when it is there but
+# cannot be trusted (a link, not a regular file, not root's, writable by
+# others, more than one line or not the name of a device).
+live_medium() {
+	[ -e "${live_medium_file}" ] || [ -L "${live_medium_file}" ] || return 0
+	_lm=$(python3 -I - "${live_medium_file}" <<'PY'
+import os, re, stat, sys
+path = sys.argv[1]
+st = os.lstat(path)
+uid = os.geteuid()
+if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o022 or st.st_size > 256 or \
+        not (st.st_uid == 0 or (uid != 0 and st.st_uid == uid)):
+    sys.exit(1)
+with open(path, encoding="ascii", errors="strict") as stream:
+    lines = stream.read().split("\n")
+if lines and lines[-1] == "":
+    lines.pop()
+dev = lines[0] if len(lines) == 1 else ""
+if not re.fullmatch(r"(/dev/)?[A-Za-z0-9][A-Za-z0-9._/-]{0,127}", dev, re.ASCII) or ".." in dev:
+    sys.exit(1)
+print(dev)
+PY
+) || cannot_tell "${live_medium_file} cannot be trusted (a regular file of root, one line naming a device)"
+	printf '%s\n' "${_lm}"
+}
+
+# memory_root <device> — succeed when the root is a memory or overlay file
+# system (md, rd, tmpfs, unionfs, mfs): the disk it came from is the medium.
+memory_root() {
+	case "${1#/dev/}" in
+		md[0-9]*|rd[0-9]*|tmpfs|unionfs|mfs|mfs:*|union|ramdisk*) return 0 ;;
+	esac
+	return 1
+}
+
+# require_medium <root device> <medium> — with LIVE_MEDIUM_REQUIRED=yes, a
+# memory or overlay root without the name of its medium is cannot_tell.
+require_medium() {
+	memory_root "$1" || return 0
+	[ -z "$2" ] || return 0
+	[ "$(config_value LIVE_MEDIUM_REQUIRED 2>/dev/null || :)" = yes ] || return 0
+	cannot_tell "the root ($1) is in memory and the live medium is not named (${live_medium_file})"
+}
+
 # mounted_device <path> — the device that mount(8) shows on the path, from
 # the "<device> on <path> type ..." lines that NetBSD, OpenBSD and DragonFly
 # print.
@@ -346,7 +417,11 @@ target_rows() {
 	# The disks that must not be written to are left out, in a rehearsal
 	# too: a rehearsal is carried out on the machine that is the target.
 	_names=$(cut -f1 "${work}" | tr '\n' ' ')
-	_excluded=$(os_excluded_disks "${_names}") || _excluded=''
+	# An adapter that cannot tell which disks hold the running system or
+	# the media (cannot_tell, or any other failure) offers none: never a
+	# disk it may not write to.
+	_excluded=$(os_excluded_disks "${_names}") ||
+		die 3 'cannot tell which disks hold the running system; no disk is offered'
 	# An array the system assembled by itself from members found on the
 	# disks (NetBSD RAIDframe raidN, OpenBSD softraid sdN) is not offered:
 	# its members are, as members of it.  A rehearsal names them in

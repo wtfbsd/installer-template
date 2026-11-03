@@ -49,18 +49,29 @@ gpt_disk_size() {
 	'
 }
 
+# os_excluded_disks <names> — the disks of the root, of the installation
+# media and of the live medium; a /dev/serno, part-by-label or by-uuid
+# path is followed to its device.  cannot_tell (exit 3) when one of them
+# cannot be told.
 os_excluded_disks() {
-	for _dev in "$(mounted_device /)" "$(mounted_device "${media_mount}")"; do
+	_root=$(mounted_device_checked /) || exit $?
+	[ -n "${_root}" ] || cannot_tell "nothing is mounted on /"
+	_media=$(mounted_device_checked "${media_mount}") || exit $?
+	_medium=$(live_medium) || exit $?
+	require_medium "${_root}" "${_medium}"
+	for _dev in "${_root}" "${_media}" "${_medium}"; do
 		[ -n "${_dev}" ] || continue
 		case "${_dev}" in
 			/dev/serno/*)
-				_link=$(readlink "${_dev%.s[0-9]*}" 2>/dev/null) || continue
+				_link=$(readlink "${_dev%.s[0-9]*}" 2>/dev/null) ||
+					cannot_tell "${_dev} cannot be followed to its device (readlink)"
 				_dev=${_link##*/}
 				;;
 			# The live system mounts its root by label (or by the
 			# uuid of the partition): devfs links to the device.
 			/dev/part-by-label/*|/dev/part-by-uuid/*|/dev/by-label/*|/dev/by-uuid/*)
-				_link=$(readlink "${_dev%%@*}" 2>/dev/null) || continue
+				_link=$(readlink "${_dev%%@*}" 2>/dev/null) ||
+					cannot_tell "${_dev} cannot be followed to its device (readlink)"
 				_dev=${_link##*/}
 				;;
 		esac
