@@ -1968,8 +1968,8 @@ def apply_disk_state(win, state):
         dp.pass2.set_text(state.get("passphrase", ""))
     if "swap_gb" in state:
         dp.swap.set_value(state["swap_gb"])
-    if state.get("swap_encrypted"):
-        dp.swap_enc.set_active(True)
+    if "swap_encrypted" in state:
+        dp.swap_enc.set_active(bool(state["swap_encrypted"]))
     if "boot" in state:
         dp.boot_combo.set_active_id(state["boot"])
     for name, how in state.get("wipe", {}).items():
@@ -2044,8 +2044,15 @@ def flag_kind(button):
 
 def _report_encryption(win, shot, page, state, outdir):
     dp = win.disk_page
+    before = dp.problems.get_text()
+    if state.get("type_after"):
+        # The passphrase typed after the page asked for it.
+        dp.pass1.set_text(state["type_after"])
+        dp.pass2.set_text(state["type_after"])
     write_report(outdir, shot, "encryption",
-                 {"layout": dp.layout, "active": dp.enc_check.get_active(),
+                 {"problems_before": before, "problems": dp.problems.get_text(),
+                  "swap_shown": dp.swap_enc.get_visible(),
+                  "layout": dp.layout, "active": dp.enc_check.get_active(),
                   "sensitive": dp.enc_check.get_sensitive(),
                   "shown": dp.enc_check.get_visible(),
                   "passphrase_shown": any(w.get_visible() for w in dp.pass_row),

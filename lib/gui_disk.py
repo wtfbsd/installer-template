@@ -100,6 +100,9 @@ BAR_DISK_PX = 76
 REFUSAL_PREFIX = "cannot list disks:"
 REFUSAL_STEP = "Check the disk tools, then Look for disks again."
 TOOL_WORDS = ("zpool", "zfs", "mount", "glabel", "readlink", "dkctl", "sysctl", "diskinfo")
+# What can be wrong with the passphrase of the encryption.
+PASSPHRASE_PROBLEMS = ("type a passphrase for the encryption", "the passphrases do not match",
+                       "the passphrase is too short (at least 8 characters)")
 BOOT_TITLES = {"uefi": "UEFI", "bios": "Legacy BIOS"}
 
 
@@ -488,7 +491,7 @@ class DiskPage:
         for entry in (self.pass1, self.pass2):
             entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
             gui_reveal.add_eye(entry)
-            entry.connect("changed", lambda *_a: self.refresh_strength())
+            entry.connect("changed", self.on_passphrase)
         self.strength = Gtk.LevelBar(min_value=0, max_value=4)
         self.strength.set_size_request(160, 10)
         self.strength_text = lbl("", "muted")
@@ -502,7 +505,7 @@ class DiskPage:
         self.fill_filesystems()
         self.fill_encryption()
         self.fs_combo.connect("changed", lambda *_a: self.refresh())
-        self.enc_check.connect("toggled", lambda *_a: self.refresh())
+        self.enc_check.connect("toggled", self.on_encryption)
         row += 1
         adv.attach(lbl("Swap", "field-label"), 0, arow, 1, 1)
         swap_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -676,6 +679,24 @@ class DiskPage:
             return (f"Encrypt the home directories and the data ({home}); "
                     "the passphrase is asked at every start")
         return ""
+
+    def on_passphrase(self, *_args):
+        """The strength as one types, and the hint that asked for the
+        passphrase gone as soon as both fields hold the same good one."""
+        self.refresh_strength()
+        if hasattr(self, "layout_grid"):
+            self.refresh_problems()
+        if not self.passphrase_errors() and \
+                self.win.error_label.get_text() in PASSPHRASE_PROBLEMS:
+            self.win.show_error("")
+
+    def on_encryption(self, button):
+        """Encrypting the system encrypts the swap too, where the system
+        offers it; the person may untick the swap afterwards."""
+        if button.get_active() and hasattr(self, "swap_enc") and \
+                D.system(self.os, self.detail)["swap_encryption"]:
+            self.swap_enc.set_active(True)
+        self.refresh()
 
     def fill_swap_encryption(self, offered):
         """Encrypted swap only where the install command makes it (the swap
@@ -1250,11 +1271,11 @@ class DiskPage:
     def passphrase_errors(self):
         """What is wrong with the encryption passphrase: one problem or none."""
         if not self.pass1.get_text():
-            return ["type a passphrase for the encryption"]
+            return [PASSPHRASE_PROBLEMS[0]]
         if self.pass1.get_text() != self.pass2.get_text():
-            return ["the passphrases do not match"]
+            return [PASSPHRASE_PROBLEMS[1]]
         if D.passphrase_strength(self.pass1.get_text())[0] < 1:
-            return ["the passphrase is too short (at least 8 characters)"]
+            return [PASSPHRASE_PROBLEMS[2]]
         return []
 
     def erase_warnings(self):

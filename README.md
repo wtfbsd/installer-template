@@ -318,7 +318,8 @@ stops the installation with an `ERROR` line and the command never runs.
   system encryption") — unless `home_encryption` names how the home
   directories and the data are encrypted (illumos: `ZFS native`): then the
   box says that, and `encryption.enabled` of the plan means the home
-  directories and the data.  `swap_encryption` false: no "Encrypt the
+  directories and the data.  Encrypting the system ticks "Encrypt the swap" too where the system
+  offers it (the person may untick it).  `swap_encryption` false: no "Encrypt the
   swap", and a plan with it is refused ("illumos: no swap encryption").
   `usages` lists how two disks or more may be used; without it both are
   offered, the first chosen; with one, the question is not asked and a
