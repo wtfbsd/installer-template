@@ -1,0 +1,45 @@
+#!/bin/sh
+# Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
+#
+# A stand-in for DragonFly's stat(1): with -L and the format "%Hr %Lr" it
+# prints the device number of a path, the major and the minor number, the
+# way the real tool of DragonFly prints them.
+#
+# The numbers come from the file STUB_DEVNUMS: lines
+# "<path><TAB><major> <minor>".  A path that is not there has no number
+# (exit 1).
+#
+# Any other call is passed to the real stat(1), so that the calls of the
+# tools of the system (stat -c %a) still answer.
+#
+# Environment:
+#   STUB_DEVNUMS  the file that holds the device numbers
+
+set -eu
+
+if [ "${1:-}" = -L ] && [ "${2:-}" = -f ] && [ "${3:-}" = '%Hr %Lr' ]; then
+	file=${STUB_DEVNUMS:-}
+	[ -n "${file}" ] && [ -f "${file}" ] || exit 1
+	num=$(awk -F '\t' -v p="${4:-}" '$1 == p { print $2; exit }' "${file}")
+	[ -n "${num}" ] || exit 1
+	printf '%s\n' "${num}"
+	exit 0
+fi
+
+# The real stat(1): the first one in the PATH that is not this file.  The
+# marker keeps the stub from calling itself.
+self=${0}
+saved=${IFS}
+IFS=:
+for dir in ${PATH}; do
+	[ -n "${dir}" ] || dir=.
+	candidate=${dir}/stat
+	if [ "${candidate}" != "${self}" ] && [ -x "${candidate}" ]; then
+		IFS=${saved}
+		WTFBSD_STUB_STAT=1
+		export WTFBSD_STUB_STAT
+		exec "${candidate}" "$@"
+	fi
+done
+IFS=${saved}
+exit 1
