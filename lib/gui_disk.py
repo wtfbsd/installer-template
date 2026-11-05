@@ -705,11 +705,18 @@ class DiskPage:
 
     def on_encryption(self, button):
         """Encrypting the system encrypts the swap too, where the system
-        offers it; the person may untick the swap afterwards."""
+        offers it; the person may untick the swap afterwards.  Unticking
+        the encryption takes the passphrase away: the hint the window
+        shows for it goes with it."""
         try:
             if button.get_active() and self.swap_encryption_offered and \
                     getattr(self, "swap_enc", None) is not None:
                 self.swap_enc.set_active(True)
+            elif not button.get_active() and self._passphrase_error_shown:
+                # The passphrase is not wanted any more: the hint the
+                # window shows for it goes.
+                self.win.show_error("")
+                self._passphrase_error_shown = False
         finally:
             self.refresh()
 

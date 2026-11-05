@@ -69,6 +69,7 @@ if ! render fb freebsd dual-os.conf '[
  {"name": "on", "page": "disk", "full": false, "state": {"mode": "erase", "selected": ["nda0"], "encrypt": true, "passphrase": "Correct-Horse-9", "report": "encryption"}},
  {"name": "untick", "page": "disk", "full": false, "state": {"mode": "erase", "selected": ["nda0"], "encrypt": true, "passphrase": "Correct-Horse-9", "swap_encrypted": false, "report": "encryption"}},
  {"name": "typed", "page": "disk", "full": false, "state": {"mode": "erase", "selected": ["nda0"], "encrypt": true, "report": "encryption", "type_after": "Correct-Horse-9"}},
+ {"name": "untick_enc", "page": "disk", "full": false, "state": {"mode": "erase", "selected": ["nda0"], "encrypt": true, "untick_after": true, "report": "encryption"}},
  {"name": "summary", "page": "summary", "full": false, "state": {"report": "page"}, "disk_state": {"mode": "erase", "selected": ["nda0"], "usage": "together", "encrypt": true, "passphrase": "Correct-Horse-9"}}]'; then
 	check "render freebsd" ok fail
 fi
@@ -85,6 +86,12 @@ check "the plan follows the unticking" no "$(yn fb untick encryption 'r["plan"][
 check "the passphrase hint is there while the fields are empty" yes \
 	"$(r fb typed encryption '"yes" if "type a passphrase" in r["problems_before"] else r["problems_before"]')"
 check "the passphrase hint goes once both fields hold it" "" "$(r fb typed encryption 'r["problems"]')"
+# The banner of the window asks for a passphrase that is not wanted any
+# more when the encryption is unticked: it goes with it.
+check "the window asked for the passphrase" yes \
+	"$(r fb untick_enc encryption '"yes" if "type a passphrase" in r["error_before"] else r["error_before"]')"
+check "the banner goes when the encryption is unticked" "" \
+	"$(r fb untick_enc encryption 'r["error"]')"
 check "the summary says the swap is encrypted" yes \
 	"$(r fb summary page '"yes" if any("wap" in t and "(encrypted)" in t for t in r["texts"]) else r["texts"]')"
 
