@@ -21,7 +21,7 @@ OS=$(config_value OS) || exit 2
 
 cmd_probe() {
 	report=$(adapter_cmd hardware 2>/dev/null) || report='{}'
-	printf '%s' "${report}" | python3 -I -c '
+	printf '%s' "${report}" | python3 -I -B -c '
 import json, sys
 
 def text(value, limit=80):

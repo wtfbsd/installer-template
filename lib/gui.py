@@ -42,7 +42,7 @@ if os.geteuid() == 0:
                      "run it as the user of the session, or run installer-tui\n")
     sys.exit(3)
 
-# bin/installer-gui runs this file with python3 -I: the directory of the
+# bin/installer-gui runs this file with python3 -I -B: the directory of the
 # script and the current directory are not on sys.path, so the library is
 # named by its own place.
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -1268,6 +1268,9 @@ class InstallerWindow(Gtk.Window):
         self.user_entries["password"].connect("changed", self.on_password_changed)
         self.user_entries["user_name"].set_max_length(32)
         self.ssh_view = Gtk.TextView()
+        # Tab goes to the next control, not into the text: a public key
+        # has no tab in it.
+        self.ssh_view.set_accepts_tab(False)
         self.ssh_label = field_label("_SSH public key", self.ssh_view)
         # The label stands at the top of its row, like the text beside it.
         self.ssh_label.set_yalign(0.0)
@@ -2375,6 +2378,31 @@ def _report_lists_and_eyes(win, shot, page, state, outdir):
     write_report(outdir, shot, "lists_and_eyes", out)
 
 
+def _report_users(win, shot, page, state, outdir):
+    """The users page: the SSH key box takes no tab.  The tab goes to the
+    next control, as it does in every other field."""
+    view = win.ssh_view
+    top = win.offscreen or win
+    display = Gdk.Display.get_default()
+    keyboard = display.get_default_seat().get_keyboard()
+    keymap = Gdk.Keymap.get_for_display(display)
+    view.grab_focus()
+    render_pump()
+    before = top.get_focus()
+    for etype in (Gdk.EventType.KEY_PRESS, Gdk.EventType.KEY_RELEASE):
+        key_event(top, keymap, keyboard, etype, Gdk.KEY_Tab)
+    render_pump()
+    after = top.get_focus()
+    buf = view.get_buffer()
+    text = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+    write_report(outdir, shot, "users", {
+        "accepts_tab": view.get_accepts_tab(),
+        "focus_was_the_box": before is view,
+        "focus_left_the_box": after is not None and after is not view,
+        "tab_inserted": "\t" in text,
+        "focus_after": type(after).__name__ if after is not None else ""})
+
+
 REPORTS = {
     "lists_and_eyes": _report_lists_and_eyes,
     "page": _report_page,
@@ -2384,6 +2412,7 @@ REPORTS = {
     "boot": _report_boot,
     "busy": _report_busy,
     "flags": _report_flags,
+    "users": _report_users,
 }
 
 
@@ -2564,6 +2593,21 @@ def render(win, spec, outdir, size):
     return W.EXIT_OK
 
 
+def key_event(top, keymap, keyboard, etype, keyval, state=0):
+    """One key event, as the keyboard of the machine sends it."""
+    ok, entries = keymap.get_entries_for_keyval(keyval)
+    event = Gdk.Event.new(etype)
+    event.key.window = top.get_window()
+    event.key.send_event = 1
+    event.key.keyval = keyval
+    event.key.state = state
+    event.key.time = Gdk.CURRENT_TIME
+    if ok:
+        event.key.hardware_keycode = entries[0].keycode
+    event.set_device(keyboard)
+    Gtk.main_do_event(event)
+
+
 class KeyboardWalk:
     """Go from Welcome to Installing with the keyboard alone: synthesised
     key events (Tab, letters, Space, Alt and the underlined letter), never
@@ -2613,17 +2657,7 @@ class KeyboardWalk:
             time.sleep(0.02)
 
     def send(self, etype, keyval, state=0):
-        ok, entries = self.keymap.get_entries_for_keyval(keyval)
-        event = Gdk.Event.new(etype)
-        event.key.window = self.top.get_window()
-        event.key.send_event = 1
-        event.key.keyval = keyval
-        event.key.state = state
-        event.key.time = Gdk.CURRENT_TIME
-        if ok:
-            event.key.hardware_keycode = entries[0].keycode
-        event.set_device(self.keyboard)
-        Gtk.main_do_event(event)
+        key_event(self.top, self.keymap, self.keyboard, etype, keyval, state)
 
     def key(self, keyval, state=0):
         self.send(Gdk.EventType.KEY_PRESS, keyval, state)

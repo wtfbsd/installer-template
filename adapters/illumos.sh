@@ -32,7 +32,7 @@ root=$(CDPATH= cd "${here}/.." && pwd)
 
 os_disk_rows() {
 	[ -x /usr/sbin/diskinfo ] || die 3 'reading the disks needs diskinfo'
-	/usr/sbin/diskinfo -Hp 2>/dev/null | python3 -I "${root}/lib/illumos.py" disks
+	/usr/sbin/diskinfo -Hp 2>/dev/null | python3 -I -B "${root}/lib/illumos.py" disks
 }
 
 os_excluded_disks() {
@@ -60,7 +60,7 @@ os_excluded_disks() {
 	esac
 	_why=$(mktemp "${tmp_root}/wtfbsd-excluded.XXXXXX") || cannot_tell 'cannot create a temporary file'
 	_out=$(printf '%s\n' "${_status}" |
-		python3 -I "${root}/lib/illumos.py" excluded "${INSTALLER_MNTTAB:-/etc/mnttab}" "${_zrc}" \
+		python3 -I -B "${root}/lib/illumos.py" excluded "${INSTALLER_MNTTAB:-/etc/mnttab}" "${_zrc}" \
 		2>"${_why}") || {
 		_reason=$(head -n 1 "${_why}")
 		rm -f "${_why}"
@@ -72,7 +72,7 @@ os_excluded_disks() {
 
 os_interfaces() {
 	[ -x /usr/sbin/dladm ] || die 3 'reading the network adapters needs dladm'
-	/usr/sbin/dladm show-phys -p -o link 2>/dev/null | python3 -I "${root}/lib/illumos.py" links
+	/usr/sbin/dladm show-phys -p -o link 2>/dev/null | python3 -I -B "${root}/lib/illumos.py" links
 }
 
 # The keymaps of illumos (the names of kbd_layouts of OpenIndiana 2026.10,
@@ -90,7 +90,7 @@ UK-English US-English"
 os_keymaps() {
 	_layouts=/usr/share/lib/keytables/type_6/kbd_layouts
 	if [ -f "${_layouts}" ]; then
-		python3 -I "${root}/lib/illumos.py" layouts < "${_layouts}" | while IFS= read -r _k; do
+		python3 -I -B "${root}/lib/illumos.py" layouts < "${_layouts}" | while IFS= read -r _k; do
 			printf '%s\t%s\n' "${_k}" "${_k}"
 		done
 		return 0
@@ -202,11 +202,11 @@ os_zoneinfo_dir() {
 os_wifi_scan() {
 	[ -x /usr/sbin/dladm ] || return 0
 	/usr/sbin/dladm scan-wifi -p -o essid,secmode,strength "$1" 2>/dev/null |
-		python3 -I "${root}/lib/illumos.py" wifi || :
+		python3 -I -B "${root}/lib/illumos.py" wifi || :
 }
 
 os_hash_scheme() {
-	python3 -I "${root}/lib/illumos.py" hash < "${INSTALLER_POLICY_CONF:-/etc/security/policy.conf}" 2>/dev/null ||
+	python3 -I -B "${root}/lib/illumos.py" hash < "${INSTALLER_POLICY_CONF:-/etc/security/policy.conf}" 2>/dev/null ||
 		printf 'sha512\n'
 }
 

@@ -297,6 +297,75 @@ class BlankTest(unittest.TestCase):
         self.assertFalse(D.single_blank({"disks": []}))
 
 
+class TheDiskThatIsTickedTest(unittest.TestCase):
+    """The Disk page ticks the first disk with nothing on it, and no disk
+    at all when every disk holds something: the person chooses."""
+
+    def test_the_first_disk_with_nothing_on_it(self):
+        # The first disk holds Windows and Debian, the second one is empty.
+        index = D.disk_index(detail("dual-os"))
+        self.assertEqual(D.default_disks(index), ["da0"])
+
+    def test_no_disk_at_all_when_every_disk_holds_something(self):
+        index = D.disk_index(detail("two-os"))
+        self.assertEqual(D.default_disks(index), [])
+
+    def test_only_a_blank_disk_is_ticked(self):
+        blank = {"name": "ada1", "os": [], "partitions": []}
+        def pick(disk):
+            return D.default_disks({disk["name"]: disk, "ada1": blank})
+        # an OS, a partition, a table, a signature or data that could not be
+        # read: the disk is not blank, the blank one is ticked
+        for other in ({"os": [{"name": "Linux"}]}, {"partitions": [{"kind": "efi"}]},
+                      {"scheme": "gpt"}, {"signature": "zfs"}, {"unknown_bytes": 4096}):
+            disk = dict({"name": "ada0", "os": [], "partitions": []}, **other)
+            self.assertEqual(pick(disk), ["ada1"], other)
+        self.assertEqual(D.default_disks({"ada0": blank | {"name": "ada0"}}), ["ada0"])
+
+    def test_no_disk_when_there_is_none(self):
+        self.assertEqual(D.default_disks({}), [])
+
+
+class TheNameOfADiskTest(unittest.TestCase):
+    """The name of a disk with its model, said once: a model that is the
+    name of the disk itself is not said a second time."""
+
+    def test_the_name_and_the_model(self):
+        self.assertEqual(D.disk_label("vbd2", "VirtIO disk"), "vbd2  VirtIO disk")
+        self.assertEqual(D.disk_label("ada0", ""), "ada0")
+
+    def test_the_model_that_is_the_name_is_not_said_twice(self):
+        self.assertEqual(D.disk_label("vbd2", "vbd2"), "vbd2")
+        self.assertEqual(D.disk_label("vbd2", " vbd2 "), "vbd2")
+
+    def test_the_model_of_a_disk_that_says_nothing_new(self):
+        self.assertEqual(D.disk_model({"name": "vbd2", "model": "vbd2"}), "")
+        self.assertEqual(D.disk_model({"name": "ada0", "model": "Example SSD 870 2TB"}),
+                         "Example SSD 870 2TB")
+        self.assertEqual(D.disk_model({"name": "ada0", "model": ""}), "")
+
+
+class TheMethodOfTheEncryptionTest(unittest.TestCase):
+    """The method of the encryption of a system goes in parentheses of its
+    own: it never nests a pair of its own."""
+
+    def test_the_parentheses_of_a_method_are_flattened(self):
+        self.assertEqual(D.encryption_method("dm_crypt (LUKS)"), "dm_crypt/LUKS")
+        self.assertEqual(D.encryption_method("GELI"), "GELI")
+        self.assertEqual(D.encryption_method(""), "")
+
+    def test_no_system_has_a_method_with_parentheses(self):
+        for os_name in D.SYSTEMS:
+            system = D.system(os_name)
+            # the data keeps the system's own name; what the label shows of
+            # it (encryption_method) never carries a pair of its own
+            for name in (system["encryption"], system["home_encryption"]):
+                shown = D.encryption_method(name)
+                with self.subTest(os=os_name, method=name):
+                    self.assertNotIn("(", shown)
+                    self.assertNotIn(")", shown)
+
+
 class UsageTest(unittest.TestCase):
     """Two or more disks: together (one pool or array) or separately (one
     system disk, every other disk its own drive)."""

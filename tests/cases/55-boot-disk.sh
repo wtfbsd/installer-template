@@ -47,7 +47,7 @@ probe_disks() {
 	STUB_GLABEL="${tmp}/glabels" \
 	STUB_ZFS_ROOT="${STUB_ZFS_ROOT:-}" \
 	STUB_ZPOOL="${tmp}/zpool" \
-	"${backend}" disk probe 2>/dev/null | python3 -I -c '
+	"${backend}" disk probe 2>/dev/null | python3 -I -B -c '
 import json, sys
 data = json.load(sys.stdin)
 for disk in data["disks"]:

@@ -8,4 +8,4 @@
 # See lib/gui.py for the arguments and the exit codes.
 
 here=$(CDPATH= cd "$(dirname "$0")" && pwd -P)
-exec python3 -I "${here}/../lib/gui.py" "$@"
+exec python3 -I -B "${here}/../lib/gui.py" "$@"

@@ -36,7 +36,7 @@ chmod 755 "${tmp}/netbsd-install"
 # The plan: encryption on is refused, with a clear message.
 out=$(INSTALLER_CONF="${tmp}/netbsd.conf" INSTALLER_INSTALL_COMMAND="${tmp}/netbsd-install" \
 	INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/three-disks.conf" \
-	bin/installer-backend disk probe | python3 -I -c '
+	bin/installer-backend disk probe | python3 -I -B -c '
 import json, sys
 sys.path.insert(0, sys.argv[1])
 import diskplan
@@ -49,7 +49,7 @@ print([e for e in on if "encrypt" in e], off)' "${root}/lib")
 check "no encryption offered: a plan with encryption is refused, without it it is good" \
 	"['NetBSD: no system encryption'] []" "${out}"
 
-if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -c 'import gi' 2>/dev/null; then
+if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -B -c 'import gi' 2>/dev/null; then
 	printf 'skip the drawing checks: no broadwayd or PyGObject\n'
 	finish
 	exit 0
@@ -85,7 +85,7 @@ GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${tmp}" \
 	bin/installer-gui --render "${tmp}/enc.json" --size 1024x768 --screenshots "${tmp}/shots" \
 	> "${tmp}/render.log" 2>&1 || cat "${tmp}/render.log" >&2
 r() {
-	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+	python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
 		"${tmp}/shots/noenc.encryption.json" "$1" 2>&1
 }
 check "no encryption offered: no box, no passphrase" "False False" \

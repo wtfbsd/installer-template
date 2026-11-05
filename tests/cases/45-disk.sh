@@ -40,7 +40,7 @@ printf 'DISKS=ada0|Sa"msu\\ng SSD|100\nINTERFACES=\n' > "${tmp}/odd.conf"
 probe=$(INSTALLER_ADAPTER_FIXTURE="${tmp}/odd.conf" \
 	"${backend}" disk probe 2>/dev/null) || probe=''
 check_contains "the disk list is still JSON" '"name":"ada0"' "${probe}"
-printf '%s' "${probe}" | python3 -I -c '
+printf '%s' "${probe}" | python3 -I -B -c '
 import json, sys
 data = json.load(sys.stdin)
 descr = data["disks"][0]["descr"]

@@ -393,7 +393,7 @@ class DiskPage:
             disk = self.detail["disks"][0]
             self.selected = [disk["name"]]
             self.mode_buttons["erase"].set_active(True)
-            self.notice_disk.set_text(f"{disk['name']}  {disk.get('model', '')}  "
+            self.notice_disk.set_text(f"{D.disk_label(disk['name'], disk.get('model', ''))}  "
                                       f"{D.human(int(disk.get('size_bytes', 0)))}")
             self.notice_text.set_text(f"This disk is empty. {self.wiz.product} will use the whole disk.")
             for child in self.notice_bars.get_children():
@@ -706,11 +706,13 @@ class DiskPage:
     @staticmethod
     def encryption_label(name, home):
         """The label of the box: the system (name), or the home directories
-        and the data only (home, illumos), or none."""
+        and the data only (home, illumos), or none.  The method of the
+        system goes in parentheses of its own, never two pairs."""
         if name:
-            return f"Encrypt the system ({name}); the passphrase is asked at every start"
+            return (f"Encrypt the system ({D.encryption_method(name)}); "
+                    "the passphrase is asked at every start")
         if home:
-            return (f"Encrypt the home directories and the data ({home}); "
+            return (f"Encrypt the home directories and the data ({D.encryption_method(home)}); "
                     "the passphrase is asked at every start")
         return ""
 
@@ -846,7 +848,9 @@ class DiskPage:
         index = D.disk_index(self.detail)
         self.selected = [n for n in self.selected if n in index]
         if not self.selected and index:
-            self.selected = [next(iter(index))]
+            # The first disk with nothing on it; no disk at all when every
+            # disk holds something (the person chooses).
+            self.selected = D.default_disks(index)
         self.data_disks = [n for n in self.data_disks if n in index and n not in self.selected]
         self.fill_table()
         self.part_disk.remove_all()
@@ -880,7 +884,7 @@ class DiskPage:
                 on_it.append("empty")
             kind = {True: "SSD", False: "HDD"}.get(disk.get("ssd"), "")
             self.store.append([
-                disk["name"] in self.selected, disk["name"], disk.get("model", ""),
+                disk["name"] in self.selected, disk["name"], D.disk_model(disk),
                 D.human(int(disk.get("size_bytes", 0))), disk.get("serial", ""),
                 disk.get("bus", ""), kind,
                 f'<span foreground="{colour}">{glib_escape(summary)}</span>', "; ".join(on_it)])
@@ -917,7 +921,7 @@ class DiskPage:
             self.data_box.show_all()
             return
         for disk in others:
-            check = Gtk.CheckButton(label=f"{disk['name']}  {disk.get('model', '')}  "
+            check = Gtk.CheckButton(label=f"{D.disk_label(disk['name'], disk.get('model', ''))}  "
                                           f"{D.human(int(disk.get('size_bytes', 0)))}")
             check.set_active(disk["name"] in self.data_disks)
             check.connect("toggled", self.on_data_toggle, disk["name"])
@@ -952,7 +956,9 @@ class DiskPage:
         # The question is answered: a message that asked for it goes.
         self.win.show_error("")
         if ident == "separate":
-            self.selected = self.selected[:1] or [self.detail["disks"][0]["name"]]
+            # One system disk: the first one with nothing on it, or the one
+            # the person ticked before.
+            self.selected = self.selected[:1] or D.default_disks(D.disk_index(self.detail))
             self.data_disks = []
             self.separate = {d["name"]: None for d in self.detail.get("disks", [])
                              if d["name"] not in self.selected}
@@ -968,7 +974,7 @@ class DiskPage:
         for name in sorted(self.separate):
             disk = index.get(name, {})
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            row.pack_start(lbl(f"{name}  {disk.get('model', '')}  "
+            row.pack_start(lbl(f"{D.disk_label(name, disk.get('model', ''))}  "
                                f"{D.human(int(disk.get('size_bytes', 0)))}", wrap=False), False, False, 0)
             combo = Gtk.ComboBoxText()
             combo.append("keep", "Leave it as it is")
@@ -1102,7 +1108,8 @@ class DiskPage:
                                  ("wear_percent", "Wear", " %")):
             if h.get(key) is not None:
                 lines.append(f"{title}: {h[key]}{unit}")
-        self.win.message(f"Health of {name} ({disk.get('model', '')})", "\n".join(lines))
+        model = D.disk_model(disk)
+        self.win.message(f"Health of {name}" + (f" ({model})" if model else ""), "\n".join(lines))
 
     def on_secure_erase(self, *_args):
         name = self.current_disk()
@@ -1263,12 +1270,13 @@ class DiskPage:
         # several: each names itself.
         one = len(shown) == 1
         self.bars_title.set_text("Before and after" + (
-            f" — {shown[0]}  {index[shown[0]].get('model', '')}".rstrip() if one else ""))
+            f" — {D.disk_label(shown[0], index[shown[0]].get('model', ''))}" if one else ""))
         for name in shown:
             disk = index[name]
             grid = Gtk.Grid(column_spacing=10, row_spacing=2)
             if not one:
-                grid.attach(lbl(f"{name}  {disk.get('model', '')}", "bar-caption", wrap=False), 0, 0, 2, 1)
+                grid.attach(lbl(D.disk_label(name, disk.get("model", "")), "bar-caption", wrap=False),
+                            0, 0, 2, 1)
             grid.attach(lbl("now", "bar-caption", wrap=False), 0, 1, 1, 1)
             grid.attach(bar(D.bar_before(disk)), 1, 1, 1, 1)
             grid.attach(lbl("after", "bar-caption", wrap=False), 0, 2, 1, 1)

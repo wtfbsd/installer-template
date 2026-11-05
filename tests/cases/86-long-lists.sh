@@ -24,7 +24,7 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/installer-lists.XXXXXX")
 tmp_root=$(dirname "${tmp}")
 trap 'rmrf "${tmp}" "${tmp_root}" || :' EXIT INT TERM HUP
 
-if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -c 'import gi' 2>/dev/null; then
+if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -B -c 'import gi' 2>/dev/null; then
 	printf 'skip: no broadwayd or PyGObject\n'
 	finish
 	exit 0
@@ -57,7 +57,7 @@ render() { # render <fixture> <spec> <dir>
 }
 
 # 1. Every page of the usual machine.
-python3 -I - "${tmp}/pages.json" <<'PY'
+python3 -I -B - "${tmp}/pages.json" <<'PY'
 import json, sys
 pages = [("welcome", {}), ("keyboard", {}), ("timezone", {}), ("type", {"mode": "erase"}),
          ("disk", {"mode": "erase", "selected": ["nda0"], "usage": "together"}),
@@ -74,7 +74,7 @@ spec.append({"name": "p99-summary", "page": "summary", "full": False, "state": {
 json.dump(spec, open(sys.argv[1], "w"))
 PY
 render "${root}/tests/fixtures/disks/dual-os.conf" "${tmp}/pages.json" "${tmp}/pages"
-out=$(python3 -I - "${tmp}/pages" <<'PY'
+out=$(python3 -I -B - "${tmp}/pages" <<'PY'
 import glob, json, sys
 problems, pages, exceptions = [], 0, 0
 for path in sorted(glob.glob(sys.argv[1] + "/*.lists.json")):
@@ -97,7 +97,7 @@ PY
 check "every list of every page scrolls by itself" "11 pages; every list scrolls by itself" "${out}"
 
 # 2. Long lists.
-python3 -I - "${tmp}" "${root}" <<'PY'
+python3 -I -B - "${tmp}" "${root}" <<'PY'
 import json, os, sys
 tmp, root = sys.argv[1], sys.argv[2]
 disks = [{"name": f"ada{i}", "model": f"Example Disk {i}", "size_bytes": 100 * 1024 ** 3,
@@ -138,7 +138,7 @@ render "${tmp}/long.conf" "${tmp}/long.json" "${tmp}/long"
 for pair in wifi:wifi hardware:hardware partitions:partitions datadisks:data-disks \
 	separate:other-disks summary16:summary-disks; do
 	name=${pair%%:*}
-	out=$(python3 -I - "${tmp}/long/${name}.lists.json" "${pair#*:}" <<'PY' 2>&1
+	out=$(python3 -I -B - "${tmp}/long/${name}.lists.json" "${pair#*:}" <<'PY' 2>&1
 import json, sys
 r = json.load(open(sys.argv[1]))
 problems = []

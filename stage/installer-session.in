@@ -51,7 +51,7 @@ place_icon() {
 	# checksum of the file is in its metadata.
 	if command -v gio >/dev/null 2>&1; then
 		ns=metadata
-		sum=$(python3 -I -c 'import hashlib, sys
+		sum=$(python3 -I -B -c 'import hashlib, sys
 print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "${icon}" 2>/dev/null) || sum=''
 		if [ -n "${sum}" ]; then
 			gio set -t string "${icon}" "${ns}::xfce-exe-checksum" "${sum}" \

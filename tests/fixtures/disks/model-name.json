@@ -1,0 +1,27 @@
+{
+ "boot_mode": "uefi",
+ "ram_mb": 16384,
+ "disks": [
+  {
+   "name": "vbd2",
+   "model": "vbd2",
+   "size_bytes": 4294967296,
+   "serial": "",
+   "bus": "VirtIO",
+   "ssd": null,
+   "health": {
+    "status": "unknown",
+    "summary": "no health data"
+   },
+   "scheme": "none",
+   "partitions": [],
+   "os": [],
+   "free": [
+    {
+     "start_mb": 1,
+     "size_mb": 4095
+    }
+   ]
+  }
+ ]
+}

@@ -50,7 +50,7 @@ run() {
 		INSTALLER_DMESG_BOOT="${tmp}/dmesg.boot" \
 		INSTALLER_LIVE_MEDIUM_FILE="${tmp}/live-medium" "$@" \
 		"${backend}" disk probe 2>"${tmp}/err") || _rc=$?
-	_names=$(printf '%s' "${_out}" | python3 -I -c '
+	_names=$(printf '%s' "${_out}" | python3 -I -B -c '
 import json, sys
 try:
     print(" ".join(d["name"] for d in json.load(sys.stdin)["disks"]))

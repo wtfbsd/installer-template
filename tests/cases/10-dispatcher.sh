@@ -96,7 +96,7 @@ out=$("${backend}" welcome probe 2>&1) || rc=$?
 check_rc "the welcome section probes" 0 "${rc}"
 
 rc=0
-printf '%s' "${out}" | python3 -I -c 'import json,sys; json.load(sys.stdin)' || rc=$?
+printf '%s' "${out}" | python3 -I -B -c 'import json,sys; json.load(sys.stdin)' || rc=$?
 check_rc "the welcome probe prints JSON" 0 "${rc}"
 
 check_contains "the probe names the product" '"product":"ExampleBSD"' "${out}"

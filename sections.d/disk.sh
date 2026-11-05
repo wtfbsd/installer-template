@@ -20,7 +20,7 @@ OS=$(config_value OS) || exit 2
 
 cmd_probe() {
 	disks=$(adapter_cmd disks) || exit $?
-	names=$(printf '%s' "${disks}" | python3 -I -c '
+	names=$(printf '%s' "${disks}" | python3 -I -B -c '
 import json, sys
 print(" ".join(d["name"] for d in json.load(sys.stdin) if isinstance(d, dict) and "name" in d))
 ') || names=''
@@ -33,7 +33,7 @@ print(" ".join(d["name"] for d in json.load(sys.stdin) if isinstance(d, dict) an
 	# The report is kept for the disks that may be written to only, its
 	# text is reduced to plain values, and a disk the report does not know
 	# gets what the list says.
-	printf '%s' "${detail}" | DISKS_JSON="${disks}" CAPS_JSON="${caps}" python3 -I -c '
+	printf '%s' "${detail}" | DISKS_JSON="${disks}" CAPS_JSON="${caps}" python3 -I -B -c '
 import json, os, sys
 
 def text(value, limit=80):
@@ -116,7 +116,7 @@ cmd_validate() {
 	[ -n "${disk}" ] || die 2 'the chosen disk has no name'
 	disk_name_valid "${disk}" || die 2 "the name '${disk}' is not the name of a disk"
 	disks=$(adapter_cmd disks) || exit $?
-	printf '%s' "${disks}" | DISK="${disk}" python3 -I -c '
+	printf '%s' "${disks}" | DISK="${disk}" python3 -I -B -c '
 import json, os, sys
 
 try:

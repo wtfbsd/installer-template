@@ -33,7 +33,7 @@ offered() { # offered — the names of the disks that are offered
 	PATH="${stubs}:${PATH}" \
 	STUB_MOUNTS="${tmp}/mounts" \
 	INSTALLER_ADAPTER_FIXTURE="${tmp}/rehearsal.conf" \
-	"${backend}" disk probe 2>/dev/null | python3 -I -c '
+	"${backend}" disk probe 2>/dev/null | python3 -I -B -c '
 import json, sys
 data = json.load(sys.stdin)
 print(" ".join(item["name"] for item in data["disks"]))

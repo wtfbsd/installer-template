@@ -321,7 +321,7 @@ page_prev() {
 # json_items <json> <key> — the items of a JSON array, one per line, as
 # "name<TAB>description<TAB>size".
 json_items() {
-	printf '%s' "$1" | python3 -I -c '
+	printf '%s' "$1" | python3 -I -B -c '
 import json, sys
 
 
@@ -360,7 +360,7 @@ for item in data.get(sys.argv[1]) or []:
 
 # json_value <json> <key> — one value of a JSON object.
 json_value() {
-	printf '%s' "$1" | python3 -I -c '
+	printf '%s' "$1" | python3 -I -B -c '
 import json, sys
 try:
     data = json.load(sys.stdin)
@@ -404,7 +404,7 @@ write_answers() {
 			# printf is built into the shell: the password is never
 			# on a command line.
 			if ! printf '%s\n' "${user_password}" |
-				python3 -I "${root}/lib/passhash.py" write "${hash_scheme}" \
+				python3 -I -B "${root}/lib/passhash.py" write "${hash_scheme}" \
 					"${hashfile}" 2>>"${log}"; then
 				return 1
 			fi
@@ -420,7 +420,7 @@ write_answers() {
 		if [ ! -e "${roothash}" ] || [ "${root_written}" != "${root_password}" ]; then
 			rm -f "${roothash}"
 			if ! printf '%s\n' "${root_password}" |
-				python3 -I "${root}/lib/passhash.py" write "${hash_scheme}" \
+				python3 -I -B "${root}/lib/passhash.py" write "${hash_scheme}" \
 					"${roothash}" 2>>"${log}"; then
 				return 1
 			fi
@@ -434,7 +434,7 @@ write_answers() {
 	rm -f "${secrets}/wifi.json"
 	if [ -n "${wifi_ssid}" ]; then
 		if ! printf '%s\n' "${wifi_psk}" | WIFI_IF="${net_if}" WIFI_SSID="${wifi_ssid}" \
-			WIFI_SECURITY="${wifi_security}" python3 -I -c '
+			WIFI_SECURITY="${wifi_security}" python3 -I -B -c '
 import json, os, sys
 psk = sys.stdin.readline().rstrip("\n")
 data = json.dumps({"if": os.environ["WIFI_IF"], "ssid": os.environ["WIFI_SSID"],
@@ -505,7 +505,7 @@ with os.fdopen(fd, "wb") as stream:
 	# The gate writes a file of its own.  The file of the answers is only
 	# replaced when the gate was happy with the answers, so a gate that
 	# fails never leaves an empty file of answers behind.
-	if ! python3 -I "${root}/lib/gating.py" gate "${raw}" > "${gated}"; then
+	if ! python3 -I -B "${root}/lib/gating.py" gate "${raw}" > "${gated}"; then
 		rm -f "${gated}"
 		return 1
 	fi
@@ -513,7 +513,7 @@ with os.fdopen(fd, "wb") as stream:
 		rm -f "${gated}"
 		return 1
 	fi
-	if ! python3 -I "${root}/lib/gating.py" secrets "${raw}" \
+	if ! python3 -I -B "${root}/lib/gating.py" secrets "${raw}" \
 		> "${state}/consumed-secrets.txt"; then
 		return 1
 	fi
@@ -804,7 +804,7 @@ page_keyboard() {
 			--menu 'Choose the language and region of the system.' 0 0 12
 		while IFS="${TAB}" read -r name descr size; do
 			[ -n "${name}" ] || continue
-			set -- "$@" "${name}" "$(LIB="${root}/lib" python3 -I -c '
+			set -- "$@" "${name}" "$(LIB="${root}/lib" python3 -I -B -c '
 import os, sys
 sys.path.insert(0, os.environ["LIB"])
 import i18n
@@ -818,7 +818,7 @@ print(lang[2] if lang else sys.argv[1])
 			1) return 1 ;;
 			*) return 3 ;;
 		esac
-		suggested=$(cut -f1 "${items}" | LIB="${root}/lib" python3 -I -c '
+		suggested=$(cut -f1 "${items}" | LIB="${root}/lib" python3 -I -B -c '
 import os, sys
 sys.path.insert(0, os.environ["LIB"])
 import i18n
@@ -951,7 +951,7 @@ The installer looked for a disk to write to and did not find one."
 # confirmed when the summary had the word typed (CONFIRMED=yes).
 disk_plan() {
 	DISK="${disk}" OS_NAME="${os_name}" CONFIRMED="${erase_confirmed:-no}" LIB="${root}/lib" \
-		python3 -I -c '
+		python3 -I -B -c '
 import json, os, sys
 sys.path.insert(0, os.environ["LIB"])
 import diskplan
@@ -1164,7 +1164,7 @@ page_network_more() {
 	wifi_security=''
 	wifi_psk=''
 	nets="${state}/wifi-items"
-	printf '%s' "${probe}" | NET_IF="${net_if}" python3 -I -c '
+	printf '%s' "${probe}" | NET_IF="${net_if}" python3 -I -B -c '
 import json, os, sys
 try:
     data = json.load(sys.stdin)
@@ -1256,7 +1256,7 @@ for net in (data.get("wifi") or {}).get(os.environ["NET_IF"], []):
 # text, separated by tabs.  The open-source notices come last with the id
 # "-notices-".
 software_items() {
-	"$BACKEND" software probe 2>>"${log}" | LIB="${root}/lib" python3 -I -c '
+	"$BACKEND" software probe 2>>"${log}" | LIB="${root}/lib" python3 -I -B -c '
 import json, sys
 try:
     cat = json.load(sys.stdin)["catalogue"]

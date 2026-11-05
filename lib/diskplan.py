@@ -480,6 +480,40 @@ def is_blank(disk: dict) -> bool:
             and not disk.get("unknown_bytes"))
 
 
+def default_disks(index: Dict[str, dict]) -> List[str]:
+    """The disks the Disk page ticks: the first one that is blank as the
+    system read it (is_blank: no table, no signature, no unknown data).
+    No disk at all when none is: the person chooses."""
+    for name, disk in index.items():
+        if is_blank(disk):
+            return [name]
+    return []
+
+
+def disk_label(name: str, model: str = "") -> str:
+    """The name of a disk with its model, said once: a model that is the
+    name of the disk itself is not said a second time."""
+    model = (model or "").strip()
+    if not model or model == name:
+        return name
+    return f"{name}  {model}"
+
+
+def disk_model(disk: dict) -> str:
+    """The model of a disk, when it says something the name of the disk
+    does not say: a model that is the name of the disk itself is left out."""
+    model = str(disk.get("model") or "").strip()
+    return "" if model == disk.get("name") else model
+
+
+def encryption_method(name: str) -> str:
+    """The name of the encryption of a system, without parentheses of its
+    own: the label of the box puts it in parentheses."""
+    # "dm_crypt (LUKS)" -> "dm_crypt/LUKS": one method name, no pair of its own
+    words = str(name or "").replace(")", " ").split("(")
+    return "/".join(" ".join(w.split()) for w in words if w.strip())
+
+
 def needs_usage_question(detail: dict, os_name: str = "") -> bool:
     """Two or more installable disks: use them together or separately?
     Asked only when the system offers both ways."""
@@ -1137,7 +1171,7 @@ def _erase_parts(plan: dict, name: str, item: Optional[Layout], encryption: str,
         parts.append(f"swap {human_mb(swap)}" + (" (encrypted)" if enc.get("swap") else ""))
     parts.append(f"{fs_title}" + (f" {item.title.lower()}" if item and len(plan['disks']) > 1 else ""))
     if enc.get("enabled"):
-        parts.append(f"encrypted ({encryption})")
+        parts.append(f"encrypted ({encryption_method(encryption)})")
     return parts
 
 

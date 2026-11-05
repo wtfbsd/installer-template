@@ -41,7 +41,7 @@ die() {
 }
 
 command -v broadwayd >/dev/null 2>&1 || die 'broadwayd (GTK 3) is not installed'
-python3 -I -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' \
+python3 -I -B -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' \
 	2>/dev/null || die 'python3 has no PyGObject with GTK 3'
 mkdir -p "${out}"
 out=$(CDPATH= cd "${out}" && pwd)

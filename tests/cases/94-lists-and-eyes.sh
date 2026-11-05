@@ -25,7 +25,7 @@ zones=$(( $(grep -vc '^#' lib/zone1970.tab) + 1 ))
 count() { # count <os> <section> <key> — the length of a list of a probe
 	sed "s/^OS=.*/OS=$1/" installer.conf > "${tmp}/$1.conf"
 	INSTALLER_CONF="${tmp}/$1.conf" INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/dual-os.conf" \
-		"${backend}" "$2" probe 2>/dev/null | python3 -I -c '
+		"${backend}" "$2" probe 2>/dev/null | python3 -I -B -c '
 import json, sys; print(len(json.load(sys.stdin)[sys.argv[1]]))' "$3"
 }
 for os in freebsd netbsd openbsd dragonfly illumos; do
@@ -44,14 +44,14 @@ rc=0
 out=$(env -u INSTALLER_ADAPTER_FIXTURE INSTALLER_CONF="${tmp}/freebsd.conf" INSTALLER_ZONEINFO="${tmp}/none" \
 	"${backend}" timezone probe 2>"${tmp}/tz.err") || rc=$?
 check "no zone table: every zone of the installer's table" "${zones}" \
-	"$(printf '%s' "${out}" | python3 -I -c 'import json, sys; print(len(json.load(sys.stdin)["zones"]))')"
+	"$(printf '%s' "${out}" | python3 -I -B -c 'import json, sys; print(len(json.load(sys.stdin)["zones"]))')"
 check_contains "no zone table: a warning for the log" "warning: the zone table of the system cannot be read" \
 	"$(cat "${tmp}/tz.err")"
 out=$(env -u INSTALLER_ADAPTER_FIXTURE INSTALLER_CONF="${tmp}/freebsd.conf" INSTALLER_KEYMAP_DIR="${tmp}/none" \
 	"${backend}" keyboard probe 2>"${tmp}/kb.err") || :
 check_contains "no keymap directory: a warning for the log" "warning: the keymaps of the system" "$(cat "${tmp}/kb.err")"
 
-if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -c 'import gi' 2>/dev/null; then
+if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -B -c 'import gi' 2>/dev/null; then
 	printf 'skip the drawing checks: no broadwayd or PyGObject\n'
 	finish
 	exit 0
@@ -87,7 +87,7 @@ GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${tmp}" \
 	bin/installer-gui --render "${tmp}/spec.json" --size 1024x768 --screenshots "${tmp}/shots" \
 	> "${tmp}/render.log" 2>&1 || cat "${tmp}/render.log" >&2
 r() {
-	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+	python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
 		"${tmp}/shots/$1.lists_and_eyes.json" "$2" 2>&1
 }
 check "time zone page: every zone in the list" "${zones}" "$(r tz 'r["zones"]')"

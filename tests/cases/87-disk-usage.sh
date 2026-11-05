@@ -22,7 +22,7 @@ trap 'rmrf "${tmp}" "${tmp_root}" || :' EXIT INT TERM HUP
 # The model: OpenBSD offers data disks (the adapter's layouts verb).
 sed 's/^OS=.*/OS=openbsd/' installer.conf > "${tmp}/openbsd.conf"
 caps=$(INSTALLER_CONF="${tmp}/openbsd.conf" INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/dual-os.conf" \
-	bin/installer-apply --list disks | python3 -I -c '
+	bin/installer-apply --list disks | python3 -I -B -c '
 import json, sys
 sys.path.insert(0, sys.argv[1])
 import diskplan
@@ -30,7 +30,7 @@ detail = json.load(sys.stdin)["detail"]
 print(diskplan.data_pools_offered("openbsd", detail))' "${root}/lib")
 check "OpenBSD offers disks of their own (data disks)" True "${caps}"
 
-if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -c 'import gi' 2>/dev/null; then
+if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -B -c 'import gi' 2>/dev/null; then
 	printf 'skip the drawing checks: no broadwayd or PyGObject\n'
 	finish
 	exit 0
@@ -67,7 +67,7 @@ GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${tmp}" \
 	bin/installer-gui --render "${tmp}/usage.json" --size 1024x768 --screenshots "${tmp}/shots" \
 	> "${tmp}/render.log" 2>&1 || cat "${tmp}/render.log" >&2
 r() { # r <shot> <python expression of the report r>
-	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+	python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
 		"${tmp}/shots/$1.usage.json" "$2" 2>&1
 }
 # The default way (together) is chosen, in the model and on the card, so
@@ -100,7 +100,7 @@ GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${tmp}" \
 	bin/installer-gui --render "${tmp}/flow.json" --size 1024x768 --screenshots "${tmp}/flow" \
 	> "${tmp}/flow.log" 2>&1 || cat "${tmp}/flow.log" >&2
 f() {
-	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+	python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
 		"${tmp}/flow/$1.page.json" "$2" 2>&1
 }
 check "OpenBSD: Next on the time zone leads to the Disk page" disk "$(f tz 'r["page"]')"
