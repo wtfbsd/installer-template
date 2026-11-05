@@ -11,6 +11,9 @@
 #               disk of / and of the installation media are left out; a
 #               device under /dev/serno is followed to its disk and a
 #               HAMMER2 label ("da0s1d@ROOT") names its disk before the @.
+#               A node of devfs that is a device of its own (DragonFly 6.4:
+#               /dev/part-by-label/<label>.a has the device number of the
+#               partition it names) is followed by its device number.
 #   network     "ifconfig -l"
 #   keymaps     the syscons keymaps of /usr/share/syscons/keymaps
 #   hash-scheme SHA-512 crypt "$6$"
@@ -22,6 +25,14 @@ root=$(CDPATH= cd "${here}/.." && pwd)
 . "${root}/lib/backend.sh"
 . "${root}/lib/config.sh"
 . "${root}/lib/adapter.sh"
+
+# The directory of the device nodes of the machine: /dev in the installer.
+# A test points it at a staged tree (INSTALLER_DEV_DIR); the override is
+# never honoured for root, which installs for real.
+dev_dir=/dev
+if [ -n "${INSTALLER_DEV_DIR:-}" ] && ! installer_is_root; then
+	dev_dir=${INSTALLER_DEV_DIR}
+fi
 
 os_disk_rows() {
 	command -v sysctl >/dev/null 2>&1 ||
@@ -49,6 +60,63 @@ gpt_disk_size() {
 	'
 }
 
+# devnum <path> — the device number of a device node: the major and the
+# minor number, as stat(1) prints them ("%Hr %Lr").  Nothing when the path
+# is not there or stat fails.
+devnum() {
+	stat -L -f '%Hr %Lr' "$1" 2>/dev/null || return 1
+}
+
+# dev_path <device> — the path of a device node of the machine: the
+# directory of the device nodes (dev_dir).
+dev_path() {
+	case "$1" in
+		/dev/*) printf '%s\n' "${dev_dir}/${1#/dev/}" ;;
+		*) printf '%s\n' "${dev_dir}/${1}" ;;
+	esac
+}
+
+# devnum_partition <number> — the partition of a disk of kern.disks that
+# has the device number <number>: the disk itself, a slice of it or a
+# partition of a slice.  Nothing when no device of a disk has that number,
+# or when two of them have it (it cannot be told).
+devnum_partition() {
+	_want=$1
+	_found=''
+	for _disk in $(sysctl -n kern.disks 2>/dev/null); do
+		case "${_disk}" in
+			''|*[!a-z0-9]*) continue ;;
+		esac
+		for _p in "${dev_dir}/${_disk}" "${dev_dir}/${_disk}"s*; do
+			[ -e "${_p}" ] || continue
+			[ -L "${_p}" ] && continue
+			_num=$(devnum "${_p}") || continue
+			[ "${_num}" = "${_want}" ] || continue
+			# Two devices with the number: it cannot be told.
+			[ -z "${_found}" ] || [ "${_found}" = "${_p##*/}" ] || return 1
+			_found=${_p##*/}
+		done
+	done
+	[ -n "${_found}" ] || return 1
+	printf '%s\n' "${_found}"
+}
+
+# devfs_device <node> — the device a node of devfs names: the target of
+# the link, when the node is a link; otherwise the partition of a disk of
+# kern.disks that has the device number of the node (DragonFly 6.4: the
+# node of a label is a device of its own, with the number of the partition
+# it names).  Nothing when the node cannot be followed.
+devfs_device() {
+	_link=$(readlink "$1" 2>/dev/null) || _link=''
+	if [ -n "${_link}" ]; then
+		printf '%s\n' "${_link##*/}"
+		return 0
+	fi
+	_num=$(devnum "$(dev_path "$1")") || return 1
+	[ -n "${_num}" ] || return 1
+	devnum_partition "${_num}"
+}
+
 # os_excluded_disks <names> — the disks of the root, of the installation
 # media and of the live medium; a /dev/serno, part-by-label or by-uuid
 # path is followed to its device.  cannot_tell (exit 3) when one of them
@@ -57,18 +125,28 @@ os_excluded_disks() {
 	_boot=$(boot_devices) || exit $?
 	for _dev in $(printf '%s\n' "${_boot}" | awk '{ print $2 }'); do
 		[ -n "${_dev}" ] || continue
+		# A single user start names the root without /dev/.
+		case "${_dev}" in
+			part-by-label/*|part-by-uuid/*|by-label/*|by-uuid/*|serno/*)
+				_dev=/dev/${_dev}
+				;;
+		esac
 		case "${_dev}" in
 			/dev/serno/*)
-				_link=$(readlink "${_dev%.s[0-9]*}" 2>/dev/null) ||
-					cannot_tell "readlink can't follow ${_dev}"
-				_dev=${_link##*/}
+				# A serial number names the disk; <serno>.s1a its
+				# partition.
+				_target=$(devfs_device "${_dev%.s[0-9]*}") ||
+					cannot_tell "cannot follow ${_dev} to its device"
+				_dev=${_target}
 				;;
 			# The live system mounts its root by label (or by the
-			# uuid of the partition): devfs links to the device.
+			# uuid of the partition): devfs links to the device, or
+			# (DragonFly 6.4) makes a device of its own with the
+			# number of the partition.
 			/dev/part-by-label/*|/dev/part-by-uuid/*|/dev/by-label/*|/dev/by-uuid/*)
-				_link=$(readlink "${_dev%%@*}" 2>/dev/null) ||
-					cannot_tell "readlink can't follow ${_dev}"
-				_dev=${_link##*/}
+				_target=$(devfs_device "${_dev%%@*}") ||
+					cannot_tell "cannot follow ${_dev} to its device"
+				_dev=${_target}
 				;;
 		esac
 		device_disk_prefix "${_dev}" "$1" | tr '\n' ' ' || :
