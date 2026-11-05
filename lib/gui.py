@@ -594,6 +594,11 @@ class InstallerWindow(Gtk.Window):
             problem = collect()
             if problem:
                 self.show_error(problem)
+                if self.page == "disk":
+                    # The Disk page knows whether the problem is a
+                    # passphrase one: it remembers that its hint was
+                    # shown, so the hint goes when the passphrase is good.
+                    self.disk_page.problem_shown(problem)
                 return
         problem = self.wiz.leave(self.page)
         if problem:
@@ -1930,6 +1935,31 @@ def _renamed(state, rename):
     return out
 
 
+def _apply_disk_encryption(dp, state, swap_enc):
+    """The encryption of a disk state: the box, the passphrase and the
+    swap.  The swap box is where the system offers it."""
+    if state.get("encrypt"):
+        dp.enc_check.set_active(True)
+        dp.pass1.set_text(state.get("passphrase", ""))
+        dp.pass2.set_text(state.get("passphrase", ""))
+    if "swap_gb" in state:
+        dp.swap.set_value(state["swap_gb"])
+    # The order matters: ticking the encryption ticks the swap, so the
+    # choice of the shot is applied after it.
+    if "swap_encrypted" in state and swap_enc is not None:
+        swap_enc.set_active(bool(state["swap_encrypted"]))
+
+
+def _apply_disk_type_after(dp, state):
+    """The passphrase typed after the page asked for it."""
+    if state.get("type_after"):
+        # The passphrase typed after the page asked for it: what the
+        # problems were before it is typed is kept for the report.
+        state["_problems_before"] = dp.problems.get_text()
+        dp.pass1.set_text(state["type_after"])
+        dp.pass2.set_text(state["type_after"])
+
+
 def apply_disk_state(win, state):
     """Set the disk page the way a person would: the mode, the disks, the
     layout and the options."""
@@ -1941,7 +1971,9 @@ def apply_disk_state(win, state):
     dp.data_disks = []
     dp.fill_partitions()
     dp.enc_check.set_active(False)
-    dp.swap_enc.set_active(False)
+    swap_enc = getattr(dp, "swap_enc", None)
+    if swap_enc is not None:
+        swap_enc.set_active(False)
     if "selected" in state:
         dp.selected = list(state["selected"])
     if "data_disks" in state:
@@ -1962,14 +1994,7 @@ def apply_disk_state(win, state):
         dp.layout = state["layout"]
     if "filesystem" in state:
         dp.fs_combo.set_active_id(state["filesystem"])
-    if state.get("encrypt"):
-        dp.enc_check.set_active(True)
-        dp.pass1.set_text(state.get("passphrase", ""))
-        dp.pass2.set_text(state.get("passphrase", ""))
-    if "swap_gb" in state:
-        dp.swap.set_value(state["swap_gb"])
-    if state.get("swap_encrypted"):
-        dp.swap_enc.set_active(True)
+    _apply_disk_encryption(dp, state, swap_enc)
     if "boot" in state:
         dp.boot_combo.set_active_id(state["boot"])
     for name, how in state.get("wipe", {}).items():
@@ -1979,6 +2004,7 @@ def apply_disk_state(win, state):
     if "partitions" in state:
         dp.partitions = [dict(p) for p in state["partitions"]]
         dp.fill_partitions()
+    _apply_disk_type_after(dp, state)
     # Advanced is open only where the shot asks for it (or for data disks).
     dp.advanced.set_expanded(bool(state.get("data_disks") or state.get("advanced")))
     dp.data_expander.set_expanded(bool(state.get("data_disks")))
@@ -2044,8 +2070,13 @@ def flag_kind(button):
 
 def _report_encryption(win, shot, page, state, outdir):
     dp = win.disk_page
+    swap_enc = getattr(dp, "swap_enc", None)
     write_report(outdir, shot, "encryption",
-                 {"layout": dp.layout, "active": dp.enc_check.get_active(),
+                 {"problems_before": state.get("_problems_before", ""),
+                  "problems": dp.problems.get_text(),
+                  "swap_shown": bool(swap_enc is not None and swap_enc.get_visible()),
+                  "swap_active": bool(swap_enc is not None and swap_enc.get_active()),
+                  "layout": dp.layout, "active": dp.enc_check.get_active(),
                   "sensitive": dp.enc_check.get_sensitive(),
                   "shown": dp.enc_check.get_visible(),
                   "passphrase_shown": any(w.get_visible() for w in dp.pass_row),
