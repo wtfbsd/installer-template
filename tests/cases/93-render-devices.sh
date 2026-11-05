@@ -38,7 +38,7 @@ for os in netbsd openbsd dragonfly illumos; do
 	check "${os}: its disks, adapters and hardware come from its captures" "" "${bad}"
 done
 
-if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -c 'import gi' 2>/dev/null; then
+if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -B -c 'import gi' 2>/dev/null; then
 	printf 'skip the drawing checks: no broadwayd or PyGObject\n'
 	finish
 	exit 0
@@ -106,7 +106,7 @@ for os in freebsd netbsd openbsd dragonfly illumos; do
 		bin/installer-gui --render "${tmp}/pages.json" --size 1024x768 --screenshots "${tmp}/${os}" \
 		> "${tmp}/${os}.log" 2>&1 || cat "${tmp}/${os}.log" >&2
 	check "${os}: the Disk, Network and Hardware pages name no device of another system" "" \
-		"$(python3 -I "${tmp}/names.py" "${os}" "${tmp}/${os}" 2>&1)"
+		"$(python3 -I -B "${tmp}/names.py" "${os}" "${tmp}/${os}" 2>&1)"
 done
 
 # The data disks in the summary, in the words of their filesystem: a pool
@@ -120,7 +120,7 @@ summary() { # summary <os> <system disk> <data disk>
 		INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/${e%% *}" \
 		bin/installer-gui --render "${tmp}/summary-$1.json" --size 1024x768 --screenshots "${tmp}/$1" \
 		> "${tmp}/summary-$1.log" 2>&1 || cat "${tmp}/summary-$1.log" >&2
-	python3 -I -c 'import json, sys
+	python3 -I -B -c 'import json, sys
 t = json.load(open(sys.argv[1]))["texts"]
 print(" | ".join(x for x in t if "/data" in x))' "${tmp}/$1/summary.page.json" 2>&1
 }

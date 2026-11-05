@@ -25,7 +25,7 @@ conf() {
 }
 
 names() {
-	printf '%s' "$1" | python3 -I -c '
+	printf '%s' "$1" | python3 -I -B -c '
 import json, sys
 print(" ".join(i["name"] for i in json.load(sys.stdin)[sys.argv[1]]))' "$2"
 }
@@ -96,7 +96,7 @@ conf openbsd
 out=$(INSTALLER_CONF="${tmp}/openbsd.conf" \
 	INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/three-disks.conf" \
 	"${backend}" disk probe)
-caps=$(printf '%s' "${out}" | python3 -I -c '
+caps=$(printf '%s' "${out}" | python3 -I -B -c '
 import json, sys
 c = json.load(sys.stdin)["detail"]["capabilities"]
 print(" ".join(l["ident"] for l in c["layouts"]), "|", " ".join(c["modes"]), "|", c["data_pools"])')
@@ -106,8 +106,8 @@ check "openbsd: the layouts, modes and data pools of its install command" \
 # The root helper refuses an OpenBSD plan with RAID 5.
 sub="${tmp}/submit"
 mkdir -m 700 "${sub}"
-printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write bcrypt "${sub}/user.hash" 2>/dev/null ||
-	printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${sub}/user.hash"
+printf 'pw\n' | python3 -I -B "${root}/lib/passhash.py" write bcrypt "${sub}/user.hash" 2>/dev/null ||
+	printf 'pw\n' | python3 -I -B "${root}/lib/passhash.py" write sha512 "${sub}/user.hash"
 printf 'KEYMAP=us\nTIMEZONE=UTC\nDISK=ada0\nUSER_NAME=tester\nUSER_AUTH=password\nNETWORK_MODE=offline\n' \
 	> "${sub}/answers.conf"
 printf '{"version":1,"mode":"erase","disks":["ada0","ada1","ada2"],"layout":"raid5","filesystem":"ffs"}\n' \

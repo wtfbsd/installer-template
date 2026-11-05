@@ -85,7 +85,7 @@ check_absent "INSTALLER_ADAPTER_FIXTURE is ignored for root" "evil0" "${out}"
 # INSTALLER_INSTALL_COMMAND: the install command of the caller.
 printf '#!/bin/sh\necho command >> "%s/marks"\necho "PROGRESS 100 Done"\n' "${evil}" > "${evil}/command"
 chmod +x "${evil}/command"
-printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${tmp}/s/user.hash"
+printf 'pw\n' | python3 -I -B "${root}/lib/passhash.py" write sha512 "${tmp}/s/user.hash"
 printf 'DISK=ada0\nUSER_NAME=tester\nUSER_AUTH=password\nUSER_HASHFILE=%s/s/user.hash\n' "${tmp}" \
 	> "${tmp}/answers"
 : > "${evil}/marks"

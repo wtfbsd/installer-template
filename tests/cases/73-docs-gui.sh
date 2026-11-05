@@ -23,7 +23,7 @@ for word in bin/installer-gui lib/wizard.py lib/passhash.py lib/adapter.sh \
 	'[-c FULLNAME] [-P]' 'IF:ADDR/MASK:GW' '^[a-z][a-z0-9]{0,14}$' setxkbmap \
 	'## Privileges' 'permit nopass live as root cmd /usr/local/libexec/wtfbsd-installer/installer-apply' \
 	'env_reset' 'installer-apply --install DIR' 'O_EXCL' '/dev/iso9660/' 'the deepest first' \
-	'lib/rootguard.sh' 'python3 -I' '--metalog FILE' 'uname=root gname=wheel' \
+	'lib/rootguard.sh' 'python3 -I -B' '--metalog FILE' 'uname=root gname=wheel' \
 	'chown -R 0:0' 'cd /' 'at most 64 bytes' 'bin/installer-prompt' 'misc/dialog' \
 	'OpenBSD has no bsddialog' '1024x768 and up'; do
 	check_contains "the README documents ${word}" "${word}" "${readme}"

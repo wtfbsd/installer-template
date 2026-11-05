@@ -23,7 +23,7 @@ cmd_probe() {
 	interfaces=$(adapter_cmd network) || exit $?
 	online=$(adapter_cmd online-check 2>/dev/null) || online=no
 	# The Wi-Fi adapters (by their drivers) and the networks each sees.
-	scans=$(printf '%s' "${interfaces}" | python3 -I -c '
+	scans=$(printf '%s' "${interfaces}" | python3 -I -B -c '
 import json, sys
 sys.path.insert(0, sys.argv[1])
 import netplan
@@ -35,7 +35,7 @@ for item in json.load(sys.stdin):
 		adapter_cmd wifi-scan "${ifname}" 2>/dev/null | tr '\n' '\036'
 		printf '\n'
 	done)
-	printf '%s' "${scans}" | INTERFACES="${interfaces}" ONLINE="${online}" python3 -I -c '
+	printf '%s' "${scans}" | INTERFACES="${interfaces}" ONLINE="${online}" python3 -I -B -c '
 import json, os, sys
 sys.path.insert(0, sys.argv[1])
 import netplan
@@ -53,7 +53,7 @@ print(json.dumps({"section": "network", "interfaces": json.loads(os.environ["INT
 
 cmd_validate() {
 	# The adapters, the resolvers and the Wi-Fi network (lib/netplan.py).
-	if problems=$(python3 -I "${root}/lib/netplan.py" check "${INSTALLER_ANSWERS:-/dev/null}" 2>&1); then
+	if problems=$(python3 -I -B "${root}/lib/netplan.py" check "${INSTALLER_ANSWERS:-/dev/null}" 2>&1); then
 		:
 	else
 		die 2 "$(printf '%s' "${problems}" | tr '\n' ';')"

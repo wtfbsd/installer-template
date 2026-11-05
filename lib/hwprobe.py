@@ -1,7 +1,7 @@
 # Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
 """The parts of the machine the Hardware and drivers window shows.
 
-    python3 -I lib/hwprobe.py freebsd|netbsd|openbsd|dragonfly
+    python3 -I -B lib/hwprobe.py freebsd|netbsd|openbsd|dragonfly
 
 prints {"devices": [{"class", "name", "driver", "firmware", "status"}],
 "unavailable": ["..."]}: the graphics, Ethernet, Wi-Fi, audio, Bluetooth

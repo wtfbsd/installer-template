@@ -17,7 +17,7 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/installer-encdef.XXXXXX")
 tmp_root=$(dirname "${tmp}")
 trap 'rmrf "${tmp}" "${tmp_root}" || :' EXIT INT TERM HUP
 
-if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -c 'import gi' 2>/dev/null; then
+if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -B -c 'import gi' 2>/dev/null; then
 	printf 'skip the drawing checks: no broadwayd or PyGObject\n'
 	finish
 	exit 0
@@ -57,11 +57,11 @@ render() {
 	fi
 }
 r() { # r <name> <shot> <report> <expression>
-	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+	python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
 		"${tmp}/$1/$2.$3.json" "$4" 2>&1
 }
 yn() { # yn <name> <shot> <report> <expression> — yes or no
-	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print("yes" if eval(sys.argv[2]) else "no")' \
+	python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print("yes" if eval(sys.argv[2]) else "no")' \
 		"${tmp}/$1/$2.$3.json" "$4" 2>&1
 }
 

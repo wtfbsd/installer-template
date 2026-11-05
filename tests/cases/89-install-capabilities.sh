@@ -46,7 +46,7 @@ stub nolayouts "echo '{\"boot\": [\"uefi\"]}'"
 caps() {
 	INSTALLER_CONF="${tmp}/$1.conf" INSTALLER_INSTALL_COMMAND="$2" \
 		INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/three-disks.conf" \
-		"${backend}" disk probe | python3 -I -c '
+		"${backend}" disk probe | python3 -I -B -c '
 import json, sys
 c = json.load(sys.stdin)["detail"]["capabilities"]
 print(" ".join(l["ident"] for l in c.get("layouts", [])) or "-", "|", c.get("boot", "-"), "|",
@@ -103,7 +103,7 @@ JSON"
 runs() { # runs <command> — "<exit code> <marks left>" of the runner
 	: > "${tmp}/marks"
 	rc=0
-	python3 -I "${root}/lib/diskplan.py" --check-capabilities "$1" >/dev/null 2>&1 </dev/null || rc=$?
+	python3 -I -B "${root}/lib/diskplan.py" --check-capabilities "$1" >/dev/null 2>&1 </dev/null || rc=$?
 	printf '%s %s\n' "${rc}" "$(wc -l < "${tmp}/marks" | tr -d ' ')"
 }
 marks "${tmp}/good"
@@ -125,7 +125,7 @@ mkdir -p "${tmp}/slug"
 marks "${tmp}/x-install"
 : > "${tmp}/marks"
 sed "s|^PRODUCT_SLUG=.*|PRODUCT_SLUG=../../..${tmp}/x|; s/^OS=.*/OS=openbsd/" installer.conf > "${tmp}/badslug.conf"
-got=$(INSTALLER_CONF="${tmp}/badslug.conf" adapters/openbsd.sh layouts 2>/dev/null | python3 -I -c '
+got=$(INSTALLER_CONF="${tmp}/badslug.conf" adapters/openbsd.sh layouts 2>/dev/null | python3 -I -B -c '
 import json, sys; print(" ".join(l["ident"] for l in json.load(sys.stdin)["layouts"]))')
 check "a slug that is not one: no command runs, the built-in table" "single raid1 crypto raid1c 0" \
 	"${got} $(wc -l < "${tmp}/marks" | tr -d ' ')"
@@ -133,7 +133,7 @@ check "a slug that is not one: no command runs, the built-in table" "single raid
 # The plan: BIOS is refused when the command starts only by UEFI.
 boot=$(INSTALLER_CONF="${tmp}/dragonfly.conf" INSTALLER_INSTALL_COMMAND="${tmp}/uefi-only" \
 	INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/three-disks.conf" \
-	"${backend}" disk probe | python3 -I -c '
+	"${backend}" disk probe | python3 -I -B -c '
 import json, sys
 sys.path.insert(0, sys.argv[1])
 import diskplan
@@ -144,7 +144,7 @@ e = diskplan.validate(p, d, "dragonfly")
 print(diskplan.system("dragonfly", d)["boot"], any("boot mode" in x for x in e))' "${root}/lib")
 check "uefi only: the system offers UEFI, a BIOS plan is refused" "('uefi',) True" "${boot}"
 
-if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -c 'import gi' 2>/dev/null; then
+if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -B -c 'import gi' 2>/dev/null; then
 	printf 'skip the drawing checks: no broadwayd or PyGObject\n'
 	finish
 	exit 0
@@ -182,7 +182,7 @@ render() {
 		> "${tmp}/$1.log" 2>&1 || cat "${tmp}/$1.log" >&2
 }
 r() { # r <dir> <python expression of the report r>
-	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+	python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
 		"${tmp}/$1/boot.boot.json" "$2" 2>&1
 }
 render uefi dragonfly "${tmp}/uefi-only"

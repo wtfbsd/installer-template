@@ -28,7 +28,7 @@ catalogue() {
 
 cmd_probe() {
 	path=$(catalogue)
-	CATALOGUE="${path}" LIB="${root}/lib" python3 -I -c '
+	CATALOGUE="${path}" LIB="${root}/lib" python3 -I -B -c '
 import json, os, sys
 sys.path.insert(0, os.environ["LIB"])
 import licensed
@@ -50,7 +50,7 @@ cmd_validate() {
 	[ -n "${accepted}" ] || return 0
 	path=$(catalogue)
 	[ -n "${path}" ] || die 2 'licences were accepted and this system has no catalogue'
-	CATALOGUE="${path}" ACCEPTED="${accepted}" LIB="${root}/lib" python3 -I -c '
+	CATALOGUE="${path}" ACCEPTED="${accepted}" LIB="${root}/lib" python3 -I -B -c '
 import os, sys
 sys.path.insert(0, os.environ["LIB"])
 import licensed

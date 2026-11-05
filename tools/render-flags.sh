@@ -18,7 +18,7 @@ root=$(CDPATH= cd "${here}/.." && pwd)
 src=${1:?usage: tools/render-flags.sh FLAG_ICONS_DIR}
 [ -d "${src}/flags/4x3" ] || { printf 'render-flags: no flags/4x3 in %s\n' "${src}" >&2; exit 1; }
 mkdir -p "${root}/gui/flags"
-python3 -I - "${root}" "${src}/flags/4x3" <<'PY'
+python3 -I -B - "${root}" "${src}/flags/4x3" <<'PY'
 import os
 import sys
 

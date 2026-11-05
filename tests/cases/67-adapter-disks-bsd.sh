@@ -27,13 +27,13 @@ for os in netbsd openbsd dragonfly; do conf "${os}"; done
 
 # names <json> <key> — the names of the items, separated by spaces.
 names() {
-	printf '%s' "$1" | python3 -I -c '
+	printf '%s' "$1" | python3 -I -B -c '
 import json, sys
 print(" ".join(i["name"] for i in json.load(sys.stdin)[sys.argv[1]]))' "$2"
 }
 # field <json> <name> <field>
 field() {
-	printf '%s' "$1" | python3 -I -c '
+	printf '%s' "$1" | python3 -I -B -c '
 import json, sys
 for i in json.load(sys.stdin)["disks"]:
     if i["name"] == sys.argv[1]:

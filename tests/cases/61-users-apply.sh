@@ -22,7 +22,7 @@ backend="${root}/bin/installer-backend"
 answers="${tmp}/answers.conf"
 # The account needs the hash of a password; the name checks use one.
 hashfile_for_names="${tmp}/names.hash"
-printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${hashfile_for_names}"
+printf 'pw\n' | python3 -I -B "${root}/lib/passhash.py" write sha512 "${hashfile_for_names}"
 
 # The apply of the accounts makes no account: the install step does.
 printf 'USER_NAME=tester\nUSER_AUTH=password\nUSER_HASHFILE=%s\n' "${hashfile_for_names}" > "${answers}"

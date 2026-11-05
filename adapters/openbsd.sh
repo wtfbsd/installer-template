@@ -69,7 +69,7 @@ os_excluded_disks() {
 # os_assembled_volumes <names> — the softraid volumes (sdN) the kernel
 # assembled by itself from chunks on the disks, as bioctl lists them.
 os_assembled_volumes() {
-	python3 -I "${root}/lib/diskprobe.py" --assembled openbsd 2>/dev/null || :
+	python3 -I -B "${root}/lib/diskprobe.py" --assembled openbsd 2>/dev/null || :
 }
 
 os_interfaces() {

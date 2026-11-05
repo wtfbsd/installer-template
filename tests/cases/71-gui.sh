@@ -34,7 +34,7 @@ mkdir -p "${tmp}/mounts-dir"
 printf '/dev/ada9p3 / ufs rw 0 0\n' > "${tmp}/mounts"
 
 # ------------------------------------------------- without a display
-python3 -I -c 'import gi; gi.require_version("Gtk", "3.0")' 2>/dev/null && have_gi=yes || have_gi=no
+python3 -I -B -c 'import gi; gi.require_version("Gtk", "3.0")' 2>/dev/null && have_gi=yes || have_gi=no
 
 rc=0
 env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 "${gui}" --check >/dev/null 2>&1 || rc=$?
@@ -77,7 +77,7 @@ check_contains "the text front end reached the finished page" "is installed" \
 # replacing os.geteuid before it runs: the check comes before GTK.
 as_root_gui() {
 	rc=0
-	out=$(python3 -I -c '
+	out=$(python3 -I -B -c '
 import os, runpy, sys
 os.geteuid = lambda: 0
 sys.argv = sys.argv[1:]
@@ -92,7 +92,7 @@ check_rc "the graphical front end does not run as root" 3 "${rc}"
 check_contains "it points root at the text front end" "installer-tui" "${out}"
 
 # The smoke run never writes through a link or over a file.
-python3 -I - "${root}/lib" "${tmp}" <<'PY'
+python3 -I -B - "${root}/lib" "${tmp}" <<'PY'
 import os, sys
 sys.path.insert(0, sys.argv[1])
 import wizard
@@ -176,7 +176,7 @@ JSON
 		"$(cat "${tmp}/wtfbsd-installer.log" 2>/dev/null || true)"
 
 	# Every picture is a drawn page, not an empty one.
-	pictures=$(python3 -I - "${tmp}/shots" <<'PY'
+	pictures=$(python3 -I -B - "${tmp}/shots" <<'PY'
 import sys, glob, gi
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf
@@ -201,7 +201,7 @@ PY
 	# fields_named <layout.json> — the labels of the text fields of the
 	# users and the network page, sorted.
 	fields_named() {
-	python3 -I - "$1" <<'FIELDS'
+	python3 -I -B - "$1" <<'FIELDS'
 import json, sys
 seen = {}
 for page in json.load(open(sys.argv[1])):
@@ -212,7 +212,7 @@ print(" | ".join(f"{name}: {seen.get(name, '(not seen)')}" for name in ("users",
 FIELDS
 	}
 	layout_problems() {
-	python3 -I - "$1" "$2" "$3" <<'PY'
+	python3 -I -B - "$1" "$2" "$3" <<'PY'
 import json, sys
 problems = []
 want_w, want_h = int(sys.argv[2]), int(sys.argv[3])

@@ -56,7 +56,7 @@ check "the helper imports no GTK" "" \
 submit() {
 	rm -rf "$1"
 	mkdir -m 700 "$1"
-	printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "$1/user.hash"
+	printf 'pw\n' | python3 -I -B "${root}/lib/passhash.py" write sha512 "$1/user.hash"
 	cat > "$1/answers.conf" <<ANSWERS
 KEYMAP=us
 TIMEZONE=UTC
@@ -143,7 +143,7 @@ install_from "${dir}"; refused "no hash file"
 submit "${dir}"
 rc=0
 out=$(WTFBSD_APPLY_MODE=user WTFBSD_INVOKER_UID=$(( $(id -u) + 1 )) \
-	python3 -I "${root}/lib/apply.py" --install "${dir}" 2>&1) || rc=$?
+	python3 -I -B "${root}/lib/apply.py" --install "${dir}" 2>&1) || rc=$?
 check_rc "files of another user than the one that asked are refused" 2 "${rc}"
 check_contains "the refusal names the owner" "does not belong to the user that asked" "${out}"
 
@@ -175,7 +175,7 @@ NET_IPV4=static\
 IPV4_ADDR=192.0.2.300\
 IPV4_MASK=255.255.255.0/'
 submit "${dir}"
-printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write bcrypt "${tmp}/b.hash" 2>/dev/null &&
+printf 'pw\n' | python3 -I -B "${root}/lib/passhash.py" write bcrypt "${tmp}/b.hash" 2>/dev/null &&
 	cp "${tmp}/b.hash" "${dir}/user.hash" && chmod 600 "${dir}/user.hash"
 install_from "${dir}"; refused "a hash of another scheme than the one of the system"
 submit "${dir}"; printf 'not a hash\n' > "${dir}/user.hash"; chmod 600 "${dir}/user.hash"
@@ -225,7 +225,7 @@ printf '{"if":"iwm0","ssid":"Net","security":"wep","psk":"12345678"}' > "${dir}/
 chmod 600 "${dir}/wifi.json"
 install_from "${dir}"; refused "a Wi-Fi network with a security that is not offered"
 submit "${dir}"
-printf 'r00t\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${dir}/root.hash"
+printf 'r00t\n' | python3 -I -B "${root}/lib/passhash.py" write sha512 "${dir}/root.hash"
 printf 'ROOT_MODE=password\nAUTOLOGIN=yes\n' >> "${dir}/answers.conf"
 printf '{"if":"iwm0","ssid":"Example Home","security":"wpa2","psk":"correct horse"}' > "${dir}/wifi.json"
 chmod 600 "${dir}/wifi.json"
@@ -429,7 +429,7 @@ printf '#!/bin/sh\npwd -P > "%s/cwd-py.seen"\necho "{\\"section\\":\\"disk\\",\\
 chmod +x "${tmp}/cwd-py/bin/installer-backend"
 rm -f "${tmp}/cwd-py.seen"
 (cd "${plant}" && WTFBSD_APPLY_MODE=root WTFBSD_INVOKER_UID="$(id -u)" \
-	python3 -I "${tmp}/cwd-py/lib/apply.py" --list disks > /dev/null 2>&1) || :
+	python3 -I -B "${tmp}/cwd-py/lib/apply.py" --list disks > /dev/null 2>&1) || :
 check "as root apply.py runs its children in / (os.chdir), not in the directory of the caller" "/" \
 	"$(cat "${tmp}/cwd-py.seen" 2>/dev/null || echo none)"
 
@@ -474,8 +474,17 @@ unisolated=$(grep -rnIE 'python3( |$|")' "${root}/bin" "${root}/lib" "${root}/se
 	"${root}/adapters" "${root}/stage" "${root}/install-into-stage.sh" "${root}/tests" |
 	grep -vE 'python3 -I([^A-Za-z0-9]|$)' |
 	grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' |
-	grep -vE '/python3( |;|$)|python3 is not installed|for tool in |/bin/python3"|\$\{stub\}/python3|every python3 runs|python3 -I\( | stat python3 date ' || true)
+	grep -vE '/python3( |;|$)|python3 is not installed|for tool in |/bin/python3"|\$\{stub\}/python3|every python3 runs|python3 -I\(| stat python3 date ' || true)
 check "every python3 runs with -I" "" "${unisolated}"
+# Every Python of the installer writes no byte code either: python3 is
+# always called with -B, so no __pycache__ appears in the tree of the
+# installer (a live system copies that tree to the target).
+nocache=$(grep -rnIE 'python3( |$|")' "${root}/bin" "${root}/lib" "${root}/sections.d" \
+	"${root}/adapters" "${root}/stage" "${root}/install-into-stage.sh" "${root}/tests" |
+	grep -vE 'python3 -I -B([^A-Za-z0-9]|$)' |
+	grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' |
+	grep -vE '/python3( |;|$)|python3 is not installed|for tool in |/bin/python3"|\$\{stub\}/python3|every python3 runs|python3 -I\(|python3 -I -B\(| stat python3 date ' || true)
+check "every python3 runs with -B (no byte code in the tree of the installer)" "" "${nocache}"
 shebangs=$(grep -rlIE '^#!.*python' "${root}/bin" "${root}/lib" "${root}/sections.d" \
 	"${root}/adapters" "${root}/stage" "${root}/tests" 2>/dev/null || true)
 check "no script starts Python by a #! line (which cannot pass -I everywhere)" "" "${shebangs}"

@@ -29,7 +29,7 @@ check_contains "--list software gives the catalogue" '"id":"example-gpu-driver"'
 submit() { # submit <ACCEPT_LICENSES value or nothing>
 	rm -rf "${tmp}/s"
 	mkdir -m 700 "${tmp}/s"
-	printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${tmp}/s/user.hash"
+	printf 'pw\n' | python3 -I -B "${root}/lib/passhash.py" write sha512 "${tmp}/s/user.hash"
 	{
 		printf 'KEYMAP=us\nTIMEZONE=UTC\nDISK=ada0\nUSER_NAME=tester\nUSER_AUTH=password\nNETWORK_MODE=offline\n'
 		[ -z "${1:-}" ] || printf 'ACCEPT_LICENSES=%s\n' "$1"
@@ -72,8 +72,8 @@ check_contains "the install command gets -l" "-l" "${args}"
 record=$(cat "${tmp}/accept" 2>/dev/null || true)
 check "the record names exactly the accepted items, in the order of the catalogue" \
 	"example-gpu-driver example-display-font" \
-	"$(printf '%s' "${record}" | python3 -I -c 'import json,sys; print(" ".join(e["id"] for e in json.load(sys.stdin)))')"
-want=$(python3 -I -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \
+	"$(printf '%s' "${record}" | python3 -I -B -c 'import json,sys; print(" ".join(e["id"] for e in json.load(sys.stdin)))')"
+want=$(python3 -I -B -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \
 	"${root}/tests/fixtures/software/licences/example-gpu-eula.txt")
 check_contains "the record holds the sha256 of the licence text" "${want}" "${record}"
 check_contains "the record holds the time of acceptance" '"accepted_at"' "${record}"

@@ -22,11 +22,11 @@ export INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/adapter-fixture.conf"
 answers="${tmp}/answers.conf"
 # The account needs the hash of a password; the name checks use one.
 hashfile_for_names="${tmp}/names.hash"
-printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${hashfile_for_names}"
+printf 'pw\n' | python3 -I -B "${root}/lib/passhash.py" write sha512 "${hashfile_for_names}"
 # The front ends hand the backend the crypt hash of the password, never the
 # password.
 passfile="${tmp}/user.hash"
-printf '%s\n' 'a password' | python3 -I "${root}/lib/passhash.py" write sha512 "${passfile}"
+printf '%s\n' 'a password' | python3 -I -B "${root}/lib/passhash.py" write sha512 "${passfile}"
 
 validate_user() { # validate_user <name> <auth> — the exit code of the check
 	printf 'USER_NAME=%s\nUSER_AUTH=%s\n' "$1" "$2" > "${answers}"

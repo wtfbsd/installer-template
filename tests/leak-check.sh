@@ -84,7 +84,7 @@ address_ok() {
 # iTXt), one a line.  The pixels of a picture are not text: a PNG is checked
 # for text chunks only, and the pictures of the repository have none.
 png_text() {
-	python3 -I -c '
+	python3 -I -B -c '
 import struct, sys
 with open(sys.argv[1], "rb") as stream:
     data = stream.read()

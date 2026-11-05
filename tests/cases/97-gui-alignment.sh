@@ -53,7 +53,7 @@ trap 'stop_server' EXIT INT TERM HUP
 gui="${root}/bin/installer-gui"
 fixtures="${root}/tests/fixtures"
 
-python3 -I -c 'import gi; gi.require_version("Gtk", "3.0")' 2>/dev/null && have_gi=yes || have_gi=no
+python3 -I -B -c 'import gi; gi.require_version("Gtk", "3.0")' 2>/dev/null && have_gi=yes || have_gi=no
 
 # ------------------------------------------------- the harness
 # The installer, drawn, with the place of every widget of the page
@@ -490,11 +490,11 @@ if [ -n "${backend}" ]; then
 			INSTALLER_CONF="${conf}" \
 			INSTALLER_ADAPTER_FIXTURE="${fixtures}/disks/${fixture}" \
 			INSTALLER_MNTTAB=/nonexistent INSTALLER_ROOT="${root}" \
-			timeout 180 python3 -I "${tmp}/draw.py" --render "${root}/tools/shots/docs.json" \
+			timeout 180 python3 -I -B "${tmp}/draw.py" --render "${root}/tools/shots/docs.json" \
 			--size "${size}" --screenshots "${shots}" > "${tmp}/draw-${size}.log" 2>&1 || rc=$?
 		check_rc "the pages are drawn at ${size}" 0 "${rc}"
 		check "${size}: the pages stand in their columns and take no dead room" "ok" \
-			"$(python3 -I "${tmp}/check.py" "${shots}")"
+			"$(python3 -I -B "${tmp}/check.py" "${shots}")"
 	done
 fi
 

@@ -54,7 +54,7 @@ commit `docs/screenshots/`.
 | `bin/installer-backend` | the section dispatcher |
 | `bin/installer-config` | reads and validates `installer.conf` |
 | `bin/installer-tui` | the text front end |
-| `bin/installer-gui` | the graphical front end: runs `lib/gui.py` with `python3 -I` |
+| `bin/installer-gui` | the graphical front end: runs `lib/gui.py` with `python3 -I -B` |
 | `lib/gui.py` | the GTK 3 pages of the graphical front end |
 | `bin/installer-apply` | the root helper: the only part that runs as root |
 | `lib/apply.py` | the work of the root helper (Python standard library only, no GTK) |
@@ -641,7 +641,8 @@ part of the installer that runs as root is the root helper:
   `/usr/bin/id -u` says 0 (no `id` of `PATH`).
 - As root it replaces its environment before it does anything: it runs
   `env -i PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/pkg/sbin:/usr/pkg/bin HOME=/root LANG=C`
-  and python3 by its absolute path in isolated mode (`-I`), and it imports
+  and python3 by its absolute path in isolated mode (`-I`) and without byte
+  code (`-B`), and it imports
   no GTK.  (`/usr/pkg` is where NetBSD keeps its packages.)
 - `--install DIR` reads the directory the front end wrote as the user:
   `answers.conf`, `user.hash` (mode 0600) and an optional `ssh_key.pub`.
@@ -669,9 +670,11 @@ part of the installer that runs as root is the root helper:
   its standard input does not stop it.
 - `--reboot` runs `/sbin/shutdown -r now`.
 
-Every Python of the installer runs in isolated mode, `python3 -I`, as root
+Every Python of the installer runs in isolated mode, `python3 -I -B`, as root
 or not: neither the current directory nor the directory of the script nor
-a `PYTHON*` variable is on `sys.path`.  No script starts Python by a `#!`
+a `PYTHON*` variable is on `sys.path`.  It writes no byte code either
+(`python3 -I -B`): no `__pycache__` appears in the tree of the installer,
+which a live system copies to the target.  No script starts Python by a `#!`
 line, and nothing on the paths of the installer runs perl, ruby, `awk -f`
 or sources a file by a relative path; `tests/cases/74-root-helper.sh`
 checks all of it.

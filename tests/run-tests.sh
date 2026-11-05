@@ -35,7 +35,7 @@ for case_script in "${here}"/cases/*.sh; do
 	fi
 done
 
-if python3 -I -m unittest discover -s tests -p 'test_*.py'; then
+if python3 -I -B -m unittest discover -s tests -p 'test_*.py'; then
 	printf 'ok   python-unittest\n'
 	pass=$((pass + 1))
 else

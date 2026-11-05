@@ -48,7 +48,9 @@ rules.
     answer again before it installs.  An override of the environment is
     never honoured for root (`lib/rootguard.sh`, sourced first by every
     script).  The doas or sudo rule names the helper and nothing else.
-11. Every Python runs as `python3 -I`; no `#!` line starts Python; no
+11. Every Python runs as `python3 -I -B` (isolated, and it writes no byte
+    code: no `__pycache__` in the tree of the installer); no `#!` line
+    starts Python; no
     perl, ruby, `awk -f` or relative sourcing.  The helper sets its own
     `PATH` before it runs any command, is root only when `/usr/bin/id -u`
     says 0, and leaves the directory of the caller (`cd /`) as root.  The installed tree belongs

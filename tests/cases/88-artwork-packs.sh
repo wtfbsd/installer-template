@@ -30,7 +30,7 @@ for pack in default cyberpunk; do
 done
 
 b() { # b <pack> <variant> <python expression of the branding b>
-	python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import branding
+	python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import branding
 b = branding.load(sys.argv[2], sys.argv[3]); print(eval(sys.argv[4]))' \
 		"${root}/lib" "tests/fixtures/packs/$1" "$2" "$3" 2>&1
 }

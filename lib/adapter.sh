@@ -238,7 +238,7 @@ live_medium_file=${INSTALLER_LIVE_MEDIUM_FILE:-/var/run/wtfbsd-live-medium}
 # others, more than one line or not the name of a device).
 live_medium() {
 	[ -e "${live_medium_file}" ] || [ -L "${live_medium_file}" ] || return 0
-	_lm=$(python3 -I - "${live_medium_file}" <<'PY'
+	_lm=$(python3 -I -B - "${live_medium_file}" <<'PY'
 import os, re, stat, sys
 path = sys.argv[1]
 st = os.lstat(path)
@@ -488,7 +488,7 @@ target_rows() {
 		_excluded="${_excluded} $(kv_get "${rehearsal}" ASSEMBLED | tr ',' ' ')" || :
 		# A rehearsal on captured outputs reads the arrays from them.
 		if _cap=$(kv_get "${rehearsal}" DISKS_CAPTURE) && [ -n "${_cap}" ]; then
-			_excluded="${_excluded} $(python3 -I "${root}/lib/diskprobe.py" \
+			_excluded="${_excluded} $(python3 -I -B "${root}/lib/diskprobe.py" \
 				--base "${rehearsal%/*}" --replay "${_cap}" --assembled "$(config_value OS)" |
 				tr '\n' ' ')" || :
 		fi
@@ -537,7 +537,7 @@ cmd_disks_detail() {
 		_cap=$(kv_get "${rehearsal}" DISKS_CAPTURE) || _cap=''
 		if [ -n "${_cap}" ]; then
 			_sniffs=$(kv_get "${rehearsal}" DISKS_SNIFFS) || _sniffs=''
-			python3 -I "${root}/lib/diskprobe.py" --base "${rehearsal%/*}" --replay "${_cap}" \
+			python3 -I -B "${root}/lib/diskprobe.py" --base "${rehearsal%/*}" --replay "${_cap}" \
 				${_sniffs:+--sniffs "${_sniffs}"} "$(config_value OS)" "$@"
 			return 0
 		fi
@@ -561,7 +561,7 @@ cmd_disks_detail() {
 	for _n in "$@"; do
 		disk_name_valid "${_n}" || die 2 "not the name of a disk: ${_n}"
 	done
-	python3 -I "${root}/lib/diskprobe.py" "$(config_value OS)" "$@" || printf '{}\n'
+	python3 -I -B "${root}/lib/diskprobe.py" "$(config_value OS)" "$@" || printf '{}\n'
 }
 
 # cmd_image_size — the bytes the installed system takes: what the hook
@@ -656,7 +656,7 @@ cmd_hardware() {
 				/*) : ;;
 				*) _cap="${rehearsal%/*}/${_cap}" ;;
 			esac
-			python3 -I "${root}/lib/hwprobe.py" --replay "${_cap}" "$(config_value OS)"
+			python3 -I -B "${root}/lib/hwprobe.py" --replay "${_cap}" "$(config_value OS)"
 			return 0
 		fi
 		_file=$(kv_get "${rehearsal}" HARDWARE) || { printf '{}\n'; return 0; }
@@ -672,7 +672,7 @@ cmd_hardware() {
 		return 0
 	fi
 	# The tools of the system, read only (lib/hwprobe.py).
-	python3 -I "${root}/lib/hwprobe.py" "$(config_value OS)" || printf '{}\n'
+	python3 -I -B "${root}/lib/hwprobe.py" "$(config_value OS)" || printf '{}\n'
 }
 
 # cmd_locales — the UTF-8 locales of the system, one per line ("locale -a");
@@ -789,7 +789,7 @@ install_capabilities() {
 	[ -f "${_cap_cmd}" ] && [ -x "${_cap_cmd}" ] && [ ! -L "${_cap_cmd}" ] || return 1
 	# Run by Python: no shell, a minimal environment, 10 seconds at most
 	# (its process group killed after that), 64 KiB of answer at most.
-	python3 -I "${root}/lib/diskplan.py" --check-capabilities "${_cap_cmd}" </dev/null 2>/dev/null
+	python3 -I -B "${root}/lib/diskplan.py" --check-capabilities "${_cap_cmd}" </dev/null 2>/dev/null
 }
 
 # install_command — the path of the install command of the template.
@@ -933,7 +933,7 @@ run_install_command() {
 	if [ -n "$(answers_get NET_IPV4_LIST || :)$(answers_get NET_IPV6_LIST || :)$(answers_get DNS_SERVERS || :)$(answers_get WIFI_FILE || :)$(answers_get UPDATE_AFTER || :)" ]; then
 		# Every adapter, the resolvers, Wi-Fi and the update, checked and
 		# built by lib/netplan.py, one option a line.
-		_net=$(python3 -I "${root}/lib/netplan.py" argv "${INSTALLER_ANSWERS}" 2>&1) ||
+		_net=$(python3 -I -B "${root}/lib/netplan.py" argv "${INSTALLER_ANSWERS}" 2>&1) ||
 			{ printf 'ERROR %s\n' "$(printf '%s' "${_net}" | tr '\n' ';')"; exit 2; }
 		_nl='
 '

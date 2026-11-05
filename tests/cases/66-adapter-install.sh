@@ -23,7 +23,7 @@ NL='
 '
 
 mkdir -m 700 "${tmp}/secrets"
-printf 'pw\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${tmp}/secrets/user.hash"
+printf 'pw\n' | python3 -I -B "${root}/lib/passhash.py" write sha512 "${tmp}/secrets/user.hash"
 # A public key of the right shape; the type and the body are put together
 # here, so the file does not carry the shape of a real key.
 printf '%s %s test\n' ssh-ed25519 "AAAA$(printf 'C3NzaC1lZDI1NTE5AAAAIExampleKeyOnlyForTests')" \
@@ -186,7 +186,7 @@ cp "${tmp}/answers.keep" "${tmp}/answers"
 
 # Root's password, the automatic login, every adapter, IPv6, the resolvers
 # and the update after the installation reach the install command.
-printf 'r00t\n' | python3 -I "${root}/lib/passhash.py" write sha512 "${tmp}/secrets/root.hash"
+printf 'r00t\n' | python3 -I -B "${root}/lib/passhash.py" write sha512 "${tmp}/secrets/root.hash"
 with_answers 'ROOT_MODE=password' "ROOT_HASHFILE=${tmp}/secrets/root.hash" 'AUTOLOGIN=yes' \
 	'NET_IPV4_LIST=em0:dhcp;em1:192.0.2.10/255.255.255.0:192.0.2.1' 'NET_IPV6_LIST=em0:slaac' \
 	'DNS_SERVERS=192.0.2.53,2001:db8::53' 'UPDATE_AFTER=yes'

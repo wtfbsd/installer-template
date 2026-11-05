@@ -31,7 +31,7 @@ CONF
 }
 requirements() {
 	INSTALLER_CONF="${tmp}/installer.conf" INSTALLER_ADAPTER_FIXTURE="${tmp}/fixture.conf" \
-		bin/installer-apply --list disks | python3 -I -c '
+		bin/installer-apply --list disks | python3 -I -B -c '
 import json, sys
 r = json.load(sys.stdin)["detail"]["requirements"]
 print(r["min_disk_gb"], r["image_bytes"])'

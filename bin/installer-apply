@@ -131,7 +131,7 @@ if [ "${is_root}" = yes ]; then
 	exec /usr/bin/env -i \
 		PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/pkg/sbin:/usr/pkg/bin \
 		HOME=/root LANG=C WTFBSD_APPLY_MODE=root WTFBSD_INVOKER_UID="${invoker}" \
-		"${python}" -I "${base}/lib/apply.py" "$@"
+		"${python}" -I -B "${base}/lib/apply.py" "$@"
 fi
 # A user that is not root: a test or a rehearsal.  Its environment stays,
 # its PATH too (an empty one is never taken: it would mean ".").
@@ -139,4 +139,4 @@ fi
 WTFBSD_APPLY_MODE=user
 WTFBSD_INVOKER_UID=${uid}
 export PATH WTFBSD_APPLY_MODE WTFBSD_INVOKER_UID
-exec "${python}" -I "${base}/lib/apply.py" "$@"
+exec "${python}" -I -B "${base}/lib/apply.py" "$@"

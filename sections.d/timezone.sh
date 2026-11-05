@@ -54,7 +54,7 @@ cmd_probe() {
 	fi
 	# The names and the texts of the zone tables are UTF-8 (Côte d'Ivoire):
 	# kept as they are, without control characters, as JSON strings.
-	printf '%s\n' "${rows}" | python3 -I -c '
+	printf '%s\n' "${rows}" | python3 -I -B -c '
 import json, sys
 first = sys.argv[1] == "1"
 for raw in sys.stdin.buffer.read().decode("utf-8", "replace").split("\n"):

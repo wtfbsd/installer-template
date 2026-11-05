@@ -46,7 +46,7 @@ check_rc "the text front end installs with the install command" 0 "${tui_rc}"
 
 hash=$(cat "${tmp}/hash" 2>/dev/null || true)
 check_contains "the install command got a SHA-512 crypt hash" '$6$' "${hash}"
-ok=$(printf 's3cret-pass\n' | python3 -I -c '
+ok=$(printf 's3cret-pass\n' | python3 -I -B -c '
 import sys
 sys.path.insert(0, sys.argv[2])
 import passhash

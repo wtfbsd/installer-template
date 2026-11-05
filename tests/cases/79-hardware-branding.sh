@@ -44,7 +44,7 @@ check_contains "the display without a DRM driver" '"driver":"vgapci0","firmware"
 check_contains "the missing firmware directory is not available" '"unavailable":["the firmware directory /usr/local/share/firmware"]' "${out}"
 
 ready=no
-if command -v broadwayd >/dev/null 2>&1 && python3 -I -c 'import gi' 2>/dev/null; then
+if command -v broadwayd >/dev/null 2>&1 && python3 -I -B -c 'import gi' 2>/dev/null; then
 	# A display number another program uses makes broadwayd stop: try the next.
 	for try in 1 2 3 4 5 6; do
 		n=$(( ( ($$ + try * 41) % 400) + 520 ))
@@ -80,7 +80,7 @@ if [ "${ready}" = yes ]; then
 	# The button with the focus shows it (a ring of its own, also where the
 	# toolkit never reports keyboard use): the action cluster differs with
 	# the focus on one button or on the other.
-	same=$(python3 -I -c '
+	same=$(python3 -I -B -c '
 import sys
 import gi
 gi.require_version("GdkPixbuf", "2.0")
@@ -106,7 +106,7 @@ print("same" if crop(a) == crop(b) else "differ")' "${tmp}/shots/focus-try-live.
 	ident "${tmp}/identity-default" "${tmp}/id-default" || :
 	ident "${root}/tests/fixtures/identity" "${tmp}/id-cyber" || :
 	ident /nonexistent "${tmp}/id-none" || :
-	corner=$(python3 -I -c '
+	corner=$(python3 -I -B -c '
 import sys
 import gi
 gi.require_version("GdkPixbuf", "2.0")
@@ -135,7 +135,7 @@ out.append("same" if none == region(sys.argv[2]) else "differ")
 print(" ".join(out))' "${root}/lib" "${tmp}/id-default/identity.png" "${tmp}/id-cyber/identity.png" \
 		"${tmp}/id-none/identity.png" 2>&1) || corner="error ${corner}"
 	set -- ${corner}
-	ok=$(python3 -I -c 'import sys; print("yes" if float(sys.argv[1]) >= 4.5 and float(sys.argv[2]) >= 4.5 else "no")' \
+	ok=$(python3 -I -B -c 'import sys; print("yes" if float(sys.argv[1]) >= 4.5 and float(sys.argv[2]) >= 4.5 else "no")' \
 		"${1:-0}" "${2:-0}" 2>/dev/null || echo no)
 	check "the identity line is readable on both palettes (${1:-?}:1, ${2:-?}:1)" yes "${ok}"
 	check "the identity line follows the identity file" differ "${3:-}"
@@ -152,12 +152,12 @@ print(" ".join(out))' "${root}/lib" "${tmp}/id-default/identity.png" "${tmp}/id-
 			> "${tmp}/render.log" 2>&1
 	}
 	kinds() {
-		python3 -I -c '
+		python3 -I -B -c '
 import json, sys
 r = json.load(open(sys.argv[1]))
 print(len(r), " ".join(sorted({x["kind"] for x in r})))' "$1" 2>/dev/null || echo none
 	}
-	locales=$(python3 -I -c '
+	locales=$(python3 -I -B -c '
 import sys
 sys.path.insert(0, sys.argv[1])
 import i18n
@@ -187,7 +187,7 @@ print(sum(len(l[3]) for l in i18n.LANGUAGES))' "${root}/lib")
 		INSTALLER_ADAPTER_FIXTURE="${tmp}/slow.conf" \
 		bin/installer-gui --render "${tmp}/slow.json" --size 1024x768 --screenshots "${tmp}/slow" \
 		> "${tmp}/render.log" 2>&1 || :
-	busy=$(python3 -I -c '
+	busy=$(python3 -I -B -c '
 import json, sys
 b = json.load(open(sys.argv[1]))
 print("yes" if b["longest"] >= 3 and b["iterations"] >= 100 else "no %r" % b)' "${tmp}/slow/slow-disk.busy.json" 2>&1)
@@ -204,7 +204,7 @@ print("yes" if b["longest"] >= 3 and b["iterations"] >= 100 else "no %r" % b)' "
 		INSTALLER_ADAPTER_FIXTURE="${root}/tests/fixtures/disks/dual-os.conf" \
 		bin/installer-gui --render "${tmp}/enc.json" --size 1024x768 --screenshots "${tmp}/enc" \
 		> "${tmp}/render.log" 2>&1 || :
-	enc() { python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(r["layout"], r["active"], r["sensitive"])' "$1" 2>&1; }
+	enc() { python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print(r["layout"], r["active"], r["sensitive"])' "$1" 2>&1; }
 	check "CRYPTO ticks and locks the encryption box" "crypto True False" "$(enc "${tmp}/enc/crypto.encryption.json")"
 	check "a plain layout leaves the box to the person" "single True True" "$(enc "${tmp}/enc/single.encryption.json")"
 

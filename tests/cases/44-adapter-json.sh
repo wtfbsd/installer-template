@@ -32,7 +32,7 @@ out=$(INSTALLER_ADAPTER_FIXTURE="${tmp}/odd.conf" \
 
 check_contains "the network adapters are in the JSON" '"name":"em0"' "${out}"
 
-printf '%s' "${out}" | python3 -I -c '
+printf '%s' "${out}" | python3 -I -B -c '
 import json, sys
 data = json.load(sys.stdin)
 for item in data["interfaces"]:
@@ -45,7 +45,7 @@ for item in data["interfaces"]:
 out=$(INSTALLER_ADAPTER_FIXTURE="${tmp}/odd.conf" \
 	"${backend}" disk probe 2>/dev/null) || out=''
 
-printf '%s' "${out}" | python3 -I -c '
+printf '%s' "${out}" | python3 -I -B -c '
 import json, sys
 data = json.load(sys.stdin)
 for item in data["disks"]:

@@ -98,7 +98,7 @@ cmd_validate() {
 	esac
 	# The whole file: one line, the whole crypt hash of the scheme (the
 	# root helper checks the same, lib/hashes.py).
-	python3 -I "${root}/lib/hashes.py" check "$(hash_scheme)" "${hashfile}" ||
+	python3 -I -B "${root}/lib/hashes.py" check "$(hash_scheme)" "${hashfile}" ||
 		die 2 "the password hash file holds no crypt hash in the scheme of the system (${prefix})"
 	if full=$(answers_get USER_FULLNAME) && [ -n "${full}" ]; then
 		full_name_valid "${full}" ||
@@ -117,7 +117,7 @@ cmd_validate() {
 			roothash=$(answers_get ROOT_HASHFILE) ||
 				die 2 'root needs a password hash file'
 			[ -s "${roothash}" ] || die 2 'the root password hash file is empty'
-			python3 -I "${root}/lib/hashes.py" check "$(hash_scheme)" "${roothash}" ||
+			python3 -I -B "${root}/lib/hashes.py" check "$(hash_scheme)" "${roothash}" ||
 				die 2 'the root password hash file holds no crypt hash in the scheme of the system'
 			;;
 		*) die 2 'the root account is locked or has a password' ;;

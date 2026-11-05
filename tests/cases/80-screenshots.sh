@@ -41,7 +41,7 @@ for doc in README.md gui/README.md; do
 done
 
 # The names the specs give, against the files of docs/screenshots.
-names=$(python3 -I -c '
+names=$(python3 -I -B -c '
 import json, sys
 for path in sys.argv[1:]:
     for shot in json.load(open(path, encoding="utf-8")):
@@ -60,11 +60,11 @@ for page in welcome keyboard timezone installation-type disk users network \
 	check_contains "gui/README.md shows the page ${page}" "-${page}.png" "$(cat gui/README.md)"
 done
 
-if command -v broadwayd >/dev/null 2>&1 && python3 -I -c 'import gi' 2>/dev/null; then
+if command -v broadwayd >/dev/null 2>&1 && python3 -I -B -c 'import gi' 2>/dev/null; then
 	sh tools/render-screenshots.sh "${tmp}/out" > "${tmp}/render.log" 2>&1 && rc=0 || rc=$?
 	check_rc "the render script runs headless" 0 "${rc}"
 	check "it renders every picture" "${names}" "$(ls "${tmp}/out" | sort)"
-	sizes=$(python3 -I -c '
+	sizes=$(python3 -I -B -c '
 import struct, sys
 for path in sys.argv[1:]:
     with open(path, "rb") as stream:

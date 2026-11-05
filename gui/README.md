@@ -4,7 +4,7 @@
 
 `bin/installer-gui` is the graphical front end: a full-screen GTK 3 wizard
 written in Python 3 with PyGObject and nothing else (`lib/gui.py`, which
-`bin/installer-gui` runs with `python3 -I`).  It drives the same
+`bin/installer-gui` runs with `python3 -I -B`).  It drives the same
 backend (`bin/installer-backend`), the same gating (`lib/gating.py`) and the
 same answers file as the text front end, so the two cannot drift apart.
 
@@ -29,7 +29,7 @@ the name and the tagline of the product.
 | 2 | Keyboard | the locale, the layouts of the adapter (the locale suggests one), a field to test the keyboard; the layout picked is applied to the live X session at once (`setxkbmap`), so the password is typed in it | `keyboard validate` |
 | 3 | Time zone | the zone table of the system with a search field and a clock; the hardware clock in UTC or local time (local when Windows is found) | `timezone validate` |
 | 4 | Installation type | erase, alongside or manual, with what the disks hold now and a picture before and after; one blank disk only says that the whole disk is used | `disk validate` |
-| 5 | Disk | the disks with model, size and what is on them; together or separately when there are several; the layout, the file system, encryption, swap and data pools; the plan file | `disk validate` (the plan again as root) |
+| 5 | Disk | the disks with model, size and what is on them; the first disk with nothing on it is ticked, no disk is ticked when every disk holds something; together or separately when there are several; the layout, the file system, encryption, swap and data pools; the plan file | `disk validate` (the plan again as root) |
 | 6 | Users | full name, user name, password with its strength, host name, an optional SSH key, the root account (locked or its own password), automatic login | the rules of `lib/accounts.sh`, then `users validate` |
 | 7 | Network | a tab per adapter: IPv4 and IPv6 automatic, manual or off; Wi-Fi networks and their key; DNS servers; "Check the connection"; update after the install | `network validate` |
 | 8 | Additional software | drivers, firmware and programs under their own licence, each read before it is accepted; Select all; the open-source licences | `software validate` |

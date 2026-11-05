@@ -58,7 +58,7 @@ run() {
 		STUB_DISKS='vbd0 vbd1' STUB_DEVNUMS="${tmp}/devnums" \
 		INSTALLER_DEV_DIR="${dev}" INSTALLER_DMESG_BOOT="${tmp}/dmesg.boot" \
 		"${backend}" disk probe 2>"${tmp}/err") || _rc=$?
-	_names=$(printf '%s' "${_out}" | python3 -I -c '
+	_names=$(printf '%s' "${_out}" | python3 -I -B -c '
 import json, sys
 try:
     print(" ".join(d["name"] for d in json.load(sys.stdin)["disks"]))

@@ -109,7 +109,7 @@ fi
 [ -f "${conf}" ] || die "no configuration file: ${conf}"
 if [ -n "${artwork}" ]; then
 	[ -f "${artwork}/palette.env" ] || die "the artwork has no palette.env: ${artwork}"
-	python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import branding; branding.load(sys.argv[2])' \
+	python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import branding; branding.load(sys.argv[2])' \
 		"${here}/lib" "${artwork}" || die "the artwork cannot be used: ${artwork}"
 fi
 INSTALLER_CONF=${conf} "${here}/bin/installer-config" validate ||
@@ -267,7 +267,7 @@ if [ -n "${artwork}" ]; then
 		[ -f "${vdir}/palette.env" ] || continue
 		vname=${vdir##*/}
 		printf '%s\n' "${vname}" | grep -Eq '^[a-z][a-z0-9-]{0,31}$' || continue
-		python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import branding; branding.parse_palette(sys.argv[2])' \
+		python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import branding; branding.parse_palette(sys.argv[2])' \
 			"${here}/lib" "${vdir}/palette.env" || die "the variant ${vname} cannot be used"
 		stage_file "${vdir}/palette.env" "${libexec}/artwork/variants/${vname}/palette.env" 644
 		for f in logo wordmark-light installer-sidebar wallpaper-1 wallpaper-2 wallpaper-3; do

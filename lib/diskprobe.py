@@ -4,7 +4,7 @@
 The adapter of a system runs this module (as root, from the root helper's
 --list disks) with the disks that may be written to:
 
-    python3 -I lib/diskprobe.py freebsd|netbsd|openbsd|dragonfly DISK...
+    python3 -I -B lib/diskprobe.py freebsd|netbsd|openbsd|dragonfly DISK...
 
 and prints the report the disk page shows ({"disks": [...]}: size, serial,
 partition table, partitions with what they hold, the operating systems found,
@@ -45,7 +45,7 @@ import re
 import subprocess
 import sys
 
-# Run as a script with python3 -I: the directory of the script is not on
+# Run as a script with python3 -I -B: the directory of the script is not on
 # the path, the module next to it is named explicitly.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fatdir  # noqa: E402

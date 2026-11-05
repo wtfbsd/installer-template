@@ -88,7 +88,7 @@ for want in '-L de_DE.UTF-8' '-Z local' '-A' '-6 em0:2001:db8::5/64:2001:db8::1'
 done
 check_contains "the disk goes as a plan file" " -p /" " ${args}"
 check_absent "not as -d" " -d " " ${args}"
-ok=$(printf 'r00t-Secret!\n' | python3 -I -c '
+ok=$(printf 'r00t-Secret!\n' | python3 -I -B -c '
 import sys
 sys.path.insert(0, sys.argv[2])
 import passhash

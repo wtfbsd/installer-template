@@ -118,11 +118,11 @@ if sys.argv[2] == "text":
 png += chunk(b"IDAT", zlib.compress(b"\x00\x00")) + bytes.fromhex("3a3a313a323a3a") + chunk(b"IEND", b"")
 open(sys.argv[1], "wb").write(png)
 '
-python3 -I -c "${make_png}" "${pic}" plain
+python3 -I -B -c "${make_png}" "${pic}" plain
 rc=0
 "${checker}" "${pic}" >/dev/null 2>&1 || rc=$?
 check "the pixels of a picture are not read as text" 0 "${rc}"
-python3 -I -c "${make_png}" "${pic}" text
+python3 -I -B -c "${make_png}" "${pic}" text
 rc=0
 "${checker}" "${pic}" >/dev/null 2>&1 || rc=$?
 check "the text chunk of a picture is found" 1 "${rc}"

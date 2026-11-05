@@ -21,7 +21,7 @@ tmp_root=$(dirname "${tmp}")
 trap 'rmrf "${tmp}" "${tmp_root}" || :' EXIT INT TERM HUP
 
 summary() { # summary — "disk: what is on it" lines of a --list disks report
-	python3 -I -c '
+	python3 -I -B -c '
 import json, sys
 data = json.load(sys.stdin)
 for disk in data["detail"]["disks"]:
@@ -81,9 +81,9 @@ INSTALLER_CONF="${tmp}/openbsd.conf" INSTALLER_ANSWERS="${tmp}/answers.conf" \
 check_rc "the softraid volume is not a disk to install to" 2 "${rc}"
 # The hook of the OpenBSD adapter reads the same (diskprobe --assembled).
 check "the arrays OpenBSD assembled" "sd8" \
-	"$(python3 -I lib/diskprobe.py --replay tests/fixtures/captures/openbsd/10-softraid-raidframe --assembled openbsd)"
+	"$(python3 -I -B lib/diskprobe.py --replay tests/fixtures/captures/openbsd/10-softraid-raidframe --assembled openbsd)"
 check "the arrays NetBSD assembled" "raid0" \
-	"$(python3 -I lib/diskprobe.py --replay tests/fixtures/captures/netbsd/10-softraid-raidframe --assembled netbsd)"
+	"$(python3 -I -B lib/diskprobe.py --replay tests/fixtures/captures/netbsd/10-softraid-raidframe --assembled netbsd)"
 
 # The second layer alone: a report that marks an array as assembled keeps
 # it out of the disk page even when the adapter offers it (no hook, no
@@ -97,7 +97,7 @@ JSON
 printf 'DISKS=ld6|VirtIO disk|1073741824,raid0|RAIDframe raid0|1071579136\nDISKS_DETAIL=%s\nINTERFACES=em0|Example\n' \
 	"${tmp}/assembled.json" > "${tmp}/assembled.conf"
 out=$(INSTALLER_ADAPTER_FIXTURE="${tmp}/assembled.conf" bin/installer-apply --list disks 2>/dev/null |
-	python3 -I -c 'import json, sys; print(" ".join(d["name"] for d in json.load(sys.stdin)["detail"]["disks"]))')
+	python3 -I -B -c 'import json, sys; print(" ".join(d["name"] for d in json.load(sys.stdin)["detail"]["disks"]))')
 check "the disk section leaves an assembled array out by itself" "ld6" "${out}"
 
 # A replay reads files the user names: never as root.

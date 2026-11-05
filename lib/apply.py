@@ -1,7 +1,7 @@
 # Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
 """The root helper of the installer (run by bin/installer-apply only).
 
-It runs with python3 -I and imports nothing but the standard library: no
+It runs with python3 -I -B and imports nothing but the standard library: no
 GTK, no PyGObject, nothing from the directory of the caller.  As root its
 environment is the clean one installer-apply made; the overrides of the
 tests (INSTALLER_*) are honoured only for a user that is not root.

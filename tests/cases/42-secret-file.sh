@@ -68,7 +68,7 @@ check_absent "the log does not hold the password" "s3cret-pass" \
 	"$(cat "${INSTALLER_LOG}" 2>/dev/null || true)"
 hash=$(sed -n 's/^HASH //p' "${tmp}/spy.hash" | head -1)
 check_contains "the hash file holds a SHA-512 crypt hash" '$6$' "${hash}"
-ok=$(printf 's3cret-pass\n' | python3 -I -c '
+ok=$(printf 's3cret-pass\n' | python3 -I -B -c '
 import sys
 sys.path.insert(0, sys.argv[2])
 import passhash

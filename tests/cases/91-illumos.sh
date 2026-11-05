@@ -41,7 +41,7 @@ check "the hash scheme of the captured policy.conf" sha512 "${out}"
 out=$(INSTALLER_CONF="${conf}" INSTALLER_ADAPTER_FIXTURE="${fixture}" \
 	INSTALLER_MNTTAB="${root}/tests/fixtures/illumos/mnttab-installed" \
 	"${backend}" disk probe 2>&1)
-got=$(printf '%s' "${out}" | python3 -I -c '
+got=$(printf '%s' "${out}" | python3 -I -B -c '
 import json, sys
 r = json.load(sys.stdin)
 d = r["detail"]["disks"]
@@ -55,7 +55,7 @@ sed 's|/dev/dsk/c1t0d0s2|/dev/dsk/c4t0d0p1:1|' tests/fixtures/illumos/mnttab-liv
 out=$(INSTALLER_CONF="${conf}" INSTALLER_ADAPTER_FIXTURE="${fixture}" \
 	INSTALLER_MNTTAB="${tmp}/mnttab-usb" \
 	"${backend}" disk probe 2>&1)
-got=$(printf '%s' "${out}" | python3 -I -c '
+got=$(printf '%s' "${out}" | python3 -I -B -c '
 import json, sys; print(" ".join(x["name"] for x in json.load(sys.stdin)["disks"]))' 2>&1) || :
 check "illumos live: the medium is not offered; a pool the root is not in is" "c2t0d0" "${got}"
 
@@ -94,7 +94,7 @@ check "a rehearsal (not strict) that cannot tell: it says so and goes on" "0 yes
 # The hardware of the captured outputs.
 out=$(INSTALLER_CONF="${conf}" INSTALLER_ADAPTER_FIXTURE="${fixture}" adapters/illumos.sh hardware)
 check "illumos: the hardware of the captured outputs" "Ethernet:vioif GPU:vgatext Input:kb8042 Input:mouse8042" \
-	"$(printf '%s' "${out}" | python3 -I -c '
+	"$(printf '%s' "${out}" | python3 -I -B -c '
 import json, sys
 print(" ".join(sorted(d["class"] + ":" + d["driver"] for d in json.load(sys.stdin)["devices"])))')"
 
@@ -113,7 +113,7 @@ check "kbd -s is never run" "" \
 
 # The layouts: the adapter's, the install command's and lib/diskplan.py's
 # agree.
-got=$(INSTALLER_CONF="${conf}" env -u INSTALLER_ADAPTER_FIXTURE adapters/illumos.sh layouts | python3 -I -c '
+got=$(INSTALLER_CONF="${conf}" env -u INSTALLER_ADAPTER_FIXTURE adapters/illumos.sh layouts | python3 -I -B -c '
 import json, sys
 sys.path.insert(0, sys.argv[1])
 import diskplan
@@ -127,7 +127,7 @@ same = all(table[k] == given[k] or tuple(table[k]) == tuple(given[k]) for k in
 print(mine == theirs, same)' "${root}/lib" "${root}/tests/fixtures/illumos/capabilities.json")
 check "illumos: os_layouts is the install command's answer, and lib/diskplan.py agrees" "True True" "${got}"
 
-if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -c 'import gi' 2>/dev/null; then
+if ! command -v broadwayd >/dev/null 2>&1 || ! python3 -I -B -c 'import gi' 2>/dev/null; then
 	printf 'skip the drawing checks: no broadwayd or PyGObject\n'
 	finish
 	exit 0
@@ -165,7 +165,7 @@ render() {
 		> "${tmp}/$1.log" 2>&1 || cat "${tmp}/$1.log" >&2
 }
 r() {
-	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+	python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
 		"${tmp}/$1/disk.usage.json" "$2" 2>&1
 }
 # The disks of an illumos picture are those of tools/render-fixtures (the
@@ -198,7 +198,7 @@ GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${tmp}" \
 	bin/installer-gui --render "${tmp}/bars.json" --size 1024x768 --screenshots "${tmp}/bars" \
 	> "${tmp}/bars.log" 2>&1 || cat "${tmp}/bars.log" >&2
 check "1024x768: the after bar shows whole, in its box and on the screen as the page opens" "1 True True True" \
-	"$(python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1]))
+	"$(python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1]))
 ok = [all(b[k] for b in r) for k in ("inside_box", "inside_page", "inside_view")]
 print(len(r), *ok, r if not all(ok) else "")' \
 	"${tmp}/bars/bars.bars.json" 2>&1 | sed 's/ *$//')"
@@ -213,7 +213,7 @@ GDK_BACKEND=broadway BROADWAY_DISPLAY=":${n}" INSTALLER_STATE_PARENT="${tmp}" \
 	bin/installer-gui --render "${tmp}/refused.json" --size 1024x768 --screenshots "${tmp}/refused" \
 	> "${tmp}/refused.log" 2>&1 || cat "${tmp}/refused.log" >&2
 p() {
-	python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
+	python3 -I -B -c 'import json, sys; r = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' \
 		"${tmp}/refused/refused.probe.json" "$1" 2>&1
 }
 check "refused disks: one message where the list would be (heading, reason, next step)" \

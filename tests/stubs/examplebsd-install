@@ -44,11 +44,11 @@ while [ $# -gt 0 ]; do
 			[ -f "$2" ] || fail 2 "the plan file $2 is not there"
 			pmode=$(stat -c %a "$2" 2>/dev/null || stat -f %Lp "$2")
 			[ "${pmode}" = 600 ] || fail 2 "the plan file has mode ${pmode}, not 600"
-			python3 -I -c 'import json, sys; json.load(open(sys.argv[1]))' "$2" ||
+			python3 -I -B -c 'import json, sys; json.load(open(sys.argv[1]))' "$2" ||
 				fail 2 'the plan file is not JSON'
 			[ -z "${STUB_INSTALL_PLAN_COPY:-}" ] || cp "$2" "${STUB_INSTALL_PLAN_COPY}"
 			# The disks of the plan, by name, the way -d named one.
-			disk=$(python3 -I -c '
+			disk=$(python3 -I -B -c '
 import json, sys
 plan = json.load(open(sys.argv[1]))
 disks = plan.get("disks") or [(plan.get("alongside") or {}).get("disk")] or []

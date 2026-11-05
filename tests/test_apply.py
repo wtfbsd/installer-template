@@ -44,7 +44,7 @@ class StopTest(unittest.TestCase):
                 stream.write(STUBBORN)
             os.chmod(child, 0o700)
             proc = subprocess.Popen(
-                [sys.executable, "-I", "-c", DRIVER, str(LIB), child],
+                [sys.executable, "-I", "-B", "-c", DRIVER, str(LIB), child],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
                 env=dict(os.environ, WTFBSD_APPLY_MODE="user"))
             first = proc.stdout.readline()
@@ -80,7 +80,7 @@ class StopTest(unittest.TestCase):
                 stream.write("#!/bin/sh\necho 'PROGRESS 5 x'\nsleep 0.3\necho 'PROGRESS 100 Done'\n")
             os.chmod(child, 0o700)
             proc = subprocess.run(
-                [sys.executable, "-I", "-c", DRIVER, str(LIB), child],
+                [sys.executable, "-I", "-B", "-c", DRIVER, str(LIB), child],
                 stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False,
                 env=dict(os.environ, WTFBSD_APPLY_MODE="user"))
             self.assertEqual(proc.returncode, 0, proc.stdout)
@@ -121,7 +121,7 @@ class ControlTest(unittest.TestCase):
                 stream.write(STUBBORN)
             os.chmod(child, 0o700)
             proc = subprocess.Popen(
-                [sys.executable, "-I", "-c", DRIVER, str(LIB), child],
+                [sys.executable, "-I", "-B", "-c", DRIVER, str(LIB), child],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 env=dict(os.environ, WTFBSD_APPLY_MODE="user"))
             proc.stdout.readline()
