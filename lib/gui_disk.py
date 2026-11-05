@@ -100,6 +100,11 @@ BAR_DISK_PX = 76
 REFUSAL_PREFIX = "cannot list disks:"
 REFUSAL_STEP = "Check the disk tools, then Look for disks again."
 TOOL_WORDS = ("zpool", "zfs", "mount", "glabel", "readlink", "dkctl", "sysctl", "diskinfo")
+# What can be wrong with the passphrase of the encryption.
+PASSPHRASE_EMPTY = "type a passphrase for the encryption"
+PASSPHRASE_MISMATCH = "the passphrases do not match"
+PASSPHRASE_TOO_SHORT = "the passphrase is too short (at least 8 characters)"
+PASSPHRASE_PROBLEMS = (PASSPHRASE_EMPTY, PASSPHRASE_MISMATCH, PASSPHRASE_TOO_SHORT)
 BOOT_TITLES = {"uefi": "UEFI", "bios": "Legacy BIOS"}
 
 
@@ -122,6 +127,15 @@ class DiskPage:
         self.separate = {}          # disk -> mount point, or None to leave it
         self.data_checks = {}
         self.errors = []
+        # The page is built later: the widget does not exist yet.
+        self.layout_grid = None
+        # The install command does not always offer an encrypted swap.
+        self.swap_encryption_offered = False
+        # The hint that asked for the passphrase was shown (the window
+        # shows it): it goes when the passphrase is good.
+        self._passphrase_error_shown = False
+        # The first problem of the page is the passphrase one.
+        self._passphrase_problem_first = False
 
     # ------------------------------------------------------------ build
 
@@ -488,7 +502,7 @@ class DiskPage:
         for entry in (self.pass1, self.pass2):
             entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
             gui_reveal.add_eye(entry)
-            entry.connect("changed", lambda *_a: self.refresh_strength())
+            entry.connect("changed", self.on_passphrase)
         self.strength = Gtk.LevelBar(min_value=0, max_value=4)
         self.strength.set_size_request(160, 10)
         self.strength_text = lbl("", "muted")
@@ -502,7 +516,7 @@ class DiskPage:
         self.fill_filesystems()
         self.fill_encryption()
         self.fs_combo.connect("changed", lambda *_a: self.refresh())
-        self.enc_check.connect("toggled", lambda *_a: self.refresh())
+        self.enc_check.connect("toggled", self.on_encryption)
         row += 1
         adv.attach(lbl("Swap", "field-label"), 0, arow, 1, 1)
         swap_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -677,9 +691,32 @@ class DiskPage:
                     "the passphrase is asked at every start")
         return ""
 
+    def on_passphrase(self, *_args):
+        """The strength as one types, and the hint that asked for the
+        passphrase gone as soon as both fields hold the same good one."""
+        self.refresh_strength()
+        if self.layout_grid is not None:
+            # The page is not built yet: there is nothing to refresh.
+            self.refresh_problems()
+        if self._passphrase_error_shown and not self.passphrase_errors():
+            # The hint was ours and the passphrase is good now: it goes.
+            self.win.show_error("")
+            self._passphrase_error_shown = False
+
+    def on_encryption(self, button):
+        """Encrypting the system encrypts the swap too, where the system
+        offers it; the person may untick the swap afterwards."""
+        try:
+            if button.get_active() and self.swap_encryption_offered and \
+                    getattr(self, "swap_enc", None) is not None:
+                self.swap_enc.set_active(True)
+        finally:
+            self.refresh()
+
     def fill_swap_encryption(self, offered):
         """Encrypted swap only where the install command makes it (the swap
         row is built after the first call; load fills it)."""
+        self.swap_encryption_offered = bool(offered)
         if not hasattr(self, "swap_enc"):
             return
         if not offered and self.swap_enc.get_active():
@@ -1058,7 +1095,8 @@ class DiskPage:
         self.strength_text.set_text("the passphrases do not match" if mismatch else f"strength: {word}")
 
     def refresh(self):
-        if not hasattr(self, "layout_grid"):
+        if self.layout_grid is None:
+            # The page is not built yet: there is nothing to refresh.
             return
         self.refresh_advanced()
         index = D.disk_index(self.detail)
@@ -1233,16 +1271,23 @@ class DiskPage:
             self.errors = [f"No disk can be offered: {self.probe_message(self.probe_error)[0]}"]
             self.problems.set_text("")
             self.warnings.set_text("")
+            self._passphrase_problem_first = False
             return
         if self.asks_usage() and self.usage is None:
             self.errors = ["Choose whether to use the disks together or separately."]
             self.problems.set_text("")
             self.warnings.set_text("")
+            self._passphrase_problem_first = False
             return
         errors = [e for e in D.validate(self.plan(), self.detail, self.os)
                   if "typed confirmation" not in e]
+        passphrase = []
         if self.mode == "erase" and self.enc_check.get_active():
-            errors += self.passphrase_errors()
+            passphrase = self.passphrase_errors()
+        # The problem the window shows first is the passphrase one only
+        # when there is no other problem before it.
+        self._passphrase_problem_first = bool(passphrase) and not errors
+        errors += passphrase
         self.errors = errors
         self.problems.set_text("\n".join(errors))
         self.warnings.set_text("\n".join(self.erase_warnings()))
@@ -1250,11 +1295,11 @@ class DiskPage:
     def passphrase_errors(self):
         """What is wrong with the encryption passphrase: one problem or none."""
         if not self.pass1.get_text():
-            return ["type a passphrase for the encryption"]
+            return [PASSPHRASE_EMPTY]
         if self.pass1.get_text() != self.pass2.get_text():
-            return ["the passphrases do not match"]
+            return [PASSPHRASE_MISMATCH]
         if D.passphrase_strength(self.pass1.get_text())[0] < 1:
-            return ["the passphrase is too short (at least 8 characters)"]
+            return [PASSPHRASE_TOO_SHORT]
         return []
 
     def erase_warnings(self):
@@ -1280,6 +1325,14 @@ class DiskPage:
                 warnings.append(f"{name} is securely erased when the installation starts; "
                                 "this takes a long time.")
         return warnings
+
+    def problem_shown(self, problem):
+        """The window shows a problem of this page in its error label (it
+        calls this right after it shows it).  A passphrase problem is
+        remembered, so the hint that asked for the passphrase goes when
+        both fields hold the same good one."""
+        if self._passphrase_problem_first and self.errors[:1] == [problem]:
+            self._passphrase_error_shown = True
 
     def collect(self):
         """The check of the page when it is left with Next."""
