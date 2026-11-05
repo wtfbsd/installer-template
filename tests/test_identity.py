@@ -1,7 +1,8 @@
 # Copyright (c) 2026 The wtfbsd contributors. BSD-2-Clause (see LICENSE).
 #
 # The identity line in the lower left of the installer: "<Product>
-# <version> · <variant> · <arch>" (+ the build date of a test build), from
+# <version> \u00a0· <variant> \u00a0· <arch>" (+ the build date of a test
+# build), from
 # /usr/local/share/<slug>/identity (KEY=value, parsed, never sourced), with
 # a fallback when the file is not there, and readable (contrast at least
 # 4.5:1) on the default palette and on a cyberpunk variant.
@@ -26,7 +27,8 @@ class IdentityTest(unittest.TestCase):
     def test_the_line(self):
         ident = I.load(str(FIX / "identity"))
         self.assertEqual(I.line(ident, "Fallback", "riscv64", "Linux 7.0"),
-                         "ExampleBSD 1.2 · FreeBSD 16.0 · cyberpunk · amd64 · build 2026-11-01")
+                         "ExampleBSD 1.2\u00a0· FreeBSD 16.0\u00a0· cyberpunk\u00a0· amd64"
+                         "\u00a0· build 2026-11-01")
 
     def test_a_release_has_no_build_date(self):
         tmp = tempfile.mkdtemp()
@@ -36,11 +38,11 @@ class IdentityTest(unittest.TestCase):
             stream.write("PRODUCT=ExampleBSD\nVERSION=1.2\nBASE=NetBSD 11.0\nVARIANT=default\n"
                          "ARCH=arm64\n")
         self.assertEqual(I.line(I.load(path), "x", "y", "z"),
-                         "ExampleBSD 1.2 · NetBSD 11.0 · default · arm64")
+                         "ExampleBSD 1.2\u00a0· NetBSD 11.0\u00a0· default\u00a0· arm64")
 
     def test_without_the_file_the_bsd_is_still_named(self):
         self.assertEqual(I.line(I.load("/nonexistent/identity"), "ExampleBSD", "amd64", "OpenBSD 8.0"),
-                         "ExampleBSD · OpenBSD 8.0 · amd64")
+                         "ExampleBSD\u00a0· OpenBSD 8.0\u00a0· amd64")
 
     def test_the_base_the_installer_detects(self):
         # uname of a BSD names it; on another system (a test machine) the
@@ -64,6 +66,12 @@ class IdentityTest(unittest.TestCase):
 
     def test_the_place_of_the_file(self):
         self.assertEqual(I.path_for("examplebsd"), "/usr/local/share/examplebsd/identity")
+
+    def test_the_dot_of_the_line_does_not_break(self):
+        # The space before the dot does not break: the line wraps between
+        # two parts, never in the dot that joins them.
+        self.assertEqual(I.SEPARATOR, "\u00a0\u00b7 ")
+        self.assertIn("\u00a0", I.line({}, "Product", "amd64", "FreeBSD 16.0"))
 
 
 class ContrastTest(unittest.TestCase):

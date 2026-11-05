@@ -922,12 +922,14 @@ class Wizard:
 
     def summary_rows(self) -> List[Tuple[str, str]]:
         a = self.answers
+        # The name of the adapter, when the page knows it.
+        on = f" on {a.net_if}" if a.net_if else ""
         if a.network_mode == "static":
-            net = f"a manual address on {a.net_if}"
+            net = f"a manual address{on}"
         elif a.network_mode == "offline":
             net = "no network"
         else:
-            net = f"an automatic address on {a.net_if}"
+            net = f"an automatic address{on}"
         rows = [
             ("Product", self.product),
             ("Language", a.locale),

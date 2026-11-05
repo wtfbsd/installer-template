@@ -22,13 +22,13 @@ from gui_lists import not_a_list, scrolled  # noqa: E402
 import gui_reveal  # noqa: E402
 
 CSS = b"""
-.mode-card { padding: 10px 14px; border: 2px solid alpha(#000000, 0.15);
+.mode-card { padding: 8px 12px; border: 2px solid alpha(#000000, 0.15);
     border-radius: 8px; background-color: #ffffff; }
 .mode-card:checked { border-color: #4c8bf5; background-image: none; background-color: #eef4ff; }
 .mode-title { font-weight: bold; font-size: 15px; }
 .type-title { font-weight: bold; font-size: 17px; }
 .lead { font-size: 15px; }
-.layout-card { padding: 8px 12px; border: 1px solid alpha(#000000, 0.18);
+.layout-card { padding: 8px 12px; border: 2px solid alpha(#000000, 0.15);
     border-radius: 6px; background-color: #ffffff; }
 .layout-card:checked { border-color: #4c8bf5; background-image: none; background-color: #eef4ff; }
 .layout-card:disabled { opacity: 0.55; }
@@ -59,6 +59,22 @@ BAR_WIDTH = 560
 DATA_MOUNT = "/data"
 KNOWN_KINDS = {"efi", "msr", "windows", "recovery", "linux", "swap", "free", "new", "data",
                "bsd", "encrypted", "raid"}
+
+
+def message(css=None):
+    """The label of a message that is not there yet: it takes no room
+    until it has something to say."""
+    widget = lbl("", css)
+    widget.set_no_show_all(True)
+    widget.set_visible(False)
+    return widget
+
+
+def say(widget, text):
+    """Show a message, or hide the label of it when there is none."""
+    widget.set_text(text or "")
+    widget.set_no_show_all(not text)
+    widget.set_visible(bool(text))
 
 
 def lbl(text="", css=None, wrap=True, xalign=0.0):
@@ -165,7 +181,6 @@ class DiskPage:
             button.set_mode(False)
             button.get_style_context().add_class("mode-card")
             inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-            inner.set_border_width(4)
             inner.pack_start(lbl(title, "type-title"), False, False, 0)
             desc = lbl(text, "muted")
             desc.set_max_width_chars(40)
@@ -174,6 +189,7 @@ class DiskPage:
             button.connect("toggled", self.on_usage, ident)
             self.usage_buttons[ident] = button
             usage_cards.add(button)
+            self.win.flow_flat(button)
         self.usage_area.pack_start(usage_cards, False, False, 0)
         page.pack_start(self.usage_area, False, False, 0)
 
@@ -189,6 +205,9 @@ class DiskPage:
                               ("Look for disks again", self.on_look_again)):
             button = Gtk.Button(label=text)
             button.connect("clicked", handler)
+            # The label of the row wraps to two lines: the buttons keep
+            # their height and stand in the middle of the row.
+            button.set_valign(Gtk.Align.CENTER)
             head.pack_start(button, False, False, 0)
             self.head_buttons[text] = button
         self.table_area.pack_start(head, False, False, 0)
@@ -235,7 +254,7 @@ class DiskPage:
             self.table_message.pack_start(line, False, False, 0)
         self.table_message.set_no_show_all(True)
         self.table_area.pack_start(self.table_message, False, False, 0)
-        self.warnings = lbl("", "warn-text")
+        self.warnings = message("warn-text")
         page.pack_start(self.warnings, False, False, 0)
 
         # Before and after.
@@ -270,7 +289,7 @@ class DiskPage:
         # With the folded choices of Erase and install.
         self.advanced_box.pack_start(self.data_expander, False, False, 0)
 
-        self.problems = lbl("", "danger")
+        self.problems = message("danger")
         page.pack_start(self.problems, False, False, 0)
         return page
 
@@ -307,7 +326,7 @@ class DiskPage:
         page.pack_start(self.cards_area, False, False, 0)
         cards = not_a_list(Gtk.FlowBox(), "the three installation types")
         cards.set_selection_mode(Gtk.SelectionMode.NONE)
-        cards.set_homogeneous(True)
+        cards.set_homogeneous(False)
         cards.set_min_children_per_line(1)
         cards.set_max_children_per_line(3)
         cards.set_column_spacing(12)
@@ -322,10 +341,12 @@ class DiskPage:
             group = group or button
             button.set_mode(False)
             button.get_style_context().add_class("mode-card")
+            # A card stands at the top of its row: a card with less to say
+            # does not stretch the one beside it.
+            button.set_valign(Gtk.Align.START)
             inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-            inner.set_border_width(6)
             inner.pack_start(lbl(title, "type-title"), False, False, 0)
-            line = lbl("", "muted")
+            line = message("muted")
             line.set_max_width_chars(30)
             inner.pack_start(line, False, False, 0)
             before, after = self.ILLUSTRATIONS[ident]
@@ -335,9 +356,9 @@ class DiskPage:
                 pic.attach(bar([{"kind": k, "label": k, "bytes": w} for k, w in segs], 200, False),
                            1, row, 1, 1)
             inner.pack_start(pic, False, False, 4)
-            reason = lbl("", "muted")
+            reason = message("muted")
             reason.set_max_width_chars(30)
-            warning = lbl("", "warn-text")
+            warning = message("warn-text")
             warning.set_max_width_chars(30)
             inner.pack_start(reason, False, False, 0)
             inner.pack_start(warning, False, False, 0)
@@ -349,6 +370,7 @@ class DiskPage:
             self.type_line = getattr(self, "type_line", {})
             self.type_line[ident] = line
             cards.add(button)
+            self.win.flow_flat(button)
         self.cards_area.pack_start(cards, False, False, 0)
         self.cards_area.pack_start(lbl("The disks of this machine", "section-title"), False, False, 0)
         self.machine_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -393,9 +415,10 @@ class DiskPage:
             self.show_only(self.mode_buttons[ident], info["offered"])
             if self.mode_buttons[ident].get_parent() is not None:
                 self.show_only(self.mode_buttons[ident].get_parent(), info["offered"])
-            self.type_line[ident].set_text(info["line"])
-            self.type_reason[ident].set_text(f"Not possible: {info['reason']}" if info["reason"] else "")
-            self.type_warning[ident].set_text(info["warning"])
+            say(self.type_line[ident], info["line"])
+            say(self.type_reason[ident],
+                f"Not possible: {info['reason']}" if info["reason"] else "")
+            say(self.type_warning[ident], info["warning"])
             self.mode_buttons[ident].set_sensitive(info["available"])
         if not types[self.mode]["available"]:
             self.mode_buttons["erase"].set_active(True)
@@ -548,7 +571,7 @@ class DiskPage:
         self.fill_boot()
         self.boot_combo.connect("changed", lambda *_a: self.refresh())
         adv.attach(boot_cell, 1, arow, 1, 1)
-        self.boot_warning = lbl("", "warn-text")
+        self.boot_warning = message("warn-text")
         adv.attach(self.boot_warning, 2, arow, 1, 1)
         box.pack_start(grid, False, False, 0)
         self.advanced_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -838,7 +861,7 @@ class DiskPage:
         self.fill_regions()
         self.fill_data()
         if err and not self.probe_error:
-            self.problems.set_text(err)
+            say(self.problems, err)
         self.refresh()
 
     def fill_table(self):
@@ -1119,7 +1142,7 @@ class DiskPage:
         for widget in self.pass_row:
             widget.set_sensitive(enc)
         self.swap_enc.set_sensitive(self.swap.get_value() > 0)
-        self.boot_warning.set_text(self.boot_warning_text())
+        say(self.boot_warning, self.boot_warning_text())
         if self.regions:
             self.size_text.set_text(f"{int(self.size_scale.get_value())} GB for {self.wiz.product}")
         self.refresh_strength()
@@ -1154,6 +1177,7 @@ class DiskPage:
                 button.set_active(True)
             button.connect("toggled", self.on_layout, card["ident"])
             self.layout_grid.add(button)
+            self.win.flow_flat(button)
         self.layout_grid.show_all()
 
     def boot_warning_text(self):
@@ -1276,14 +1300,14 @@ class DiskPage:
         if getattr(self, "probe_error", ""):
             # Shown where the list would be; Next stays refused.
             self.errors = [f"No disk can be offered: {self.probe_message(self.probe_error)[0]}"]
-            self.problems.set_text("")
-            self.warnings.set_text("")
+            say(self.problems, "")
+            say(self.warnings, "")
             self._passphrase_problem_first = False
             return
         if self.asks_usage() and self.usage is None:
             self.errors = ["Choose whether to use the disks together or separately."]
-            self.problems.set_text("")
-            self.warnings.set_text("")
+            say(self.problems, "")
+            say(self.warnings, "")
             self._passphrase_problem_first = False
             return
         errors = [e for e in D.validate(self.plan(), self.detail, self.os)
@@ -1296,8 +1320,8 @@ class DiskPage:
         self._passphrase_problem_first = bool(passphrase) and not errors
         errors += passphrase
         self.errors = errors
-        self.problems.set_text("\n".join(errors))
-        self.warnings.set_text("\n".join(self.erase_warnings()))
+        say(self.problems, "\n".join(errors))
+        say(self.warnings, "\n".join(self.erase_warnings()))
 
     def passphrase_errors(self):
         """What is wrong with the encryption passphrase: one problem or none."""

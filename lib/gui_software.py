@@ -17,7 +17,6 @@ from gi.repository import Gtk, Pango  # noqa: E402
 
 import diskplan as D  # noqa: E402
 import licensed as L  # noqa: E402
-from gui_lists import not_a_list  # noqa: E402
 
 CSS = b"""
 .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; color: #ffffff; }
@@ -133,15 +132,13 @@ class SoftwarePage:
         # Everything wraps: the page never grows wider than the screen.
         body.pack_start(lbl(entry["name"], "item-name"), False, False, 0)
         if entry["flags"]:
-            badges = not_a_list(Gtk.FlowBox(), "the flags of one item")
-            badges.set_selection_mode(Gtk.SelectionMode.NONE)
-            badges.set_max_children_per_line(4)
-            badges.set_min_children_per_line(1)
-            badges.set_column_spacing(6)
+            # The badges of an item stand next to each other, not spread
+            # over the width of the page.
+            badges = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             for flag in entry["flags"]:
                 badge = lbl(BADGES[flag], f"badge badge-{flag}", wrap=False)
                 badge.set_halign(Gtk.Align.START)
-                badges.add(badge)
+                badges.pack_start(badge, False, False, 0)
             body.pack_start(badges, False, False, 0)
         body.pack_start(lbl(entry["description"]), False, False, 0)
         body.pack_start(lbl(f"{D.human(entry['size_bytes'])}  ·  {entry['licence']['title']}",

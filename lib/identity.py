@@ -23,6 +23,9 @@ KEYS = ("PRODUCT", "VERSION", "BASE", "VARIANT", "ARCH", "BUILD")
 BSD_NAMES = {"freebsd": "FreeBSD", "netbsd": "NetBSD", "openbsd": "OpenBSD",
              "dragonfly": "DragonFly", "illumos": "illumos"}
 VALUE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._+:-]{0,47}")
+# The dot that joins the parts of the line: the space before it does
+# not break, so the line wraps between two parts and never in the dot.
+SEPARATOR = "\u00a0\u00b7 "
 MAX_BYTES = 4096
 
 
@@ -79,7 +82,12 @@ def detected_base(uname, os_name: str) -> str:
 
 def line(ident: Dict[str, str], product: str, arch: str, base: str) -> str:
     """<Product> <version> · <base OS and version> · <variant> · <arch>
-    (· build <date>)."""
+    (· build <date>).
+
+    The space before the dot is a space that does not break: the line
+    wraps between two parts, never in the middle of the dot that joins
+    them.
+    """
     head = " ".join(x for x in (ident.get("PRODUCT") or product, ident.get("VERSION", "")) if x)
     parts = [head, ident.get("BASE") or base]
     if ident.get("VARIANT"):
@@ -87,4 +95,4 @@ def line(ident: Dict[str, str], product: str, arch: str, base: str) -> str:
     parts.append(ident.get("ARCH") or arch)
     if ident.get("BUILD"):
         parts.append(f"build {ident['BUILD']}")
-    return " · ".join(p for p in parts if p)
+    return SEPARATOR.join(p for p in parts if p)

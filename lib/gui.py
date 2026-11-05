@@ -137,9 +137,23 @@ button.suggested-action:focus, button.destructive-action:focus {
 .tagline { font-size: 12px; }
 .error-text { color: #c01c28; }
 .warning-text { color: #a05a00; font-weight: bold; }
-.action-bar { padding: 12px 18px; border-top: 1px solid alpha(#000000, 0.12); }
+.action-bar { padding: 12px 32px; border-top: 1px solid alpha(#000000, 0.12); }
 .action-bar button { min-width: 120px; min-height: 36px; }
 .field-label { font-weight: bold; }
+/* The page is painted on the background of the theme: without it the
+   picture of a page keeps the transparency of the window and shows the
+   desktop (or black) through the gaps. */
+.content { background-color: @theme_bg_color; }
+/* The indicator of a check or of a radio button: the theme gives it a
+   margin of its own, which stands 4 px right of the label and of the
+   field beside it. */
+checkbutton check, radiobutton radio { margin-left: 0; }
+/* A child of a flow box: the theme pads it, which stands 3 px right of
+   the text beside it. */
+.flow-flat { padding: 0; }
+/* The plan of the disks in the summary: the text does not touch the
+   frame around it. */
+.plan { padding: 4px 8px; }
 """
 
 PAGE_TITLES = dict(W.PAGES)
@@ -159,6 +173,21 @@ def label(text="", css=None, wrap=True, xalign=0.0, selectable=False):
         for name in css.split():
             widget.get_style_context().add_class(name)
     return widget
+
+
+def message_label(css=None):
+    """The label of a message that is not there yet: it takes no room
+    until it has something to say."""
+    widget = label("", css)
+    widget.set_no_show_all(True)
+    widget.set_visible(False)
+    return widget
+
+
+def say(widget, text):
+    """Show a message, or hide the label of it when there is none."""
+    widget.set_text(text or "")
+    widget.set_visible(bool(text))
 
 
 def svg_pixbuf(data, width, height, fill=False):
@@ -192,6 +221,16 @@ def wrap_toggle_labels(widget):
     if isinstance(widget, Gtk.Container):
         for child in widget.get_children():
             wrap_toggle_labels(child)
+
+
+def flow_flat(widget):
+    """The child of a flow box without the padding of the theme: the card
+    stands at the left edge of its column, like the text beside it.  The
+    widget must be in its flow box already."""
+    child = widget.get_parent()
+    if isinstance(child, Gtk.FlowBoxChild):
+        child.get_style_context().add_class("flow-flat")
+    return widget
 
 
 def mnemonic_label(text, used):
@@ -241,6 +280,20 @@ def monitor_size():
         return 1024, 768
     area = monitor.get_workarea()
     return max(area.width, 640), max(area.height, 480)
+
+
+# The widest a form of fields is: the fields of a form keep the width a
+# form needs, they do not stretch when the screen is wide.
+FORM_WIDTH = 640
+
+
+def cap_form(widget, limit=FORM_WIDTH):
+    """A form of fields is as wide as a form (limit) and no wider: on a
+    wide screen it stops at the limit instead of stretching.  The narrowest
+    page of the installer (1024x768) is wider than the limit."""
+    widget.set_size_request(limit, -1)
+    widget.set_halign(Gtk.Align.START)
+    return widget
 
 
 def item_list(columns, activate=None, hidden=0):
@@ -354,6 +407,9 @@ class InstallerWindow(Gtk.Window):
             self.add(outer)
         outer.pack_start(self.build_sidebar(), False, False, 0)
         main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        # The page is painted on the background of the theme: the picture
+        # of a page has no transparent strip left.
+        main.get_style_context().add_class("content")
         outer.pack_start(main, True, True, 0)
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         body.set_border_width(32)
@@ -369,7 +425,8 @@ class InstallerWindow(Gtk.Window):
         self.page_scroller.set_vexpand(True)
         self.page_scroller.add(self.stack)
         body.pack_start(self.page_scroller, True, True, 0)
-        self.error_label = label("", "error-text", selectable=True)
+        self.error_label = message_label("error-text")
+        self.error_label.set_selectable(True)
         body.pack_start(self.error_label, False, False, 0)
         # The one action cluster, at the bottom right.
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -415,12 +472,24 @@ class InstallerWindow(Gtk.Window):
 
     # ------------------------------------------------------------ frame
 
+    def cap_form(self, widget, limit=FORM_WIDTH):
+        """A form of fields of a page never grows past the width of a
+        form: the pages that are built by another module use it too."""
+        return cap_form(widget, limit)
+
+    def flow_flat(self, widget):
+        """The child of a flow box without the padding of the theme: the
+        pages that are built by another module use it too."""
+        return flow_flat(widget)
+
     def build_sidebar(self):
         side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         side.get_style_context().add_class("sidebar")
         side.set_size_request(240, -1)
         head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         head.set_border_width(18)
+        # The logo stands at the height of the title of the page.
+        head.set_margin_top(14)
         logo = svg_pixbuf(self.brand.svg("logo"), 72, 72)
         if logo is None and self.wiz.logo:
             try:
@@ -559,6 +628,7 @@ class InstallerWindow(Gtk.Window):
             gui_reveal.hide_all()
         self.page = page
         self.error_label.set_text("")
+        self.error_label.set_visible(False)
         if page == "preflight":
             self.title_label.set_text("Unfortunately")
         else:
@@ -572,6 +642,7 @@ class InstallerWindow(Gtk.Window):
 
     def show_error(self, text):
         self.error_label.set_text(text or "")
+        self.error_label.set_visible(bool(text))
 
     # ------------------------------------------------------------ events
 
@@ -845,7 +916,9 @@ class InstallerWindow(Gtk.Window):
         outer.set_column_spacing(28)
         outer.set_row_spacing(16)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        box.set_valign(Gtk.Align.CENTER)
+        # The text stands at the top of its half, like the languages in
+        # the other half.
+        box.set_valign(Gtk.Align.START)
         self.welcome_ready = label("", "lead-big")
         self.welcome_text = label("", "lead")
         self.welcome_live = label("")
@@ -857,6 +930,7 @@ class InstallerWindow(Gtk.Window):
             box.pack_start(widget, False, False, 0)
         box.pack_start(self.hardware_button, False, False, 0)
         outer.add(box)
+        flow_flat(box)
         # The languages: one row each, the flags of its variants on the
         # right; the choice sets the language of the installed system and
         # of the installer when it has strings in it.
@@ -874,6 +948,7 @@ class InstallerWindow(Gtk.Window):
         scroller.add(self.lang_list)
         side.pack_start(scroller, True, True, 0)
         outer.add(side)
+        flow_flat(side)
         self.flag_buttons = {}
         return outer
 
@@ -910,7 +985,7 @@ class InstallerWindow(Gtk.Window):
             names.pack_start(label(own, "field-label", wrap=False), False, False, 0)
             if own != english:
                 names.pack_start(label(english, "muted", wrap=False), False, False, 0)
-            row.pack_start(names, True, True, 0)
+            row.pack_start(names, False, False, 0)
             for locale, country, region in variants:
                 button = Gtk.RadioButton.new_from_widget(group)
                 group = group or button
@@ -1172,14 +1247,33 @@ class InstallerWindow(Gtk.Window):
                 entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
                 gui_reveal.add_eye(entry)
             grid.attach(entry, 1, row, 1, 1)
-            error = label("", "error-text")
-            grid.attach(error, 1, row + 1, 1, 1)
+            error = message_label("error-text")
+            if key == "password":
+                # The strength of the password, under its field.
+                self.pw_strength = Gtk.LevelBar(min_value=0, max_value=4)
+                self.pw_strength.set_size_request(200, 8)
+                self.pw_strength_text = label("", "muted")
+                strength = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+                strength.pack_start(self.pw_strength, False, False, 0)
+                strength.pack_start(self.pw_strength_text, False, False, 0)
+                strength.set_margin_top(4)
+                grid.attach(strength, 1, row + 1, 1, 1)
+                grid.attach(error, 1, row + 2, 1, 1)
+                row += 3
+            else:
+                grid.attach(error, 1, row + 1, 1, 1)
+                row += 2
             self.user_entries[key] = entry
             self.user_errors[key] = error
-            row += 2
+        self.user_entries["password"].connect("changed", self.on_password_changed)
         self.user_entries["user_name"].set_max_length(32)
         self.ssh_view = Gtk.TextView()
-        grid.attach(field_label("_SSH public key", self.ssh_view), 0, row, 1, 1)
+        self.ssh_label = field_label("_SSH public key", self.ssh_view)
+        # The label stands at the top of its row, like the text beside it.
+        self.ssh_label.set_yalign(0.0)
+        self.ssh_label.set_valign(Gtk.Align.START)
+        self.ssh_label.set_margin_top(8)
+        grid.attach(self.ssh_label, 0, row, 1, 1)
         self.ssh_view.set_wrap_mode(Gtk.WrapMode.CHAR)
         self.ssh_view.set_monospace(True)
         scroller = Gtk.ScrolledWindow()
@@ -1187,7 +1281,7 @@ class InstallerWindow(Gtk.Window):
         scroller.set_size_request(-1, 70)
         scroller.add(self.ssh_view)
         grid.attach(scroller, 1, row, 1, 1)
-        self.user_errors["ssh_key"] = label("", "error-text")
+        self.user_errors["ssh_key"] = message_label("error-text")
         grid.attach(label("Optional: paste a public key (ssh-ed25519 ...) to log in with it.",
                           None), 1, row + 1, 1, 1)
         grid.attach(self.user_errors["ssh_key"], 1, row + 2, 1, 1)
@@ -1199,16 +1293,6 @@ class InstallerWindow(Gtk.Window):
             label="Log in automatically (no password at the start of the computer)")
         grid.attach(self.autologin, 1, row, 1, 1)
         row += 1
-        # The strength of the password, under its field.
-        self.pw_strength = Gtk.LevelBar(min_value=0, max_value=4)
-        self.pw_strength.set_size_request(200, 8)
-        self.pw_strength_text = label("", "muted")
-        strength = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        strength.pack_start(self.pw_strength, False, False, 0)
-        strength.pack_start(self.pw_strength_text, False, False, 0)
-        grid.insert_row(6)
-        grid.attach(strength, 1, 6, 1, 1)
-        self.user_entries["password"].connect("changed", self.on_password_changed)
         # The root account.
         row += 2
         grid.attach(label("The root account", "field-label"), 0, row, 1, 1)
@@ -1218,7 +1302,8 @@ class InstallerWindow(Gtk.Window):
             self.root_locked, "Give root a password of its own")
         grid.attach(self.root_locked, 1, row, 1, 1)
         grid.attach(self.root_own, 1, row + 1, 1, 1)
-        roots = Gtk.Grid(column_spacing=8, row_spacing=4)
+        # The password of root: in the columns of the page, like the other
+        # fields of the page.
         self.root_pw = Gtk.Entry(visibility=False, placeholder_text="Root password")
         self.root_pw2 = Gtk.Entry(visibility=False, placeholder_text="Confirm the root password")
         for i, (entry, text) in enumerate(((self.root_pw, "R_oot password"),
@@ -1226,11 +1311,10 @@ class InstallerWindow(Gtk.Window):
             entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
             gui_reveal.add_eye(entry)
             entry.set_hexpand(True)
-            roots.attach(field_label(text, entry), 0, i, 1, 1)
-            roots.attach(entry, 1, i, 1, 1)
-        grid.attach(roots, 1, row + 2, 1, 1)
-        self.root_error = label("", "error-text")
-        grid.attach(self.root_error, 1, row + 3, 1, 1)
+            grid.attach(field_label(text, entry), 0, row + 2 + i, 1, 1)
+            grid.attach(entry, 1, row + 2 + i, 1, 1)
+        self.root_error = message_label("error-text")
+        grid.attach(self.root_error, 1, row + 4, 1, 1)
 
         def gate(*_a):
             # The root password is typeable only for a root with a password.
@@ -1238,6 +1322,9 @@ class InstallerWindow(Gtk.Window):
                 entry.set_sensitive(self.root_own.get_active())
         self.root_own.connect("toggled", gate)
         gate()
+        # One column of fields: the form does not grow past the width a
+        # form needs.
+        cap_form(grid)
         return grid
 
     def on_password_changed(self, entry):
@@ -1264,7 +1351,10 @@ class InstallerWindow(Gtk.Window):
         errors = self.wiz.check_users(get["user_name"], get["full_name"], get["password"],
                                       get["confirm"], get["hostname"], ssh_key)
         for key, widget in self.user_errors.items():
-            widget.set_text(errors.get(key, ""))
+            text = errors.get(key, "")
+            widget.set_text(text)
+            # An empty message takes no room.
+            widget.set_visible(bool(text))
         if errors:
             return FIELDS_NEED_ATTENTION
         a = self.wiz.answers
@@ -1273,12 +1363,15 @@ class InstallerWindow(Gtk.Window):
         a.privilege_passwordless = self.priv_check.get_active()
         a.autologin = self.autologin.get_active()
         self.root_error.set_text("")
+        self.root_error.set_visible(False)
         if self.root_own.get_active():
             if not self.root_pw.get_text():
                 self.root_error.set_text("Type a password for root.")
+                self.root_error.set_visible(True)
                 return FIELDS_NEED_ATTENTION
             if self.root_pw.get_text() != self.root_pw2.get_text():
                 self.root_error.set_text("The root passwords do not match.")
+                self.root_error.set_visible(True)
                 return FIELDS_NEED_ATTENTION
             try:
                 self.wiz.set_root_password(self.root_pw.get_text())
@@ -1312,14 +1405,16 @@ class InstallerWindow(Gtk.Window):
         self.sum_grid = Gtk.Grid(column_spacing=28, row_spacing=10)
         self.sum_grid.set_column_homogeneous(True)
         box.pack_start(self.sum_grid, False, False, 0)
-        self.sum_warning = label("", "warning-text")
+        self.sum_warning = message_label("warning-text")
         box.pack_start(self.sum_warning, False, False, 0)
         # What happens to every disk; the destructive actions in red.
         self.sum_disks_title = label("What happens to the disks", "field-label")
         box.pack_start(self.sum_disks_title, False, False, 0)
         self.sum_disks = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        # The text of the plan does not touch the frame around it.
+        self.sum_disks.get_style_context().add_class("plan")
         # One line a disk: many disks scroll, the confirmation stays.
-        box.pack_start(scrolled(self.sum_disks, 2, 6, name="summary-disks"), False, False, 0)
+        box.pack_start(scrolled(self.sum_disks, 1, 6, name="summary-disks"), False, False, 0)
         # Erasing a disk that holds another system: the word, typed.
         self.sum_confirm_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.sum_confirm_text = label("", "error-text")
@@ -1342,9 +1437,9 @@ class InstallerWindow(Gtk.Window):
         problems = self.wiz.install_problems()
         if problems:
             text = "; ".join(problems)
-            self.sum_warning.set_text(f"Install is not possible yet: {text}.")
+            say(self.sum_warning, f"Install is not possible yet: {text}.")
         else:
-            self.sum_warning.set_text(self.wiz.erase_warning())
+            say(self.sum_warning, self.wiz.erase_warning())
         self.fill_summary_disks()
         foreign = self.wiz.foreign_to_confirm()
         self.sum_confirm_box.set_visible(bool(foreign))
@@ -1357,20 +1452,32 @@ class InstallerWindow(Gtk.Window):
             self.sum_confirm.grab_focus()
 
     def fill_summary_groups(self):
-        """The answers in groups, two groups side by side where they fit."""
+        """The answers in groups, two groups side by side where they fit.
+        One grid for each column of the page: the values of the groups of
+        a column stand under each other, in one column."""
         for child in self.sum_grid.get_children():
             self.sum_grid.remove(child)
         columns = 2 if self.page_scroller.get_allocated_width() >= 640 or \
             self.page_scroller.get_allocated_width() <= 1 else 1
-        for index, (title, rows) in enumerate(self.wiz.summary_sections()):
-            group = Gtk.Grid(column_spacing=12, row_spacing=3)
-            group.attach(label(title, "section-title"), 0, 0, 2, 1)
-            for row, (name, value) in enumerate(rows, start=1):
-                group.attach(label(name, "muted", wrap=False), 0, row, 1, 1)
-                text = label(value)
-                text.set_max_width_chars(28)
-                group.attach(text, 1, row, 1, 1)
-            self.sum_grid.attach(group, index % columns, index // columns, 1, 1)
+        sections = self.wiz.summary_sections()
+        for column in range(columns):
+            grid = Gtk.Grid(column_spacing=12, row_spacing=3)
+            row = 0
+            for index, (title, rows) in enumerate(sections):
+                if index % columns != column:
+                    continue
+                if row:
+                    # The gap between two groups of a column.
+                    row += 1
+                grid.attach(label(title, "section-title"), 0, row, 2, 1)
+                row += 1
+                for name, value in rows:
+                    grid.attach(label(name, "muted", wrap=False), 0, row, 1, 1)
+                    text = label(value)
+                    text.set_max_width_chars(28)
+                    grid.attach(text, 1, row, 1, 1)
+                    row += 1
+            self.sum_grid.attach(grid, column, 0, 1, 1)
         self.sum_grid.show_all()
 
     def fill_summary_disks(self):
@@ -2324,8 +2431,9 @@ def render_users(win, u):
 def render_network(win, n):
     import gui_network
     np = win.network_page
-    np.notebook.set_current_page(n.get("tab", 0))
     tab = np.tabs[n.get("tab", 0)]
+    if tab is not None:
+        np.stack.set_visible_child(tab.widget)
     if n.get("v4") == "static":
         tab.v4[0].set_active_id("static")
         for entry, value in zip(tab.v4[1], gui_network.EXAMPLE_IPV4):
