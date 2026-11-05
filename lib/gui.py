@@ -1960,6 +1960,21 @@ def _apply_disk_type_after(dp, state):
         dp.pass2.set_text(state["type_after"])
 
 
+def _apply_disk_untick_after(win, dp, state):
+    """The encryption unticked after the page asked for a passphrase.
+
+    Next is pressed with the encryption ticked and no passphrase, the way
+    a person may: the window shows the passphrase problem in its error
+    label.  The encryption is then unticked: the passphrase is not wanted
+    any more, so the hint must not stay.  What the label showed before
+    the unticking is kept for the report."""
+    if not state.get("untick_after"):
+        return
+    win.act_next()
+    state["_error_before"] = win.error_label.get_text()
+    dp.enc_check.set_active(False)
+
+
 def apply_disk_state(win, state):
     """Set the disk page the way a person would: the mode, the disks, the
     layout and the options."""
@@ -2005,6 +2020,7 @@ def apply_disk_state(win, state):
         dp.partitions = [dict(p) for p in state["partitions"]]
         dp.fill_partitions()
     _apply_disk_type_after(dp, state)
+    _apply_disk_untick_after(win, dp, state)
     # Advanced is open only where the shot asks for it (or for data disks).
     dp.advanced.set_expanded(bool(state.get("data_disks") or state.get("advanced")))
     dp.data_expander.set_expanded(bool(state.get("data_disks")))
@@ -2074,6 +2090,10 @@ def _report_encryption(win, shot, page, state, outdir):
     write_report(outdir, shot, "encryption",
                  {"problems_before": state.get("_problems_before", ""),
                   "problems": dp.problems.get_text(),
+                  # What the window shows in its error label, and what it
+                  # showed before the shot unticked the encryption.
+                  "error": win.error_label.get_text(),
+                  "error_before": state.get("_error_before", ""),
                   "swap_shown": bool(swap_enc is not None and swap_enc.get_visible()),
                   "swap_active": bool(swap_enc is not None and swap_enc.get_active()),
                   "layout": dp.layout, "active": dp.enc_check.get_active(),
