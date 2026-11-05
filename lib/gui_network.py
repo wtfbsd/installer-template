@@ -64,7 +64,6 @@ class AdapterTab:
         self.name = item.name
         self.wifi = N.is_wifi(item.name)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        box.set_border_width(12)
         self.widget = box
         grid = Gtk.Grid(column_spacing=12, row_spacing=6)
         box.pack_start(grid, False, False, 0)
@@ -74,7 +73,7 @@ class AdapterTab:
         self.v6 = self.family(grid, 4, "IPv6", [("slaac", "Automatic (SLAAC)"), ("static", "Manual"),
                                                 ("off", "Off")],
                               (("Address", "2001:db8::10"), ("Prefix length", "64"),
-                               ("Gateway", "2001:db8::1")))
+                               ("Gateway", "2001:db8::1")), top=16)
         if self.wifi:
             box.pack_start(lbl("Wi-Fi networks in reach", "field-label"), False, False, 0)
             self.store = Gtk.ListStore(str, str, str)
@@ -91,34 +90,45 @@ class AdapterTab:
             box.pack_start(scrolled(self.view, 3, 6, name="wifi"), False, False, 0)
             row = Gtk.Grid(column_spacing=12, row_spacing=6)
             self.ssid = Gtk.Entry(placeholder_text="the name, also of a hidden network")
-            row.attach(linked("Network name", self.ssid), 0, 0, 1, 1)
+            row.attach(self.page.label(linked("Network name", self.ssid)), 0, 0, 1, 1)
             self.ssid.set_hexpand(True)
             row.attach(self.ssid, 1, 0, 1, 1)
-            row.attach(lbl("Security", "field-label", wrap=False), 0, 1, 1, 1)
+            row.attach(self.page.label(lbl("Security", "field-label", wrap=False)), 0, 1, 1, 1)
             self.security = Gtk.ComboBoxText()
             for ident, title in (("wpa2", "WPA2"), ("wpa3", "WPA3"), ("open", "Open (no password)")):
                 self.security.append(ident, title)
             self.security.set_active_id("wpa2")
             row.attach(self.security, 1, 1, 1, 1)
             self.psk = Gtk.Entry(visibility=False)
-            row.attach(linked("Passphrase", self.psk), 0, 2, 1, 1)
+            row.attach(self.page.label(linked("Passphrase", self.psk)), 0, 2, 1, 1)
             self.psk.set_input_purpose(Gtk.InputPurpose.PASSWORD)
             gui_reveal.add_eye(self.psk)
             row.attach(self.psk, 1, 2, 1, 1)
             box.pack_start(row, False, False, 0)
+            # The fields of the network stand in one column, like the
+            # fields of the page around them.
+            self.page.win.cap_form(row)
             box.pack_start(lbl("The installed system joins this network when it starts. The "
                                "Wi-Fi firmware is already on the media.", "muted"), False, False, 0)
             # A Wi-Fi adapter: the network to join comes first, its
             # addresses after it (they keep their automatic defaults).
             box.reorder_child(grid, -1)
+        # The fields of the adapter stand in one column, like the fields of
+        # the page around them.
+        self.page.win.cap_form(grid)
 
-    def family(self, grid, row, title, modes, fields):
-        grid.attach(lbl(title, "field-label", wrap=False), 0, row, 1, 1)
+    def family(self, grid, row, title, modes, fields, top=0):
+        head = lbl(title, "field-label", wrap=False)
+        head.set_margin_top(top)
+        grid.attach(self.page.label(head), 0, row, 1, 1)
         combo = Gtk.ComboBoxText()
         for ident, text in modes:
             combo.append(ident, text)
         combo.set_active_id(modes[0][0])
-        grid.attach(combo, 1, row, 2, 1)
+        # The room above the row belongs to the label and to the field
+        # beside it: they stand in the middle of it together.
+        combo.set_margin_top(top)
+        grid.attach(combo, 1, row, 1, 1)
         entries = []
         for i, (name, hint) in enumerate(fields, start=1):
             entry = Gtk.Entry(placeholder_text=f"for example {hint}")
@@ -126,9 +136,9 @@ class AdapterTab:
             name_label = linked(name, entry, css=None)
             if Atk is not None:
                 name_label.get_accessible().set_name(f"{title} {name}")
-            grid.attach(name_label, 1, row + i, 1, 1)
+            grid.attach(self.page.label(name_label), 0, row + i, 1, 1)
             entry.set_hexpand(True)
-            grid.attach(entry, 2, row + i, 1, 1)
+            grid.attach(entry, 1, row + i, 1, 1)
             entries.append(entry)
 
         def gate(*_a):
@@ -178,22 +188,39 @@ class NetworkPage:
         self.win = win
         self.wiz = win.wiz
         self.tabs = []
+        # The labels of the fields of the page stand in one column: the
+        # fields of the page and of every adapter start at the same place.
+        self.labels = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+
+    def label(self, widget):
+        """A label of a field: it takes the width of the labels of the
+        page, so the fields stand in one column."""
+        self.labels.add_widget(widget)
+        return widget
 
     def build(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.text = lbl("")
         box.pack_start(self.text, False, False, 0)
-        self.notebook = Gtk.Notebook()
-        self.notebook.set_scrollable(True)
-        box.pack_start(self.notebook, False, False, 0)
+        # One adapter at a time.  The stack is as tall as the adapter it
+        # shows, not as tall as the tallest of them: the controls below
+        # stay on the screen.
+        self.stack = Gtk.Stack()
+        self.stack.set_vhomogeneous(False)
+        self.stack.set_hhomogeneous(False)
+        self.switcher = Gtk.StackSwitcher()
+        self.switcher.set_stack(self.stack)
+        box.pack_start(self.switcher, False, False, 0)
+        box.pack_start(self.stack, False, False, 0)
         grid = Gtk.Grid(column_spacing=12, row_spacing=8)
         self.dns = Gtk.Entry(placeholder_text="empty: from DHCP; or 192.0.2.53, 2001:db8::53")
-        grid.attach(linked("Resolvers (DNS)", self.dns), 0, 0, 1, 1)
+        grid.attach(self.label(linked("Resolvers (DNS)", self.dns)), 0, 0, 1, 1)
         self.dns.set_hexpand(True)
         grid.attach(self.dns, 1, 0, 1, 1)
+        self.win.cap_form(grid)
         box.pack_start(grid, False, False, 0)
         self.offline = Gtk.CheckButton(label="Install without a network (no adapter is set up)")
-        self.offline.connect("toggled", lambda *_a: self.notebook.set_sensitive(
+        self.offline.connect("toggled", lambda *_a: self.stack.set_sensitive(
             not self.offline.get_active()))
         box.pack_start(self.offline, False, False, 0)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -209,18 +236,19 @@ class NetworkPage:
 
     def load(self):
         items, wifi, online, err = self.wiz.network_report()
-        current = self.notebook.get_current_page()
-        while self.notebook.get_n_pages():
-            self.notebook.remove_page(0)
+        current = self.stack.get_visible_child_name()
+        for child in self.stack.get_children():
+            self.stack.remove(child)
         self.tabs = []
         for item in items:
             tab = AdapterTab(self, item, wifi.get(item.name, []))
             title = f"{item.name} — {'Wi-Fi' if tab.wifi else item.descr}"
-            self.notebook.append_page(tab.widget, Gtk.Label(label=title))
+            self.stack.add_titled(tab.widget, title, title)
             self.tabs.append(tab)
-        self.notebook.show_all()
-        if 0 <= current < len(self.tabs):
-            self.notebook.set_current_page(current)
+        self.stack.show_all()
+        self.switcher.show_all()
+        if current in [c.get_name() for c in self.stack.get_children()]:
+            self.stack.set_visible_child_name(current)
         if items:
             self.text.set_text(f"Set up how {self.wiz.product} connects, one adapter at a time.")
         else:

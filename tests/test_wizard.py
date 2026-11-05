@@ -216,6 +216,22 @@ class SummaryDisksTest(WizardCase):
         expected = [name for name, _v in self.wiz.summary_rows() if name not in ("Disk", "Disks")]
         self.assertEqual(sorted(flat), sorted(expected))
 
+    def test_the_summary_never_says_on_without_the_adapter(self):
+        # The name of the adapter is not always known: the summary says
+        # what it knows, never a preposition with nothing after it.
+        self.fill()
+        rows = dict(self.wiz.summary_rows())
+        self.assertTrue(rows["Network"].endswith("em0"))
+        self.wiz.answers.net_if = ""
+        rows = dict(self.wiz.summary_rows())
+        self.assertEqual(rows["Network"], "an automatic address")
+        self.wiz.answers.network_mode = "static"
+        rows = dict(self.wiz.summary_rows())
+        self.assertEqual(rows["Network"], "a manual address")
+        self.wiz.answers.network_mode = "offline"
+        rows = dict(self.wiz.summary_rows())
+        self.assertEqual(rows["Network"], "no network")
+
     def test_install_waits_for_a_plan_that_passes_and_the_word(self):
         # No plan from the Disk page: nothing to install.
         self.assertFalse(self.wiz.install_allowed())
