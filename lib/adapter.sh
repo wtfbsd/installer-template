@@ -64,17 +64,76 @@ fail_marker=''
 work=''
 kept=''
 
-# cleanup — the files of the run and the directory of the mark are gone when
-# the run ends.
+# The temporary files of the run that the cleanup has to know about.
+# Every file of the run is named in one of them, so that the cleanup
+# removes it: a run that is interrupted must leave nothing behind.
+install_err=''
+install_pipe=''
+disk_rows=''
+
+# The process of the install command, while it runs.
+install_pid=''
+
+# cleanup — the files of the run, the pipe of the install command and the
+# directory of the mark are gone when the run ends, whatever the way the
+# run ends.  It may be called twice: the handler of a signal calls it
+# and the trap of the exit calls it again.
 cleanup() {
 	if [ -n "${work:-}" ]; then
 		rm -f -- "${work}" 2>/dev/null || :
+		work=''
 	fi
 	if [ -n "${kept:-}" ]; then
 		rm -f -- "${kept}" 2>/dev/null || :
+		kept=''
+	fi
+	if [ -n "${install_err:-}" ]; then
+		rm -f -- "${install_err}" "${install_err}.seen" 2>/dev/null || :
+		install_err=''
+	fi
+	if [ -n "${install_pipe:-}" ]; then
+		rm -f -- "${install_pipe}" 2>/dev/null || :
+		install_pipe=''
+	fi
+	if [ -n "${disk_rows:-}" ]; then
+		rm -f -- "${disk_rows}" 2>/dev/null || :
+		disk_rows=''
 	fi
 	if [ -n "${fail_marker_dir}" ]; then
 		rmrf "${fail_marker_dir}" "${tmp_root}" || :
+	fi
+	return 0
+}
+
+# signal_exit <code> — the run was interrupted: the files of the run are
+# gone and the run ends with the code of the signal (129 for HUP, 130 for
+# INT and 143 for TERM).
+#
+# A signal needs a handler of its own: a handler that cleans up and
+# returns leaves the script running.
+signal_exit() {
+	trap - EXIT HUP INT TERM
+	# The files of the run go first: stopping the command takes up to two
+	# seconds, and a second interrupt in between must find nothing left.
+	cleanup
+	stop_install_command
+	exit "$1"
+}
+
+# stop_install_command — the install command and every process it started
+# are stopped, so that nothing keeps writing to the target after the run
+# was interrupted: TERM to its group, KILL two seconds later for what did
+# not stop.  The command is a child that is not reaped yet, so the number
+# of its group cannot belong to another group in between.
+stop_install_command() {
+	if [ -n "${install_pid:-}" ]; then
+		kill -TERM "-${install_pid}" 2>/dev/null ||
+			kill -TERM "${install_pid}" 2>/dev/null || :
+		sleep 2
+		kill -KILL "-${install_pid}" 2>/dev/null ||
+			kill -KILL "${install_pid}" 2>/dev/null || :
+		wait "${install_pid}" 2>/dev/null || :
+		install_pid=''
 	fi
 	return 0
 }
@@ -509,6 +568,7 @@ target_rows() {
 cmd_disks() {
 	_rows=$(mktemp "${tmp_root}/wtfbsd-disks.XXXXXX") ||
 		die 3 'cannot create a temporary file'
+	disk_rows=${_rows}
 	# A rehearsal of a slow system: PROBE_DELAY seconds (at most 30)
 	# before the list, as reading the disks of some systems takes.
 	if [ -n "${rehearsal}" ] && _delay=$(kv_get "${rehearsal}" PROBE_DELAY); then
@@ -519,6 +579,7 @@ cmd_disks() {
 	target_rows "${_rows}"
 	emit_items "${_rows}"
 	rm -f "${_rows}"
+	disk_rows=''
 }
 
 # cmd_disks_detail — the report of the disks the disk page shows: model,
@@ -960,27 +1021,43 @@ run_install_command() {
 	fi
 	set -- "$@" -y --progress
 	printf 'install: running %s\n' "$*" >&2
-	_rcfile=$(mktemp "${tmp_root}/wtfbsd-install-rc.XXXXXX") ||
+	# The file of the error marker belongs to the cleanup of the run, so
+	# that it is gone when the run ends in any way.
+	_errfile=$(mktemp "${tmp_root}/wtfbsd-install-err.XXXXXX") ||
 		die 3 'cannot create a temporary file'
-	_errfile=$(mktemp "${tmp_root}/wtfbsd-install-err.XXXXXX") || {
-		rm -f "${_rcfile}"
-		die 3 'cannot create a temporary file'
-	}
-	{
-		_c=0
-		"$@" < /dev/null || _c=$?
-		printf '%s\n' "${_c}" > "${_rcfile}"
-	} | while IFS= read -r _line; do
+	install_err=${_errfile}
+	# The install command writes to a pipe of the run and the shell reads
+	# the pipe, so that the lines of the command are passed on as they
+	# come.  The command runs in the background: a shell that waits for a
+	# command in the foreground runs its trap only when that command
+	# ends, so an interrupted run would wait for the installation to end
+	# before it stopped, and a run that was killed would leave the files
+	# of the run behind.
+	#
+	# The pipe is named after the file of the error marker, whose name
+	# is unique.  It is a file of the run as well, and the cleanup
+	# removes it.
+	install_pipe="${_errfile}.pipe"
+	mkfifo -m 600 "${install_pipe}" ||
+		die 3 'cannot create the pipe of the install command'
+	# The command gets a process group of its own, so that an interrupted
+	# run stops the command and every process it started (set -m is not
+	# there without a terminal in every sh).  lib/pgroup.py makes the
+	# group and becomes the command: the process number stays the same.
+	python3 -I -B "${root}/lib/pgroup.py" "$@" < /dev/null > "${install_pipe}" &
+	install_pid=$!
+	while IFS= read -r _line; do
 		printf '%s\n' "${_line}"
 		case "${_line}" in
 			ERROR\ *) : > "${_errfile}.seen" ;;
 		esac
-	done
-	_c=$(cat "${_rcfile}" 2>/dev/null) || _c=4
+	done < "${install_pipe}"
+	_c=0
+	wait "${install_pid}" || _c=$?
+	install_pid=''
 	case "${_c}" in ''|*[!0-9]*) _c=4 ;; esac
 	_seen=no
 	[ ! -f "${_errfile}.seen" ] || _seen=yes
-	rm -f "${_rcfile}" "${_errfile}" "${_errfile}.seen"
 	if [ "${_c}" -ne 0 ]; then
 		[ "${_seen}" = yes ] ||
 			printf 'ERROR the install command failed with exit code %s\n' "${_c}"
@@ -1060,7 +1137,13 @@ adapter_main() {
 		shift
 	fi
 	rehearsal=$(rehearsal_file) || rehearsal=''
-	trap 'cleanup' EXIT INT TERM HUP
+	# The files of the run are gone when the run ends, and a signal
+	# ends the run at once: the code of the signal is the code of the
+	# run (129 for HUP, 130 for INT, 143 for TERM).
+	trap 'cleanup' EXIT
+	trap 'signal_exit 129' HUP
+	trap 'signal_exit 130' INT
+	trap 'signal_exit 143' TERM
 	case "${_op}" in
 		apply-install) setup_fail_marker ;;
 	esac

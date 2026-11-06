@@ -135,7 +135,36 @@ share=${prefix}/share/wtfbsd-installer
 
 manifest_tmp=$(mktemp "${TMPDIR:-/tmp}/wtfbsd-stage-manifest.XXXXXX")
 made_dirs=$(mktemp "${TMPDIR:-/tmp}/wtfbsd-stage-dirs.XXXXXX")
-trap 'rm -f "${manifest_tmp}" "${made_dirs}"' EXIT INT TERM HUP
+# The files of the run that are not yet in their place.  They are named
+# here, so that the cleanup of the run removes them: a run that is
+# interrupted must not leave them behind.
+stage_tmp=''
+stage_filled=''
+
+# cleanup_stage — the files of the run are gone when the run ends.
+cleanup_stage() {
+	rm -f -- "${manifest_tmp}" "${made_dirs}" 2>/dev/null || :
+	[ -z "${stage_tmp}" ] || rm -f -- "${stage_tmp}" 2>/dev/null || :
+	[ -z "${stage_filled}" ] || rm -f -- "${stage_filled}" 2>/dev/null || :
+	return 0
+}
+
+# signal_stage <code> — the run was interrupted: the files of the run are
+# gone and the run ends with the code of the signal (129 for HUP, 130 for
+# INT, 143 for TERM).
+#
+# A signal needs a handler of its own: a handler that cleans up and
+# returns leaves the script running.
+signal_stage() {
+	trap - EXIT HUP INT TERM
+	cleanup_stage
+	exit "$1"
+}
+
+trap 'cleanup_stage' EXIT
+trap 'signal_stage 129' HUP
+trap 'signal_stage 130' INT
+trap 'signal_stage 143' TERM
 
 # stage_dir <path> — make a directory of the stage, every component under
 # DESTDIR checked: none of them may be a symbolic link.
@@ -198,12 +227,15 @@ stage_file() {
 	[ ! -L "${_dst}" ] || die "a symbolic link is in the way: ${_dst}"
 	[ ! -d "${_dst}" ] || die "a directory is in the way: ${_dst}"
 	_tmp=$(mktemp "${_dst}.XXXXXX")
+	stage_tmp=${_tmp}
 	if ! cp "$1" "${_tmp}"; then
 		rm -f "${_tmp}"
+		stage_tmp=''
 		die "cannot copy $1"
 	fi
 	chmod "$3" "${_tmp}"
 	mv -f "${_tmp}" "${_dst}"
+	stage_tmp=''
 	printf '%s\n' "$2" >> "${manifest_tmp}"
 }
 
@@ -216,11 +248,13 @@ stage_template() {
 		return 0
 	fi
 	_filled=$(mktemp "${TMPDIR:-/tmp}/wtfbsd-stage.XXXXXX")
+	stage_filled=${_filled}
 	sed -e "s|@PRODUCT@|${product}|g" -e "s|@LIBEXEC@|${libexec}|g" \
 		-e "s|@BINDIR@|${bindir}|g" -e "s|@APPDIR@|${appdir}|g" \
 		-e "s|@ICON@|${icon}|g" "$1" > "${_filled}"
 	stage_file "${_filled}" "$2" "$3"
 	rm -f "${_filled}"
+	stage_filled=''
 }
 
 stage_all() {

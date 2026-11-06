@@ -503,6 +503,7 @@ as_root() { # as_root <command...> — run with an id that says root and the ove
 	env PATH="${evil}/bin:${PATH}" INSTALLER_ROOT="${evil}" INSTALLER_LIBEXEC="${evil}/sections.d" \
 		INSTALLER_ADAPTER_FIXTURE="${evil}/fixture.conf" INSTALLER_CONF="${evil}/fixture.conf" \
 		INSTALLER_INSTALL_COMMAND="${evil}/command" BSDDIALOG="${evil}/command" \
+		INSTALLER_STATE_PARENT="${tmp}/state" INSTALLER_LOG="${tmp}/installer.log" \
 		"$@" 2>&1 < /dev/null || :
 }
 # The id of the evil PATH says 0; the tools of the evil PATH that the

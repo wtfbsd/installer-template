@@ -70,6 +70,9 @@ state_parent=${INSTALLER_STATE_PARENT:-${TMPDIR:-/tmp}}
 answers_file=''
 log=''
 log_destination=''
+# The copy of the log that is being made: it is gone when the run ends,
+# even when the run is interrupted in the middle of the copy.
+log_tmp=''
 
 product=''
 default_keymap=''
@@ -146,15 +149,19 @@ publish_log() {
 	dir=$(dirname "${log_destination}")
 	[ -d "${dir}" ] || return 0
 	tmp=$(mktemp "${dir}/.wtfbsd-installer-log.XXXXXX") || return 0
+	log_tmp=${tmp}
 	if ! cat "${log}" > "${tmp}"; then
 		rm -f "${tmp}"
+		log_tmp=''
 		return 0
 	fi
 	chmod 600 "${tmp}" 2>/dev/null || :
 	if ! mv -f "${tmp}" "${log_destination}"; then
 		rm -f "${tmp}"
+		log_tmp=''
 		return 0
 	fi
+	log_tmp=''
 	return 0
 }
 
@@ -162,17 +169,22 @@ publish_log() {
 cleanup() {
 	_code=$?
 	trap - EXIT INT TERM HUP
+	[ -z "${log_tmp}" ] || rm -f -- "${log_tmp}" 2>/dev/null || :
+	log_tmp=''
 	publish_log || :
 	remove_state || :
 	exit "${_code}"
 }
 
-# signal_exit — the run was interrupted.
+# signal_exit <code> — the run was interrupted: the code of the signal is
+# the code of the run (129 for HUP, 130 for INT, 143 for TERM).
 signal_exit() {
 	trap - EXIT INT TERM HUP
+	[ -z "${log_tmp}" ] || rm -f -- "${log_tmp}" 2>/dev/null || :
+	log_tmp=''
 	publish_log || :
 	remove_state || :
-	exit 1
+	exit "$1"
 }
 
 # leave — the installer is left.  A run that did not finish ends with a non
@@ -1608,7 +1620,9 @@ main() {
 		die 3 'cannot create the state directory'
 	chmod 700 "${state}" || die 3 'cannot make the state directory private'
 	trap 'cleanup' EXIT
-	trap 'signal_exit' INT TERM HUP
+	trap 'signal_exit 129' HUP
+	trap 'signal_exit 130' INT
+	trap 'signal_exit 143' TERM
 	export INSTALLER_STATE_DIR="${state}"
 	answers_file=${INSTALLER_ANSWERS:-${state}/answers.conf}
 	# The backend reads the answers from the environment, so the file the
