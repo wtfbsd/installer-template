@@ -292,6 +292,14 @@ stops the installation with an `ERROR` line and the command never runs.
   <message>` before a non-zero exit.  The adapter passes them on unchanged;
   when the command fails without an `ERROR` line the adapter adds one.  Its
   exit code is the exit code of the installation.
+- The command runs in the background and its output goes through a pipe of
+  the run, so that a signal reaches the adapter at once: a shell that waits
+  for a command in the foreground runs its trap only when that command
+  ends.  When the run is interrupted the command is stopped, the temporary
+  files of the run (the file of the error marker and the pipe) are removed,
+  and the run ends with the code of the signal: 129 for `HUP`, 130 for
+  `INT` and 143 for `TERM`.  A run that ends in any other way removes them
+  as well: nothing of a run is left in `TMPDIR`.
 - An account without a password is refused before the command runs.
 - Optional: `<slug>-install --capabilities` prints what the command can do
   with disks, one JSON object in the shape of the adapter hook `os_layouts`

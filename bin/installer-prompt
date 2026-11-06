@@ -191,7 +191,15 @@ case "${widget}" in
 		shift 3 2>/dev/null || :
 		header
 		listing=$(mktemp "${TMPDIR:-/tmp}/installer-prompt.XXXXXX") || exit 255
-		trap 'rm -f "${listing}"' EXIT INT TERM HUP
+		# The listing is gone when the run ends, and a signal ends the
+		# run at once: the code of the signal is the code of the run
+		# (129 for HUP, 130 for INT, 143 for TERM).  A signal needs a
+		# handler of its own: a handler that removes the file and
+		# returns leaves the script running.
+		trap 'rm -f "${listing}"' EXIT
+		trap 'rm -f "${listing}"; exit 129' HUP
+		trap 'rm -f "${listing}"; exit 130' INT
+		trap 'rm -f "${listing}"; exit 143' TERM
 		tags=''
 		default=${default_item}
 		selected=''

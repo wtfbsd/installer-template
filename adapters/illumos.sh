@@ -35,7 +35,9 @@ os_disk_rows() {
 	/usr/sbin/diskinfo -Hp 2>/dev/null | python3 -I -B "${root}/lib/illumos.py" disks
 }
 
-os_excluded_disks() {
+# The body runs in a subshell of its own: its traps never replace the
+# traps of the run.
+os_excluded_disks() (
 	# The medium and the pool of the root (lib/illumos.py excluded), or
 	# cannot_tell when they cannot be told: nothing is then offered (a
 	# rehearsal follows the rule of cannot_tell).  A rehearsal on captures
@@ -59,6 +61,13 @@ os_excluded_disks() {
 		''|*[!0-9]*) _zrc=1 ;;
 	esac
 	_why=$(mktemp "${tmp_root}/wtfbsd-excluded.XXXXXX") || cannot_tell 'cannot create a temporary file'
+	# The function runs in a command substitution, whose subshell has no
+	# traps of the run: the file gets traps of its own there, so that an
+	# interrupted subshell does not leave it behind.
+	trap 'rm -f -- "${_why}"' EXIT
+	trap 'rm -f -- "${_why}"; exit 129' HUP
+	trap 'rm -f -- "${_why}"; exit 130' INT
+	trap 'rm -f -- "${_why}"; exit 143' TERM
 	_out=$(printf '%s\n' "${_status}" |
 		python3 -I -B "${root}/lib/illumos.py" excluded "${INSTALLER_MNTTAB:-/etc/mnttab}" "${_zrc}" \
 		2>"${_why}") || {
@@ -68,7 +77,7 @@ os_excluded_disks() {
 	}
 	rm -f "${_why}"
 	printf '%s\n' "${_out}" | tr '\n' ' '
-}
+)
 
 os_interfaces() {
 	[ -x /usr/sbin/dladm ] || die 3 'reading the network adapters needs dladm'

@@ -17,7 +17,23 @@ cd "${root}"
 suite_parent=${TMPDIR:-/tmp}
 suite_tmp=$(mktemp -d "${suite_parent}/wtfbsd-tests.XXXXXX")
 chmod 700 "${suite_tmp}"
-trap 'chmod -R u+rwX "${suite_tmp}" 2>/dev/null || :; rmrf "${suite_tmp}" "${suite_parent}" || :' EXIT INT TERM HUP
+
+# cleanup_suite — the temporary directory of the suite is gone when the
+# suite ends, whatever the way the suite ends.
+cleanup_suite() {
+	chmod -R u+rwX "${suite_tmp}" 2>/dev/null || :
+	rmrf "${suite_tmp}" "${suite_parent}" || :
+	return 0
+}
+
+# A signal ends the suite at once: the code of the signal is the code of
+# the suite (129 for HUP, 130 for INT, 143 for TERM).  A signal needs a
+# handler of its own: a handler that cleans up and returns leaves the
+# suite running.
+trap 'cleanup_suite' EXIT
+trap 'cleanup_suite; exit 129' HUP
+trap 'cleanup_suite; exit 130' INT
+trap 'cleanup_suite; exit 143' TERM
 TMPDIR=${suite_tmp}
 export TMPDIR
 

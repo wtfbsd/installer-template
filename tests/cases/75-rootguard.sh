@@ -55,7 +55,9 @@ done
 # set to a hostile value.
 asroot() { # asroot VAR=value <command...>
 	env PATH="${fake}:${stubs}:${PATH}" STUB_DISKS='ada0 ada1' STUB_INTERFACES=em0 \
-		STUB_DISK_INFO="${tmp}/disk-info" STUB_MOUNTS="${tmp}/mounts" "$@" 2>&1 < /dev/null || :
+		STUB_DISK_INFO="${tmp}/disk-info" STUB_MOUNTS="${tmp}/mounts" \
+		INSTALLER_STATE_PARENT="${tmp}/state" INSTALLER_LOG="${tmp}/installer.log" \
+		"$@" 2>&1 < /dev/null || :
 }
 printf 'ada0\tSamsung SSD 860\t500107862016\nada1\tUSB stick\t15000000000\n' > "${tmp}/disk-info"
 printf '/dev/ada9p3 / ufs rw 0 0\n/dev/ada1p1 /mnt ufs ro 0 0\n' > "${tmp}/mounts"
