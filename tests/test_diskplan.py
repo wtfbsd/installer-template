@@ -231,6 +231,25 @@ class SizesTest(unittest.TestCase):
         self.assertEqual(D.default_layout("freebsd", 2), "mirror")
         self.assertEqual(D.default_layout("netbsd", 3), "raid5")
 
+    def test_the_note_names_only_the_layouts_that_need_more_disks(self):
+        tb = 2 * 10 ** 12
+        two = D.layout_cards("freebsd", [tb, tb])
+        # Single disk is unavailable because two are chosen, not because
+        # more are needed: it is not in the line at all.
+        self.assertEqual(D.more_disks_note(two, 2),
+                         "Need more disks: RAID 10 (4+), RAID-Z1 (3+), RAID-Z2 (4+), RAID-Z3 (5+)")
+        # Five disks: RAID 10 needs an even number, Single disk one; neither
+        # needs more, and nothing does.
+        # Three disks: RAID 10 needs four, so it is in the line, odd or not.
+        three = D.layout_cards("freebsd", [tb] * 3)
+        self.assertEqual(D.more_disks_note(three, 3),
+                         "Need more disks: RAID 10 (4+), RAID-Z2 (4+), RAID-Z3 (5+)")
+        five = D.layout_cards("freebsd", [tb] * 5)
+        self.assertEqual(D.more_disks_note(five, 5), "")
+        one = D.layout_cards("freebsd", [tb])
+        self.assertNotIn("Single disk", D.more_disks_note(one, 1))
+        self.assertIn("Mirror (2+)", D.more_disks_note(one, 1))
+
     def test_swap_and_strength(self):
         self.assertEqual(D.default_swap_mb(2048), 2048)
         self.assertEqual(D.default_swap_mb(65536), 16384)

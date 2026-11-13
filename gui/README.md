@@ -26,7 +26,7 @@ the name and the tagline of the product.
 | # | Page | What it does | Checked by |
 | --- | --- | --- | --- |
 | 1 | Welcome | says what the installer does; the languages with a flag for every country (the UI switches at once); "Hardware and drivers"; "Try the live desktop" or "Install <product>" | - |
-| 2 | Keyboard | the locale, the layouts of the adapter (the locale suggests one), a field to test the keyboard; the layout picked is applied to the live X session at once (`setxkbmap`), so the password is typed in it | `keyboard validate` |
+| 2 | Keyboard | the locale, the layouts of the adapter (the locale suggests one: the layout of that exact name, `us` before `us.acc`), a field to test the keyboard; the layout picked is applied to the live X session at once (`setxkbmap`), so the password is typed in it | `keyboard validate` |
 | 3 | Time zone | the zone table of the system with a search field and a clock; the hardware clock in UTC or local time (local when Windows is found) | `timezone validate` |
 | 4 | Installation type | erase, alongside or manual, with what the disks hold now and a picture before and after; one blank disk only says that the whole disk is used | `disk validate` |
 | 5 | Disk | the disks with model, size and what is on them; the first disk with nothing on it is ticked, no disk is ticked when every disk holds something; together or separately when there are several; the layout, the file system, encryption, swap and data pools; the plan file | `disk validate` (the plan again as root) |

@@ -98,12 +98,16 @@ def language_of(locale: str) -> str:
 def keymap_for(locale: str, available: List[str]) -> Optional[str]:
     """The keyboard layout a locale suggests, when the system has it."""
     country = locale.split("_", 1)[1][:2] if "_" in locale else ""
-    # The layout of the country, else the layout named after the language.
+    # The layout of the country, else the layout named after the language;
+    # the layout of that name itself before any of its variants (us before
+    # us.acc), wherever the list has it.
     for want in (LAYOUT_OF_COUNTRY.get(country), language_of(locale)):
         if not want:
             continue
+        if want in available:
+            return want
         for name in available:
-            if name == want or name.split(".")[0] == want:
+            if name.split(".")[0] == want:
                 return name
     return None
 
