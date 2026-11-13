@@ -36,6 +36,16 @@ class LanguagesTest(unittest.TestCase):
         # No Swiss layout on offer: the layout of the language.
         self.assertEqual(i18n.keymap_for("de_CH.UTF-8", ["us", "de"]), "de")
 
+    def test_the_exact_layout_wins_over_its_variants(self):
+        # The vt keymaps of FreeBSD sort us.acc, us.ctrl ... before us: the
+        # layout named exactly is the one suggested, wherever it is listed.
+        variants = ["uk.capsctrl", "uk", "us.acc", "us.ctrl", "us.dvorak", "us", "us.unix"]
+        self.assertEqual(i18n.keymap_for("en_US.UTF-8", variants), "us")
+        self.assertEqual(i18n.keymap_for("en_GB.UTF-8", variants), "uk")
+        self.assertEqual(i18n.keymap_for("de_DE.UTF-8", ["de.acc", "de.noacc", "de"]), "de")
+        # Only a variant on offer: the first variant, as before.
+        self.assertEqual(i18n.keymap_for("de_DE.UTF-8", ["de.acc", "de.noacc"]), "de.acc")
+
 
 class StringsTest(unittest.TestCase):
     def test_english_is_complete_and_others_fall_back(self):

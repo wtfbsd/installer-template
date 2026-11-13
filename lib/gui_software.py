@@ -104,16 +104,15 @@ class SoftwarePage:
         return self.stack
 
     def load(self):
-        self.catalogue, err = self.wiz.software()
+        self.catalogue, note = self.wiz.software()
         self.wiz.software_catalogue = self.catalogue
         known = [i["id"] for i in self.catalogue["items"]]
         self.selected = [i for i in self.wiz.answers.accept_licenses if i in known]
         for child in self.rows.get_children():
             self.rows.remove(child)
         self.checks = {}
-        if not self.catalogue["items"]:
-            self.rows.pack_start(lbl("There is no additional software for this system."
-                                     + (f" ({err})" if err else ""), "muted"), False, False, 0)
+        if note:
+            self.rows.pack_start(lbl(note, "muted"), False, False, 0)
         for entry in self.catalogue["items"]:
             self.rows.pack_start(self.build_row(entry), False, False, 0)
         self.rows.show_all()

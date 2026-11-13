@@ -336,6 +336,18 @@ def layout_cards(os_name: str, sizes: List[int], detail: Optional[dict] = None) 
     return cards
 
 
+def more_disks_note(cards: List[dict], n: int) -> str:
+    """The line under the layout cards for n chosen disks: the layouts
+    that need more disks than are chosen, and how many each needs.  A
+    layout that cannot be chosen although it has enough disks (Single disk
+    with two, RAID 10 with five) is not in it: it is not offered, and the
+    page says nothing about it."""
+    more = [c for c in cards if c["reason"] and c["min_disks"] > n]
+    if not more:
+        return ""
+    return "Need more disks: " + ", ".join(f"{c['title']} ({c['min_disks']}+)" for c in more)
+
+
 def default_layout(os_name: str, n: int, detail: Optional[dict] = None) -> str:
     """The layout a number of disks gets first: the safest that fits."""
     order = ["mirror", "raid1", "raidz2", "raidz1", "raid5", "single", "stripe"]

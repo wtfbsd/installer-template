@@ -1141,7 +1141,7 @@ class DiskPage:
         cards = D.layout_cards(self.os, sizes, self.detail)
         if not self.layout or all(c["ident"] != self.layout or c["reason"] for c in cards):
             self.layout = D.default_layout(self.os, len(sizes), self.detail)
-        self.fill_layout_cards(cards)
+        self.fill_layout_cards(cards, len(sizes))
         self.lock_encryption()
         # Disks used separately: the system takes a single disk, no layout.
         self.layout_grid.set_visible(not (self.asks_usage() and self.usage == "separate"))
@@ -1156,19 +1156,18 @@ class DiskPage:
         self.refresh_bars()
         self.refresh_problems()
 
-    def fill_layout_cards(self, cards):
-        """The layout cards of the chosen disks, and the line of the others."""
+    def fill_layout_cards(self, cards, n):
+        """The layout cards of the n chosen disks, and the line of those that need more."""
         for child in self.layout_grid.get_children():
             self.layout_grid.remove(child)
         group = None
-        # Only the layouts the chosen disks allow are cards; the others are
-        # one line that says what each needs (the page stays short).
-        others = [c for c in cards if c["reason"]]
-        self.layout_more.set_text(
-            "Need more disks: " + ", ".join(f"{c['title']} ({c['min_disks']}+)" for c in others)
-            if others else "")
+        # Only the layouts the chosen disks allow are cards; those that need
+        # more disks are one line that says how many each needs (the page
+        # stays short), and the other layouts are not mentioned.
+        note = D.more_disks_note(cards, n)
+        self.layout_more.set_text(note)
         # Used separately the system takes one disk: no layout, no note.
-        self.layout_more.set_visible(bool(others) and not (self.asks_usage() and self.usage == "separate"))
+        self.layout_more.set_visible(bool(note) and not (self.asks_usage() and self.usage == "separate"))
         for card in [c for c in cards if not c["reason"]]:
             button = Gtk.RadioButton.new_from_widget(group)
             group = group or button

@@ -4,6 +4,7 @@
 # The wizard drives the real backend of the repository with the rehearsal
 # fixtures and the stand-in install command.
 
+import json
 import os
 import pathlib
 import re
@@ -707,6 +708,50 @@ class StateParentTest(unittest.TestCase):
             self.assertEqual(os.path.dirname(wiz.state), self.cache)
         finally:
             shutil.rmtree(wiz.state, ignore_errors=True)
+
+
+class SoftwareNoteTest(WizardCase):
+    """A catalogue that cannot be read: the page says only that there is
+    no additional software, and the reason goes to the installer log."""
+
+    def setUp(self):
+        super().setUp()
+        self.wiz.close()
+        software = os.path.join(self.tmp, "software")
+        shutil.copytree(FIXTURES / "software", software)
+        catalogue = os.path.join(software, "licensed-software.json")
+        with open(catalogue, encoding="utf-8") as stream:
+            data = json.load(stream)
+        data["comment"] = "a key the catalogue does not know"
+        with open(catalogue, "w", encoding="utf-8") as stream:
+            json.dump(data, stream)
+        fixture = os.path.join(self.tmp, "rehearsal.conf")
+        with open(FIXTURES / "adapter-fixture-software.conf", encoding="utf-8") as src, \
+                open(fixture, "w", encoding="utf-8") as out:
+            for line in src:
+                if line.startswith("LICENSED_CATALOGUE="):
+                    line = f"LICENSED_CATALOGUE={catalogue}\n"
+                out.write(line)
+        self.env["INSTALLER_ADAPTER_FIXTURE"] = fixture
+        self.wiz = wizard.Wizard(str(ROOT), self.env)
+
+    def test_the_page_holds_no_detail_and_the_log_does(self):
+        catalogue, note = self.wiz.software()
+        self.assertEqual(catalogue["items"], [])
+        self.assertEqual(note, "There is no additional software for this system.")
+        for detail in ("(", "software:", "catalogue", "version"):
+            self.assertNotIn(detail, note)
+        with open(self.wiz.log_path, encoding="utf-8") as stream:
+            log = stream.read()
+        self.assertIn("the catalogue is not version 1 with items", log)
+
+    def test_a_good_catalogue_has_no_note(self):
+        self.wiz.close()
+        self.env["INSTALLER_ADAPTER_FIXTURE"] = str(FIXTURES / "adapter-fixture-software.conf")
+        self.wiz = wizard.Wizard(str(ROOT), self.env)
+        catalogue, note = self.wiz.software()
+        self.assertTrue(catalogue["items"])
+        self.assertEqual(note, "")
 
 
 if __name__ == "__main__":

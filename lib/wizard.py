@@ -38,6 +38,8 @@ import passhash
 # summary.
 TIME_ZONE = "Time zone"
 ADDITIONAL_SOFTWARE = "Additional software"
+# What the page of the software says when it offers nothing.
+NO_SOFTWARE = "There is no additional software for this system."
 
 # The pages, in the order of the text front end.
 PAGES: List[Tuple[str, str]] = [
@@ -584,12 +586,15 @@ class Wizard:
         return diskplan.actions(self.disk_plan, self.disk_detail, self.os_name, self.product)
 
     def software(self) -> Tuple[dict, str]:
-        """The catalogue of the optional licensed software."""
+        """The catalogue of the optional licensed software, and the line the
+        page shows when it offers nothing ("" when it offers something).
+        Why a catalogue cannot be read goes to the log, never on the page."""
         data, err = self.backend.probe("software")
         if err:
             self.log(err)
         cat = data.get("catalogue") if isinstance(data.get("catalogue"), dict) else {}
-        return {"items": cat.get("items", []), "notices": cat.get("notices", "")}, err
+        catalogue = {"items": cat.get("items", []), "notices": cat.get("notices", "")}
+        return catalogue, "" if catalogue["items"] else NO_SOFTWARE
 
     def hardware(self) -> List[dict]:
         """The parts of the machine, their drivers and their firmware."""
